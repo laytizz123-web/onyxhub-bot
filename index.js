@@ -27,23 +27,30 @@ const COLORS = {
   error: 0xef4444,
 };
 
-// ================================
+// =====================================================
+// CLAIM SYSTEM
+// =====================================================
+
+// channelId -> staffUserId
+const claimedTickets = new Map();
+
+// =====================================================
 // BOT READY
-// ================================
+// =====================================================
 
 client.once(Events.ClientReady, (bot) => {
   console.log(`✅ ${bot.user.tag} est connecté !`);
 });
 
-// ================================
+// =====================================================
 // INTERACTIONS
-// ================================
+// =====================================================
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // ==========================================
+    // =================================================
     // /tickets
-    // ==========================================
+    // =================================================
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName !== "tickets") return;
@@ -112,15 +119,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // ==========================================
+    // =================================================
     // BUTTONS
-    // ==========================================
+    // =================================================
 
     if (!interaction.isButton()) return;
 
-    // ==========================================
+    // =================================================
     // CREATE TICKET
-    // ==========================================
+    // =================================================
 
     if (
       interaction.customId === "ticket_purchase" ||
@@ -136,14 +143,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const isPurchase =
         interaction.customId === "ticket_purchase";
 
-      // ------------------------------------------
+      // -------------------------------------------------
       // CHECK EXISTING TICKET
-      // ------------------------------------------
+      // -------------------------------------------------
 
       const existing = guild.channels.cache.find(
         (channel) =>
           channel.type === ChannelType.GuildText &&
-          channel.topic === `onyx-ticket:${user.id}`
+          channel.topic?.startsWith(`onyx-ticket:${user.id}`)
       );
 
       if (existing) {
@@ -152,9 +159,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ------------------------------------------
+      // -------------------------------------------------
       // FIND / CREATE CATEGORY
-      // ------------------------------------------
+      // -------------------------------------------------
 
       let category = guild.channels.cache.find(
         (channel) =>
@@ -169,9 +176,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ------------------------------------------
+      // -------------------------------------------------
       // USERNAME
-      // ------------------------------------------
+      // -------------------------------------------------
 
       const safeName =
         user.username
@@ -185,9 +192,67 @@ client.on(Events.InteractionCreate, async (interaction) => {
           90
         );
 
-      // ------------------------------------------
+      // -------------------------------------------------
+      // PERMISSIONS
+      // -------------------------------------------------
+
+      const permissionOverwrites = [
+        {
+          id: guild.roles.everyone.id,
+
+          deny: [
+            PermissionFlagsBits.ViewChannel,
+          ],
+        },
+
+        // Ticket owner
+        {
+          id: user.id,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks,
+          ],
+        },
+
+        // Bot
+        {
+          id: client.user.id,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        },
+      ];
+
+      // -------------------------------------------------
+      // STAFF ROLE
+      // -------------------------------------------------
+
+      if (process.env.STAFF_ROLE_ID) {
+        permissionOverwrites.push({
+          id: process.env.STAFF_ROLE_ID,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        });
+      }
+
+      // -------------------------------------------------
       // CREATE CHANNEL
-      // ------------------------------------------
+      // -------------------------------------------------
 
       const ticketChannel = await guild.channels.create({
         name: channelName,
@@ -196,45 +261,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         topic: `onyx-ticket:${user.id}`,
 
-        permissionOverwrites: [
-          {
-            id: guild.roles.everyone.id,
-
-            deny: [
-              PermissionFlagsBits.ViewChannel,
-            ],
-          },
-
-          // Ticket owner
-          {
-            id: user.id,
-
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.SendMessages,
-              PermissionFlagsBits.ReadMessageHistory,
-              PermissionFlagsBits.AttachFiles,
-              PermissionFlagsBits.EmbedLinks,
-            ],
-          },
-
-          // Bot
-          {
-            id: client.user.id,
-
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.SendMessages,
-              PermissionFlagsBits.ReadMessageHistory,
-              PermissionFlagsBits.ManageChannels,
-            ],
-          },
-        ],
+        permissionOverwrites,
       });
 
-      // ==========================================
-      // PURCHASE MESSAGE
-      // ==========================================
+      // =================================================
+      // BUTTONS
+      // =================================================
+
+      const ticketButtons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("ticket_claim")
+          .setLabel("Claim Ticket")
+          .setEmoji("🎫")
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId("ticket_close")
+          .setLabel("Close Ticket")
+          .setEmoji("🔒")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      // =================================================
+      // PURCHASE TICKET
+      // =================================================
 
       if (isPurchase) {
         const purchaseEmbed = new EmbedBuilder()
@@ -257,27 +307,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        const closeButton = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("ticket_close")
-            .setLabel("Close Ticket")
-            .setEmoji("🔒")
-            .setStyle(ButtonStyle.Danger)
-        );
-
         await ticketChannel.send({
           content: `${user}`,
           embeds: [purchaseEmbed],
-          components: [closeButton],
+          components: [ticketButtons],
           allowedMentions: {
             users: [user.id],
           },
         });
       }
 
-      // ==========================================
-      // SUPPORT MESSAGE
-      // ==========================================
+      // =================================================
+      // SUPPORT TICKET
+      // =================================================
 
       else {
         const supportEmbed = new EmbedBuilder()
@@ -305,7 +347,91 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        const closeButton = new ActionRowBuilder().addComponents(
+        await ticketChannel.send({
+          content: `${user}`,
+          embeds: [supportEmbed],
+          components: [ticketButtons],
+          allowedMentions: {
+            users: [user.id],
+          },
+        });
+      }
+
+      // -------------------------------------------------
+      // CONFIRMATION
+      // -------------------------------------------------
+
+      return interaction.editReply({
+        content: `✅ Your ticket has been created: ${ticketChannel}`,
+      });
+    }
+
+    // =================================================
+    // CLAIM TICKET
+    // =================================================
+
+    if (interaction.customId === "ticket_claim") {
+      const channel = interaction.channel;
+
+      // Vérifier que c'est bien un ticket
+      if (
+        !channel ||
+        channel.type !== ChannelType.GuildText ||
+        !channel.topic?.startsWith("onyx-ticket:")
+      ) {
+        return interaction.reply({
+          content: "❌ This is not an Onyx Hub ticket.",
+          ephemeral: true,
+        });
+      }
+
+      // Vérifier le staff
+      const isStaff =
+        interaction.memberPermissions.has(
+          PermissionFlagsBits.ManageChannels
+        );
+
+      if (!isStaff) {
+        return interaction.reply({
+          content:
+            "❌ Only staff members can claim tickets.",
+          ephemeral: true,
+        });
+      }
+
+      // Vérifier si déjà claim
+      const currentClaim = claimedTickets.get(
+        channel.id
+      );
+
+      if (currentClaim) {
+        const claimedUser =
+          await client.users
+            .fetch(currentClaim)
+            .catch(() => null);
+
+        return interaction.reply({
+          content: claimedUser
+            ? `❌ This ticket is already claimed by ${claimedUser}.`
+            : "❌ This ticket is already claimed.",
+          ephemeral: true,
+        });
+      }
+
+      // Claim
+      claimedTickets.set(
+        channel.id,
+        interaction.user.id
+      );
+
+      const unclaimButton =
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_unclaim")
+            .setLabel("Unclaim Ticket")
+            .setEmoji("🔓")
+            .setStyle(ButtonStyle.Secondary),
+
           new ButtonBuilder()
             .setCustomId("ticket_close")
             .setLabel("Close Ticket")
@@ -313,30 +439,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setStyle(ButtonStyle.Danger)
         );
 
-        await ticketChannel.send({
-          content: `${user}`,
-          embeds: [supportEmbed],
-          components: [closeButton],
-          allowedMentions: {
-            users: [user.id],
-          },
-        });
-      }
-
-      // ------------------------------------------
-      // CONFIRMATION
-      // ------------------------------------------
-
-      return interaction.editReply({
-        content: `✅ Your ticket has been created: ${ticketChannel}`,
+      await interaction.update({
+        components: [unclaimButton],
       });
+
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.success)
+            .setDescription(
+              `🎫 This ticket has been claimed by ${interaction.user}.`
+            ),
+        ],
+      });
+
+      return;
     }
 
-    // ==========================================
-    // CLOSE TICKET
-    // ==========================================
+    // =================================================
+    // UNCLAIM TICKET
+    // =================================================
 
-    if (interaction.customId === "ticket_close") {
+    if (interaction.customId === "ticket_unclaim") {
       const channel = interaction.channel;
 
       if (
@@ -350,9 +474,84 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      const ticketOwnerId = channel.topic.slice(
-        "onyx-ticket:".length
+      const claimedBy = claimedTickets.get(
+        channel.id
       );
+
+      if (!claimedBy) {
+        return interaction.reply({
+          content:
+            "❌ This ticket is not currently claimed.",
+          ephemeral: true,
+        });
+      }
+
+      // Seul le staff qui a claim peut unclaim
+      if (claimedBy !== interaction.user.id) {
+        return interaction.reply({
+          content:
+            "❌ Only the staff member who claimed this ticket can unclaim it.",
+          ephemeral: true,
+        });
+      }
+
+      claimedTickets.delete(channel.id);
+
+      const claimButtons =
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_claim")
+            .setLabel("Claim Ticket")
+            .setEmoji("🎫")
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId("ticket_close")
+            .setLabel("Close Ticket")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      await interaction.update({
+        components: [claimButtons],
+      });
+
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setDescription(
+              `🔓 ${interaction.user} has unclaimed this ticket.`
+            ),
+        ],
+      });
+
+      return;
+    }
+
+    // =================================================
+    // CLOSE TICKET
+    // =================================================
+
+    if (interaction.customId === "ticket_close") {
+      const channel = interaction.channel;
+
+      if (
+        !channel ||
+        channel.type !== ChannelType.GuildText ||
+        !channel.topic?.startsWith("onyx-ticket:")
+      ) {
+        return interaction.reply({
+          content:
+            "❌ This is not an Onyx Hub ticket.",
+          ephemeral: true,
+        });
+      }
+
+      const ticketOwnerId =
+        channel.topic.slice(
+          "onyx-ticket:".length
+        );
 
       const isOwner =
         interaction.user.id === ticketOwnerId;
@@ -369,6 +568,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true,
         });
       }
+
+      // Remove claim from memory
+      claimedTickets.delete(channel.id);
 
       await interaction.reply({
         content:
@@ -416,9 +618,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// ==========================================
+// =====================================================
 // CHECK ENV VARIABLES
-// ==========================================
+// =====================================================
 
 if (
   !process.env.DISCORD_TOKEN ||
@@ -432,9 +634,9 @@ if (
   process.exit(1);
 }
 
-// ==========================================
-// REGISTER SLASH COMMAND
-// ==========================================
+// =====================================================
+// REGISTER COMMAND
+// =====================================================
 
 async function registerCommands() {
   const commands = [
@@ -467,9 +669,9 @@ async function registerCommands() {
   );
 }
 
-// ==========================================
+// =====================================================
 // START BOT
-// ==========================================
+// =====================================================
 
 async function startBot() {
   try {
