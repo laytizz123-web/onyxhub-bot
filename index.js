@@ -69,7 +69,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setColor(COLORS.main)
-        .setTitle("ONYX HUB | Support Center")
+        .setTitle("ONYX HUB | Tickets Center")
         .setDescription(
           [
             "Welcome to **Onyx Hub**!",
