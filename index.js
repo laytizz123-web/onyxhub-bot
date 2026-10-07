@@ -151,6 +151,100 @@ function formatDuration(ms) {
   return parts.join(" ") || "0s";
 }
 
+/* =====================================================
+   LOCK / UNLOCK / NUKE
+===================================================== */
+
+async function setChannelLock(channel, locked, moderator) {
+  await channel.permissionOverwrites.edit(
+    channel.guild.roles.everyone,
+    {
+      SendMessages: locked ? false : null,
+      SendMessagesInThreads: locked ? false : null,
+      CreatePublicThreads: locked ? false : null,
+      CreatePrivateThreads: locked ? false : null,
+    },
+    { reason: `${locked ? "Locked" : "Unlocked"} by ${moderator.tag}` }
+  );
+
+  await channel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(locked ? COLORS.error : COLORS.success)
+        .setDescription(
+          locked
+            ? `🔒 This channel has been locked by ${moderator}.`
+            : `🔓 This channel has been unlocked by ${moderator}.`
+        ),
+    ],
+  });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(locked ? COLORS.error : COLORS.success)
+      .setTitle(locked ? "🔒 Channel Locked" : "🔓 Channel Unlocked")
+      .addFields(
+        { name: "Channel", value: `${channel}` },
+        { name: "Moderator", value: `${moderator}` }
+      )
+      .setTimestamp()
+  );
+}
+
+function nukeConfirmButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("nuke_confirm")
+      .setLabel("Confirm Nuke")
+      .setEmoji("💣")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("nuke_cancel")
+      .setLabel("Cancel")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+const NUKE_WARNING =
+  "⚠️ This will delete this channel and recreate it with the same name, topic, category, position and permissions. **All messages will be lost.**";
+
+/*
+  Recreates the channel with the same settings and permission overwrites
+  (channel.clone copies them), then deletes the old one.
+*/
+async function nukeChannel(channel, moderator) {
+  const newChannel = await channel.clone({
+    reason: `Nuked by ${moderator.tag}`,
+  });
+
+  await newChannel.setPosition(channel.position).catch(() => {});
+  await channel.delete(`Nuked by ${moderator.tag}`);
+
+  await newChannel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setDescription(`💣 This channel has been nuked by ${moderator}.`)
+        .setTimestamp(),
+    ],
+  });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.warning)
+      .setTitle("💣 Channel Nuked")
+      .addFields(
+        { name: "Channel", value: `${newChannel} (#${channel.name})` },
+        { name: "Moderator", value: `${moderator}` }
+      )
+      .setTimestamp()
+  );
+
+  return newChannel;
+}
+
 function ticketPermissionOverwrites(guild, user) {
   return [
     {
@@ -452,7 +546,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets"];
+    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets", "lock", "unlock", "nuke"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return privateReply(message, "❌ Only staff can use this command.");
     }
@@ -465,6 +559,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Channels:** `!lock`, `!unlock`, `!nuke`",
           "**Staff:** `!announce Title | message`",
           "",
           "Every command is also available with `/`.",
@@ -515,6 +610,20 @@ client.on(Events.MessageCreate, async (message) => {
       if (!Number.isInteger(amount) || amount < 1 || amount > 100) return message.reply("❌ Usage: `!clear 1-100`");
       const deleted = await message.channel.bulkDelete(amount, true);
       return message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
+    }
+
+    if (command === "lock" || command === "unlock") {
+      await setChannelLock(message.channel, command === "lock", message.author);
+      return message.delete().catch(() => {});
+    }
+
+    if (command === "nuke") {
+      await message.delete().catch(() => {});
+      return message.channel.send({
+        content: `${message.author} ${NUKE_WARNING}`,
+        components: [nukeConfirmButtons()],
+        allowedMentions: { users: [message.author.id] },
+      });
     }
 
     const target = message.mentions.members.first();
@@ -653,6 +762,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/kick` — Kick a member.\n" +
                 "`/ban` — Ban a member.\n" +
                 "`/clear` — Delete messages.",
+            },
+            {
+              name: "🔒 Channels",
+              value:
+                "`/lock` — Lock the current channel.\n" +
+                "`/unlock` — Unlock the current channel.\n" +
+                "`/nuke` — Recreate the channel with the same permissions.",
             },
             {
               name: "ℹ️ Information",
@@ -955,6 +1071,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      /* -----------------------------------------------
+         /lock /unlock /nuke
+      ----------------------------------------------- */
+
+      if (command === "lock" || command === "unlock" || command === "nuke") {
+        if (!isStaff(interaction)) {
+          return interaction.reply({
+            content: "❌ Only staff can use this command.",
+            ephemeral: true,
+          });
+        }
+
+        if (command === "nuke") {
+          return interaction.reply({
+            content: NUKE_WARNING,
+            components: [nukeConfirmButtons()],
+            ephemeral: true,
+          });
+        }
+
+        await setChannelLock(
+          interaction.channel,
+          command === "lock",
+          interaction.user
+        );
+
+        return interaction.reply({
+          content: command === "lock" ? "🔒 Channel locked." : "🔓 Channel unlocked.",
+          ephemeral: true,
+        });
+      }
+
       return;
     }
 
@@ -963,6 +1111,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
     ================================================= */
 
     if (!interaction.isButton()) return;
+
+    /* -----------------------------------------------
+       NUKE CONFIRMATION
+    ----------------------------------------------- */
+
+    if (
+      interaction.customId === "nuke_confirm" ||
+      interaction.customId === "nuke_cancel"
+    ) {
+      if (!isStaff(interaction)) {
+        return interaction.reply({
+          content: "❌ Only staff can use this.",
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === "nuke_cancel") {
+        return interaction.update({
+          content: "❌ Nuke cancelled.",
+          components: [],
+        });
+      }
+
+      await interaction.update({
+        content: "💣 Nuking channel...",
+        components: [],
+      });
+
+      await nukeChannel(interaction.channel, interaction.user);
+      return;
+    }
 
     /* -----------------------------------------------
        CREATE TICKETS
@@ -1323,6 +1502,18 @@ async function registerCommands() {
           .setDescription("Reason for the ban.")
           .setRequired(false)
       ),
+
+    new SlashCommandBuilder()
+      .setName("lock")
+      .setDescription("Lock the current channel."),
+
+    new SlashCommandBuilder()
+      .setName("unlock")
+      .setDescription("Unlock the current channel."),
+
+    new SlashCommandBuilder()
+      .setName("nuke")
+      .setDescription("Delete and recreate the current channel with the same permissions."),
 
   ];
 
