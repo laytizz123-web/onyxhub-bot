@@ -561,7 +561,7 @@ client.once(Events.ClientReady, (bot) => {
       ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
       : process.env.AI_ENABLED === "false"
         ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
-        : "🤖 AI ticket assistant OFF: GEMINI_API_KEY is missing in the environment variables."
+        : "🤖 AI ticket assistant OFF: GROQ_API_KEY is missing in the environment variables."
   );
 });
 
@@ -597,19 +597,22 @@ client.on(Events.GuildMemberAdd, async (member) => {
 /*
   Answers the ticket owner in Purchase and Support tickets until a staff
   member joins the conversation, claims the ticket, or the AI asks for staff.
-  Uses Google Gemini. Needs GEMINI_API_KEY (Railway variable).
+  Uses Groq (free tier, OpenAI-compatible API). Needs GROQ_API_KEY.
   AI_ENABLED=false turns it off, AI_MODEL overrides the model.
 */
 
-const { GoogleGenAI } = require("@google/genai");
+const OpenAI = require("openai");
 
-const AI_MODEL = process.env.AI_MODEL || "gemini-3.8-flash";
+const AI_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 const AI_ENABLED =
-  Boolean(process.env.GEMINI_API_KEY) &&
+  Boolean(process.env.GROQ_API_KEY) &&
   process.env.AI_ENABLED !== "false";
 
-const gemini = AI_ENABLED
-  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+const groq = AI_ENABLED
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1",
+    })
   : null;
 
 const AI_PREFIX = "🤖 ";
@@ -648,57 +651,87 @@ function isAiReply(message) {
   );
 }
 
-/* turns: [{ role: "user" | "assistant", content }] -> Gemini answer text. */
-async function aiGenerate(turns) {
-  // Gemini wants "user"/"model" roles, with same-role turns merged.
-  const contents = [];
-
-  for (const turn of turns) {
-    const role = turn.role === "assistant" ? "model" : "user";
-    const last = contents[contents.length - 1];
-
-    if (last && last.role === role) {
-      last.parts[0].text += `\n${turn.content}`;
-    } else {
-      contents.push({ role, parts: [{ text: turn.content }] });
-    }
-  }
-
-  // Google sometimes answers 429/500/503 during demand spikes: retry a few times.
-  let response;
-
-  for (let attempt = 0; ; attempt++) {
+/*
+  Replying needs "Read Message History" in the channel. If the reply fails
+  (missing permission, deleted message...), fall back to a plain message.
+*/
+async function safeReply(message, payload) {
+  try {
+    return await message.reply(payload);
+  } catch (replyError) {
     try {
-      response = await gemini.models.generateContent({
-        model: AI_MODEL,
-        contents,
-        config: {
-          systemInstruction: AI_SYSTEM_PROMPT,
-          maxOutputTokens: 4000,
-        },
-      });
-      break;
-    } catch (error) {
-      const retryable = [429, 500, 503].includes(Number(error?.status));
-
-      if (!retryable || attempt >= 3) throw error;
-
-      await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+      return await message.channel.send(
+        typeof payload === "string" ? { content: payload } : payload
+      );
+    } catch (sendError) {
+      console.error(
+        `Could not answer in #${message.channel?.name}:`,
+        sendError?.message || sendError
+      );
     }
   }
+}
 
-  const text = (response.text || "").trim();
+/* turns: [{ role: "user" | "assistant", content }] -> answer text. */
+async function aiGenerate(turns) {
+  /*
+    Try AI_MODEL, then each model of AI_FALLBACK_MODELS (comma separated).
+    Free-tier quotas are per model, so another model may still have requests
+    left. 500/503 (overload) are retried on the same model first; 429
+    (quota), 404 (model gone) and timeouts go straight to the next model.
+  */
+  const models = [
+    AI_MODEL,
+    ...(process.env.AI_FALLBACK_MODELS ?? "llama-3.1-8b-instant")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  ];
 
-  if (!text) {
-    const why =
-      response.promptFeedback?.blockReason ||
-      response.candidates?.[0]?.finishReason ||
-      "unknown";
+  let lastError;
 
-    throw new Error(`empty answer from ${AI_MODEL} (${why})`);
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await groq.chat.completions.create(
+          {
+            model,
+            max_completion_tokens: 1024,
+            messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
+          },
+          { timeout: 45000, maxRetries: 0 }
+        );
+
+        const choice = response.choices?.[0];
+        const text = (choice?.message?.content || "").trim();
+
+        if (text) return text;
+
+        throw new Error(
+          `empty answer from ${model} (${choice?.finish_reason || "unknown"})`
+        );
+      } catch (error) {
+        lastError = error;
+
+        const status = Number(error?.status);
+
+        if (status === 500 || status === 503) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2000 * (attempt + 1))
+          );
+          continue;
+        }
+
+        break; // 429, 404, timeout...: next model
+      }
+    }
+
+    console.warn(
+      `AI model ${model} failed: ${lastError?.message || lastError}`.slice(0, 300)
+    );
   }
 
-  return text;
+  throw lastError;
 }
 
 async function runTicketAi(message) {
@@ -768,7 +801,7 @@ async function runTicketAi(message) {
   }
 }
 
-/* !aitest (staff): calls Gemini once and shows the exact result or error. */
+/* !aitest (staff): calls the AI once and shows the exact result or error. */
 client.on(Events.MessageCreate, async (message) => {
   if (
     message.author.bot ||
@@ -786,9 +819,11 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!allowed) return;
 
+  console.log(`!aitest from ${message.author.tag} in #${message.channel.name}`);
+
   if (!AI_ENABLED) {
-    return await message.reply(
-      "❌ AI is off: `GEMINI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
+    return await safeReply(message, 
+      "❌ AI is off: `GROQ_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
     );
   }
 
@@ -797,9 +832,9 @@ client.on(Events.MessageCreate, async (message) => {
       { role: "user", content: "Say hello in one short sentence." },
     ]);
 
-    return await message.reply(`✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
+    return await safeReply(message, `✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
   } catch (error) {
-    return await message.reply(
+    return await safeReply(message, 
       `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? error?.code ?? "?"}): ${error?.message || error}`.slice(0, 1900)
     );
   }
@@ -934,17 +969,17 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "announce") {
       const raw = args.join(" ");
       const parts = raw.split("|");
-      if (parts.length < 2) return await message.reply("❌ Usage: `!announce Title | message`");
+      if (parts.length < 2) return await safeReply(message, "❌ Usage: `!announce Title | message`");
       const title = parts.shift().trim();
       const text = parts.join("|").trim();
       const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
       await message.channel.send({embeds:[embed]});
-      return await message.reply({content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
+      return await safeReply(message, {content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
     }
 
     if (command === "clear") {
       const amount = Number(args[0]);
-      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return await message.reply("❌ Usage: `!clear 1-100`");
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return await safeReply(message, "❌ Usage: `!clear 1-100`");
       const deleted = await message.channel.bulkDelete(amount, true);
       return await message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
     }
@@ -964,37 +999,37 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     const target = message.mentions.members.first();
-    if (["warn","timeout","kick","ban"].includes(command) && !target) return await message.reply("❌ Usage: !" + command + " @user ...");
+    if (["warn","timeout","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
 
     if (command === "warn") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.send(`⚠️ You have been warned in **${message.guild.name}**. Reason: ${reason}`).catch(()=>{});
-      return await message.reply(`⚠️ ${target} has been warned. Reason: ${reason}`);
+      return await safeReply(message, `⚠️ ${target} has been warned. Reason: ${reason}`);
     }
 
     if (command === "timeout") {
       const parsed = parseDuration(args[1]);
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
-      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await message.reply("❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
       await target.timeout(duration, reason);
-      return await message.reply(`⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
+      return await safeReply(message, `⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.kick(reason);
-      return await message.reply(`👢 ${target.user.tag} has been kicked.`);
+      return await safeReply(message, `👢 ${target.user.tag} has been kicked.`);
     }
 
     if (command === "ban") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.ban({reason});
-      return await message.reply(`🔨 ${target.user.tag} has been banned.`);
+      return await safeReply(message, `🔨 ${target.user.tag} has been banned.`);
     }
   } catch (error) {
     console.error("Prefix command error:", error);
-    await message.reply("❌ An error occurred. Check the bot console.").catch(()=>{});
+    await safeReply(message, "❌ An error occurred. Check the bot console.").catch(()=>{});
   }
 });
 
