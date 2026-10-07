@@ -39,6 +39,9 @@ const OWNER_ROLE_ID = "1555941354096427040";
 const STAFF_ROLE_ID = "1557110463907766432";
 const MEMBER_ROLE_ID = "1556375804894515331";
 
+const TICKET_CATEGORY_ID =
+  process.env.TICKET_CATEGORY_ID || "1557165471185371177";
+
 const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || "";
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || "";
 
@@ -333,6 +336,16 @@ function ticketPermissionOverwrites(guild, user) {
 }
 
 async function getTicketCategory(guild) {
+  const configured = await guild.channels
+    .fetch(TICKET_CATEGORY_ID)
+    .catch(() => null);
+
+  if (configured?.type === ChannelType.GuildCategory) return configured;
+
+  console.warn(
+    `Ticket category ${TICKET_CATEGORY_ID} not found, falling back to "ORYX TICKETS".`
+  );
+
   let category = guild.channels.cache.find(
     (channel) =>
       channel.type === ChannelType.GuildCategory &&
@@ -670,13 +683,21 @@ async function runTicketAi(message) {
 
   if (!turns.length || turns[turns.length - 1].role !== "user") return;
 
+  // Typing indicator lasts ~10s, so keep refreshing it while the model thinks.
   await channel.sendTyping().catch(() => {});
+  const typing = setInterval(() => channel.sendTyping().catch(() => {}), 8000);
 
-  const response = await openai.chat.completions.create({
-    model: AI_MODEL,
-    max_completion_tokens: 2000,
-    messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
-  });
+  let response;
+
+  try {
+    response = await openai.chat.completions.create({
+      model: AI_MODEL,
+      max_completion_tokens: 4000,
+      messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
+    });
+  } finally {
+    clearInterval(typing);
+  }
 
   const choice = response.choices?.[0];
 
@@ -688,10 +709,9 @@ async function runTicketAi(message) {
   let text = (choice?.message?.content || "").trim();
 
   if (!text) {
-    console.warn(
-      `AI returned no text in #${channel.name} (finish: ${choice?.finish_reason}).`
+    throw new Error(
+      `empty answer from ${AI_MODEL} (finish_reason: ${choice?.finish_reason})`
     );
-    return;
   }
 
   const wantsStaff = text.includes("[[STAFF]]");
@@ -752,6 +772,29 @@ client.on(Events.MessageCreate, async (message) => {
     }
   } catch (error) {
     console.error("AI ticket error:", error);
+
+    const reason = error?.error?.message || error?.message || String(error);
+
+    await sendLog(
+      message.guild,
+      new EmbedBuilder()
+        .setColor(COLORS.error)
+        .setTitle("🤖 AI error")
+        .addFields(
+          { name: "Ticket", value: `${message.channel}` },
+          { name: "Model", value: `\`${AI_MODEL}\``, inline: true },
+          { name: "Error", value: reason.slice(0, 900) }
+        )
+        .setTimestamp()
+    );
+
+    // Never leave the customer without an answer: call a human.
+    await message.channel
+      .send({
+        content: `${HANDOFF_PREFIX}<@&${STAFF_ROLE_ID}> the assistant is unavailable, please help this customer.`,
+        allowedMentions: { roles: [STAFF_ROLE_ID] },
+      })
+      .catch(() => {});
   }
 });
 
