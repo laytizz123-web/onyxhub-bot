@@ -603,7 +603,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
 const OpenAI = require("openai");
 
-const AI_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+const AI_MODEL = process.env.AI_MODEL || "openai/gpt-oss-120b";
 const AI_ENABLED =
   Boolean(process.env.GROQ_API_KEY) &&
   process.env.AI_ENABLED !== "false";
@@ -682,7 +682,7 @@ async function aiGenerate(turns) {
   */
   const models = [
     AI_MODEL,
-    ...(process.env.AI_FALLBACK_MODELS || "")
+    ...(process.env.AI_FALLBACK_MODELS ?? "openai/gpt-oss-20b")
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean),
@@ -698,14 +698,18 @@ async function aiGenerate(turns) {
         const response = await groq.chat.completions.create(
           {
             model,
-            max_completion_tokens: 1024,
+            // Reasoning models spend part of this budget thinking before they answer.
+            max_completion_tokens: 3000,
+            ...(model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
             messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
           },
           { timeout: 45000, maxRetries: 0 }
         );
 
         const choice = response.choices?.[0];
-        const text = (choice?.message?.content || "").trim();
+        const text = (choice?.message?.content || "")
+          .replace(/<think>[\s\S]*?<\/think>/g, "")
+          .trim();
 
         if (text) return text;
 
