@@ -603,7 +603,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
 const { GoogleGenAI } = require("@google/genai");
 
-const AI_MODEL = process.env.AI_MODEL || "gemini-2.5-flash";
+const AI_MODEL = process.env.AI_MODEL || "gemini-3.8-flash";
 const AI_ENABLED =
   Boolean(process.env.GEMINI_API_KEY) &&
   process.env.AI_ENABLED !== "false";
