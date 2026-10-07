@@ -615,7 +615,6 @@ const groq = AI_ENABLED
     })
   : null;
 
-const AI_PREFIX = "🤖 ";
 const HANDOFF_PREFIX = "🔔 ";
 const AI_MAX_REPLIES = 8;
 const AI_HISTORY_LIMIT = 30;
@@ -630,7 +629,7 @@ DISCORD SERVER (Onyx Hub / ORYX HUB, invite: discord.gg/onyxhb)
 - Help is given through private tickets, opened with the buttons of the ticket panel: Purchase (buying and order questions), Support (help and questions about the script), Partnership (partnership requests).
 - A ticket is private: only the customer and the team (Owner and Staff roles) can see it. Each person can have one open ticket at a time.
 - A staff member can "claim" a ticket (it shows who is handling it). The customer or staff can close it with the Close Ticket button; the channel is then deleted after a few seconds.
-- This assistant answers first (marked with a robot emoji) and stops as soon as a staff member writes in the ticket or claims it.
+- This assistant answers first and stops as soon as a staff member writes in the ticket or claims it.
 - The shop link is the way to buy the product. If asked about channels, rules, roles, giveaways or anything about the server that is not written here, say you are not sure instead of guessing.
 
 PRODUCT: "Onyx HUB" (discord.gg/onyxhb), a Roblox script for the game "Steal a Brainrot", made by Vxmp.
@@ -696,7 +695,7 @@ COMMON ISSUES
 const AI_SYSTEM_PROMPT = `You are the support assistant of ORYX HUB, answering inside a private Discord ticket.
 
 How to behave:
-- Reply in the same language as the customer (French or English mostly). Be short, friendly and concrete (max ~120 words, no long lists).
+- Do not start your reply with an emoji. Reply in the same language as the customer (French or English mostly). Be short, friendly and concrete (max ~120 words, no long lists).
 - Only use the information in "Knowledge" below. If you do not know something, say so and ask for a staff member instead of guessing.
 - Never invent prices, stock, delivery times, refunds, keys, links or policies. Never promise anything on behalf of the team.
 - Everything happens here, in this Discord ticket. Never mention or ask for an email address, phone number, order id, or any contact or channel outside Discord. If a human is needed, say a staff member will answer in this ticket.
@@ -722,10 +721,17 @@ const AI_TYPE_PROMPT = {
 const aiBusy = new Set();
 const aiPending = new Set();
 
+/*
+  The AI's answers are recognised by their shape: a plain text message from the bot, with no embed and
+  no buttons (tickets' welcome / claim messages have embeds or buttons), that is not a staff call.
+*/
 function isAiReply(message) {
   return (
     message.author.id === client.user.id &&
-    message.content.startsWith(AI_PREFIX)
+    Boolean(message.content) &&
+    !message.embeds?.length &&
+    !message.components?.length &&
+    !message.content.startsWith(HANDOFF_PREFIX)
   );
 }
 
@@ -879,7 +885,7 @@ async function runTicketAi(message) {
     if (isAiReply(m)) {
       turns.push({
         role: "assistant",
-        content: m.content.slice(AI_PREFIX.length),
+        content: m.content,
       });
     } else if (m.author.id === ownerId && m.content.trim()) {
       turns.push({ role: "user", content: m.content });
@@ -918,7 +924,7 @@ async function runTicketAi(message) {
 
   if (text) {
     await channel.send({
-      content: `${AI_PREFIX}${text}`.slice(0, 2000),
+      content: text.slice(0, 2000),
       allowedMentions: { parse: [] },
     });
   }
