@@ -543,6 +543,13 @@ async function createTicket(interaction, type) {
 client.once(Events.ClientReady, (bot) => {
   console.log(`✅ ${bot.user.tag} is online!`);
   console.log(`📊 Serving ${bot.guilds.cache.size} server(s).`);
+  console.log(
+    AI_ENABLED
+      ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
+      : process.env.AI_ENABLED === "false"
+        ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
+        : "🤖 AI ticket assistant OFF: ANTHROPIC_API_KEY is missing in the environment variables."
+  );
 });
 
 /* =====================================================
@@ -675,7 +682,10 @@ async function runTicketAi(message) {
     messages: turns,
   });
 
-  if (response.stop_reason === "refusal") return;
+  if (response.stop_reason === "refusal") {
+    console.warn(`AI refused to answer in #${channel.name}.`);
+    return;
+  }
 
   let text = response.content
     .filter((block) => block.type === "text")
@@ -683,7 +693,10 @@ async function runTicketAi(message) {
     .join("")
     .trim();
 
-  if (!text) return;
+  if (!text) {
+    console.warn(`AI returned no text in #${channel.name} (stop: ${response.stop_reason}).`);
+    return;
+  }
 
   const wantsStaff = text.includes("[[STAFF]]");
   text = text.replace(/\[\[STAFF\]\]/g, "").trim();
