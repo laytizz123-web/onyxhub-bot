@@ -561,7 +561,7 @@ client.once(Events.ClientReady, (bot) => {
       ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
       : process.env.AI_ENABLED === "false"
         ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
-        : "🤖 AI ticket assistant OFF: GEMINI_API_KEY is missing in the environment variables."
+        : "🤖 AI ticket assistant OFF: GROQ_API_KEY is missing in the environment variables."
   );
 });
 
@@ -597,19 +597,22 @@ client.on(Events.GuildMemberAdd, async (member) => {
 /*
   Answers the ticket owner in Purchase and Support tickets until a staff
   member joins the conversation, claims the ticket, or the AI asks for staff.
-  Uses Google Gemini. Needs GEMINI_API_KEY (Railway variable).
+  Uses Groq (free tier, OpenAI-compatible API). Needs GROQ_API_KEY.
   AI_ENABLED=false turns it off, AI_MODEL overrides the model.
 */
 
-const { GoogleGenAI } = require("@google/genai");
+const OpenAI = require("openai");
 
-const AI_MODEL = process.env.AI_MODEL || "gemini-3.8-flash";
+const AI_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 const AI_ENABLED =
-  Boolean(process.env.GEMINI_API_KEY) &&
+  Boolean(process.env.GROQ_API_KEY) &&
   process.env.AI_ENABLED !== "false";
 
-const gemini = AI_ENABLED
-  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+const groq = AI_ENABLED
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1",
+    })
   : null;
 
 const AI_PREFIX = "🤖 ";
@@ -669,31 +672,17 @@ async function safeReply(message, payload) {
   }
 }
 
-/* turns: [{ role: "user" | "assistant", content }] -> Gemini answer text. */
+/* turns: [{ role: "user" | "assistant", content }] -> answer text. */
 async function aiGenerate(turns) {
-  // Gemini wants "user"/"model" roles, with same-role turns merged.
-  const contents = [];
-
-  for (const turn of turns) {
-    const role = turn.role === "assistant" ? "model" : "user";
-    const last = contents[contents.length - 1];
-
-    if (last && last.role === role) {
-      last.parts[0].text += `\n${turn.content}`;
-    } else {
-      contents.push({ role, parts: [{ text: turn.content }] });
-    }
-  }
-
   /*
     Try AI_MODEL, then each model of AI_FALLBACK_MODELS (comma separated).
     Free-tier quotas are per model, so another model may still have requests
-    left. 503/500 (demand spike) are retried on the same model first; 429
+    left. 500/503 (overload) are retried on the same model first; 429
     (quota), 404 (model gone) and timeouts go straight to the next model.
   */
   const models = [
     AI_MODEL,
-    ...(process.env.AI_FALLBACK_MODELS || "")
+    ...(process.env.AI_FALLBACK_MODELS ?? "llama-3.1-8b-instant")
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean),
@@ -704,33 +693,23 @@ async function aiGenerate(turns) {
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await Promise.race([
-          gemini.models.generateContent({
+        const response = await groq.chat.completions.create(
+          {
             model,
-            contents,
-            config: {
-              systemInstruction: AI_SYSTEM_PROMPT,
-              maxOutputTokens: 4000,
-            },
-          }),
-          new Promise((_, reject) =>
-            setTimeout(
-              () => reject(new Error(`${model} did not answer within 45s`)),
-              45000
-            )
-          ),
-        ]);
+            max_completion_tokens: 1024,
+            messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
+          },
+          { timeout: 45000, maxRetries: 0 }
+        );
 
-        const text = (response.text || "").trim();
+        const choice = response.choices?.[0];
+        const text = (choice?.message?.content || "").trim();
 
         if (text) return text;
 
-        const why =
-          response.promptFeedback?.blockReason ||
-          response.candidates?.[0]?.finishReason ||
-          "unknown";
-
-        throw new Error(`empty answer from ${model} (${why})`);
+        throw new Error(
+          `empty answer from ${model} (${choice?.finish_reason || "unknown"})`
+        );
       } catch (error) {
         lastError = error;
 
@@ -822,7 +801,7 @@ async function runTicketAi(message) {
   }
 }
 
-/* !aitest (staff): calls Gemini once and shows the exact result or error. */
+/* !aitest (staff): calls the AI once and shows the exact result or error. */
 client.on(Events.MessageCreate, async (message) => {
   if (
     message.author.bot ||
@@ -844,7 +823,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!AI_ENABLED) {
     return await safeReply(message, 
-      "❌ AI is off: `GEMINI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
+      "❌ AI is off: `GROQ_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
     );
   }
 
