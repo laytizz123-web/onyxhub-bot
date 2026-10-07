@@ -56,9 +56,7 @@ const claimedTickets = new Map();
 /*
   Simple in-memory key store.
   Keys disappear if the bot restarts.
-  For permanent keys, connect this section to a database later.
 */
-const keys = new Map();
 
 /* =====================================================
    HELPERS
@@ -77,30 +75,6 @@ function isOwner(interaction) {
     interaction.user.id === process.env.OWNER_ID ||
     interaction.member?.roles?.cache?.has(OWNER_ROLE_ID)
   );
-}
-
-function makeKey() {
-  const part = () =>
-    crypto.randomBytes(3).toString("hex").toUpperCase();
-
-  return `ORYX-${part()}-${part()}-${part()}`;
-}
-
-function formatDuration(ms) {
-  if (!ms) return "Permanent";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-  const parts = [];
-
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
-
-  return parts.join(" ") || "< 1m";
 }
 
 async function sendLog(guild, embed) {
@@ -406,6 +380,113 @@ client.on(Events.GuildMemberAdd, async (member) => {
    INTERACTIONS
 ===================================================== */
 
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (message.author.bot || !message.guild || !message.content.startsWith("!")) return;
+
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const command = (args.shift() || "").toLowerCase();
+    if (!command) return;
+
+    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets"];
+    if (staffOnly.includes(command) && !isStaff(message)) {
+      return message.reply("❌ Only staff can use this command.");
+    }
+
+    if (command === "help") {
+      return message.reply({ embeds: [new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setTitle("ORYX HUB | Commands")
+        .setDescription([
+          "**Tickets:** `!tickets`",
+          "**Information:** `!serverinfo`, `!userinfo @user`",
+          "**Moderation:** `!warn @user reason`, `!timeout @user minutes reason`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Staff:** `!announce Title | message`",
+          "",
+          "Every command is also available with `/`.",
+        ].join("\\n"))
+        .setTimestamp()] });
+    }
+
+    if (command === "tickets") {
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle("ORYX HUB | Ticket Center")
+        .setDescription(["Welcome to **ORYX HUB**!", "", "Choose a category below to open a private ticket.", "", "🛒 **Purchase**", "Open a ticket for purchases or order questions.", "", "🛠️ **Support**", "Open a ticket if you need help or have a question.", "", "🤝 **Partnership**", "Open a ticket for partnership requests.", "", "🌐 **Website**", SHOP_URL, "", "Our support is available 24/7 through the ticket system."].join("\\n"))
+        .setFooter({ text: "ORYX HUB • Ticket System" }).setTimestamp();
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("ticket_purchase").setLabel("Purchase").setEmoji("🛒").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("ticket_support").setLabel("Support").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("ticket_partnership").setLabel("Partnership").setEmoji("🤝").setStyle(ButtonStyle.Success)
+      );
+      return message.channel.send({ embeds: [embed], components: [buttons] });
+    }
+
+    if (command === "serverinfo") {
+      const g = message.guild;
+      const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("Server Information")
+        .addFields({name:"Name",value:g.name,inline:true},{name:"Members",value:String(g.memberCount),inline:true},{name:"Channels",value:String(g.channels.cache.size),inline:true},{name:"Server ID",value:g.id})
+        .setTimestamp();
+      return message.reply({embeds:[embed]});
+    }
+
+    if (command === "userinfo") {
+      const target = message.mentions.members.first() || message.member;
+      const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("User Information").setThumbnail(target.user.displayAvatarURL())
+        .addFields({name:"User",value:`${target.user} (\`${target.id}\`)`},{name:"Joined Server",value:target.joinedAt ? `<t:${Math.floor(target.joinedAt.getTime()/1000)}:F>` : "Unknown",inline:true},{name:"Highest Role",value:target.roles.highest?.toString() || "@everyone",inline:true}).setTimestamp();
+      return message.reply({embeds:[embed]});
+    }
+
+    if (command === "announce") {
+      const raw = args.join(" ");
+      const parts = raw.split("|");
+      if (parts.length < 2) return message.reply("❌ Usage: `!announce Title | message`");
+      const title = parts.shift().trim();
+      const text = parts.join("|").trim();
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
+      await message.channel.send({embeds:[embed]});
+      return message.reply({content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
+    }
+
+    if (command === "clear") {
+      const amount = Number(args[0]);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return message.reply("❌ Usage: `!clear 1-100`");
+      const deleted = await message.channel.bulkDelete(amount, true);
+      return message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
+    }
+
+    const target = message.mentions.members.first();
+    if (["warn","timeout","kick","ban"].includes(command) && !target) return message.reply("❌ Usage: !" + command + " @user ...");
+
+    if (command === "warn") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.send(`⚠️ You have been warned in **${message.guild.name}**. Reason: ${reason}`).catch(()=>{});
+      return message.reply(`⚠️ ${target} has been warned. Reason: ${reason}`);
+    }
+
+    if (command === "timeout") {
+      const minutes = Number(args[1]);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 40320) return message.reply("❌ Usage: `!timeout @user minutes reason`");
+      const reason = args.slice(2).join(" ") || "No reason provided.";
+      await target.timeout(minutes * 60 * 1000, reason);
+      return message.reply(`⏱️ ${target} has been timed out for ${minutes} minute(s).`);
+    }
+
+    if (command === "kick") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.kick(reason);
+      return message.reply(`👢 ${target.user.tag} has been kicked.`);
+    }
+
+    if (command === "ban") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.ban({reason});
+      return message.reply(`🔨 ${target.user.tag} has been banned.`);
+    }
+  } catch (error) {
+    console.error("Prefix command error:", error);
+    await message.reply("❌ An error occurred. Check the bot console.").catch(()=>{});
+  }
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     /* =================================================
@@ -500,14 +581,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "Purchase, Support and Partnership tickets are available.",
             },
             {
-              name: "🔑 Keys",
-              value:
-                "`/key generate` — Generate a key.\n" +
-                "`/key list` — List active keys.\n" +
-                "`/key revoke` — Revoke a key.\n" +
-                "`/key redeem` — Redeem a key.",
-            },
-            {
               name: "🛡️ Moderation",
               value:
                 "`/warn` — Warn a member.\n" +
@@ -525,8 +598,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             {
               name: "📢 Administration",
               value:
-                "`/announce` — Send an announcement.\n" +
-                "`/say` — Send a message as the bot.",
+                "`/announce` — Send an announcement.",
             }
           )
           .setFooter({ text: "ORYX HUB • Multifunction Bot" })
@@ -628,258 +700,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
-      }
-
-      /* -----------------------------------------------
-         /key
-      ----------------------------------------------- */
-
-      if (command === "key") {
-        const subcommand = interaction.options.getSubcommand();
-
-        if (subcommand === "generate") {
-          if (!isOwner(interaction)) {
-            return interaction.reply({
-              content: "❌ Only the Owner can generate keys.",
-              ephemeral: true,
-            });
-          }
-
-          const duration = interaction.options.getInteger("duration");
-          const amount = interaction.options.getInteger("amount") || 1;
-
-          if (amount < 1 || amount > 20) {
-            return interaction.reply({
-              content: "❌ Amount must be between 1 and 20.",
-              ephemeral: true,
-            });
-          }
-
-          const generated = [];
-
-          for (let i = 0; i < amount; i++) {
-            const key = makeKey();
-
-            const expiresAt =
-              duration === 0
-                ? null
-                : Date.now() + duration * 60 * 60 * 1000;
-
-            keys.set(key, {
-              createdBy: interaction.user.id,
-              createdAt: Date.now(),
-              expiresAt,
-              redeemedBy: null,
-              redeemedAt: null,
-            });
-
-            generated.push(key);
-          }
-
-          const embed = new EmbedBuilder()
-            .setColor(COLORS.success)
-            .setTitle("🔑 Keys Generated")
-            .setDescription(
-              generated.map((key) => `\`${key}\``).join("\n")
-            )
-            .addFields({
-              name: "Duration",
-              value:
-                duration === 0
-                  ? "Permanent"
-                  : `${duration} hour(s)`,
-            })
-            .setFooter({
-              text: "Keep these keys private.",
-            })
-            .setTimestamp();
-
-          return interaction.reply({
-            embeds: [embed],
-            ephemeral: true,
-          });
-        }
-
-        if (subcommand === "redeem") {
-          const key = interaction.options
-            .getString("key", true)
-            .trim()
-            .toUpperCase();
-
-          const data = keys.get(key);
-
-          if (!data) {
-            return interaction.reply({
-              content: "❌ This key is invalid.",
-              ephemeral: true,
-            });
-          }
-
-          if (data.redeemedBy) {
-            return interaction.reply({
-              content: "❌ This key has already been redeemed.",
-              ephemeral: true,
-            });
-          }
-
-          if (data.expiresAt && Date.now() >= data.expiresAt) {
-            return interaction.reply({
-              content: "❌ This key has expired.",
-              ephemeral: true,
-            });
-          }
-
-          data.redeemedBy = interaction.user.id;
-          data.redeemedAt = Date.now();
-
-          return interaction.reply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(COLORS.success)
-                .setTitle("✅ Key Redeemed")
-                .setDescription(
-                  "Your key has been successfully redeemed."
-                )
-                .addFields({
-                  name: "Access Duration",
-                  value: data.expiresAt
-                    ? formatDuration(data.expiresAt - Date.now())
-                    : "Permanent",
-                })
-                .setTimestamp(),
-            ],
-            ephemeral: true,
-          });
-        }
-
-        if (subcommand === "list") {
-          if (!isOwner(interaction)) {
-            return interaction.reply({
-              content: "❌ Only the Owner can view the key list.",
-              ephemeral: true,
-            });
-          }
-
-          const active = [...keys.entries()].filter(
-            ([, data]) =>
-              !data.expiresAt || Date.now() < data.expiresAt
-          );
-
-          if (!active.length) {
-            return interaction.reply({
-              content: "🔑 There are currently no keys.",
-              ephemeral: true,
-            });
-          }
-
-          const text = active
-            .slice(0, 30)
-            .map(([key, data]) => {
-              const status = data.redeemedBy
-                ? `Redeemed by <@${data.redeemedBy}>`
-                : "Unused";
-
-              const expiry = data.expiresAt
-                ? `<t:${Math.floor(data.expiresAt / 1000)}:R>`
-                : "Permanent";
-
-              return `\`${key}\` • ${status} • ${expiry}`;
-            })
-            .join("\n");
-
-          return interaction.reply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(COLORS.main)
-                .setTitle("🔑 Active Keys")
-                .setDescription(text),
-            ],
-            ephemeral: true,
-          });
-        }
-
-        if (subcommand === "revoke") {
-          if (!isOwner(interaction)) {
-            return interaction.reply({
-              content: "❌ Only the Owner can revoke keys.",
-              ephemeral: true,
-            });
-          }
-
-          const key = interaction.options
-            .getString("key", true)
-            .trim()
-            .toUpperCase();
-
-          if (!keys.has(key)) {
-            return interaction.reply({
-              content: "❌ Key not found.",
-              ephemeral: true,
-            });
-          }
-
-          keys.delete(key);
-
-          return interaction.reply({
-            content: `✅ Key \`${key}\` has been revoked.`,
-            ephemeral: true,
-          });
-        }
-      }
-
-      /* -----------------------------------------------
-         /announce
-      ----------------------------------------------- */
-
-      if (command === "announce") {
-        if (!isStaff(interaction)) {
-          return interaction.reply({
-            content: "❌ Only staff can use this command.",
-            ephemeral: true,
-          });
-        }
-
-        const title = interaction.options.getString("title", true);
-        const message = interaction.options.getString("message", true);
-
-        const embed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle(`📢 ${title}`)
-          .setDescription(message)
-          .setFooter({ text: `Posted by ${interaction.user.tag}` })
-          .setTimestamp();
-
-        await interaction.channel.send({ embeds: [embed] });
-
-        return interaction.reply({
-          content: "✅ Announcement sent.",
-          ephemeral: true,
-        });
-      }
-
-      /* -----------------------------------------------
-         /say
-      ----------------------------------------------- */
-
-      if (command === "say") {
-        if (!isStaff(interaction)) {
-          return interaction.reply({
-            content: "❌ Only staff can use this command.",
-            ephemeral: true,
-          });
-        }
-
-        const message = interaction.options.getString("message", true);
-
-        await interaction.channel.send({
-          content: message,
-          allowedMentions: { parse: [] },
-        });
-
-        return interaction.reply({
-          content: "✅ Message sent.",
-          ephemeral: true,
-        });
       }
 
       /* -----------------------------------------------
@@ -1344,16 +1164,6 @@ async function registerCommands() {
       ),
 
     new SlashCommandBuilder()
-      .setName("say")
-      .setDescription("Send a message as the bot.")
-      .addStringOption((option) =>
-        option
-          .setName("message")
-          .setDescription("Message to send.")
-          .setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
       .setName("clear")
       .setDescription("Delete messages from the current channel.")
       .addIntegerOption((option) =>
@@ -1437,56 +1247,6 @@ async function registerCommands() {
           .setRequired(false)
       ),
 
-    new SlashCommandBuilder()
-      .setName("key")
-      .setDescription("Manage ORYX HUB keys.")
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("generate")
-          .setDescription("Generate one or more keys.")
-          .addIntegerOption((option) =>
-            option
-              .setName("duration")
-              .setDescription("Duration in hours. Use 0 for permanent.")
-              .setMinValue(0)
-              .setRequired(true)
-          )
-          .addIntegerOption((option) =>
-            option
-              .setName("amount")
-              .setDescription("Number of keys to generate.")
-              .setMinValue(1)
-              .setMaxValue(20)
-              .setRequired(false)
-          )
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("redeem")
-          .setDescription("Redeem a key.")
-          .addStringOption((option) =>
-            option
-              .setName("key")
-              .setDescription("The key to redeem.")
-              .setRequired(true)
-          )
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("list")
-          .setDescription("List active keys.")
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("revoke")
-          .setDescription("Revoke a key.")
-          .addStringOption((option) =>
-            option
-              .setName("key")
-              .setDescription("The key to revoke.")
-              .setRequired(true)
-          )
-      ),
   ];
 
   const rest = new REST({ version: "10" }).setToken(
