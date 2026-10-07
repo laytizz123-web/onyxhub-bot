@@ -682,15 +682,17 @@ async function aiGenerate(turns) {
   */
   const models = [
     AI_MODEL,
-    ...(process.env.AI_FALLBACK_MODELS ?? "llama-3.1-8b-instant")
+    ...(process.env.AI_FALLBACK_MODELS || "")
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean),
   ];
 
-  let lastError;
+  const errors = [];
 
   for (const model of models) {
+    let lastError;
+
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const response = await groq.chat.completions.create(
@@ -726,12 +728,13 @@ async function aiGenerate(turns) {
       }
     }
 
-    console.warn(
-      `AI model ${model} failed: ${lastError?.message || lastError}`.slice(0, 300)
-    );
+    const reason = `${model}: HTTP ${lastError?.status ?? "?"} ${lastError?.message || lastError}`;
+
+    console.warn(`AI model failed - ${reason}`.slice(0, 400));
+    errors.push(reason);
   }
 
-  throw lastError;
+  throw new Error(errors.join("\n"));
 }
 
 async function runTicketAi(message) {
@@ -806,10 +809,12 @@ client.on(Events.MessageCreate, async (message) => {
   if (
     message.author.bot ||
     !message.guild ||
-    message.content.trim().toLowerCase() !== "!aitest"
+    !["!aitest", "!aimodels"].includes(message.content.trim().toLowerCase())
   ) {
     return;
   }
+
+  const wantsModels = message.content.trim().toLowerCase() === "!aimodels";
 
   const member = message.member;
   const allowed =
@@ -827,6 +832,23 @@ client.on(Events.MessageCreate, async (message) => {
     );
   }
 
+  if (wantsModels) {
+    try {
+      const list = await groq.models.list();
+      const ids = list.data.map((model) => model.id).sort();
+
+      return await safeReply(
+        message,
+        `📋 Models available with your key (${ids.length}):\n${ids.map((id) => `\`${id}\``).join(", ")}`.slice(0, 1900)
+      );
+    } catch (error) {
+      return await safeReply(
+        message,
+        `❌ Could not list models: ${error?.message || error}`.slice(0, 1900)
+      );
+    }
+  }
+
   try {
     const answer = await aiGenerate([
       { role: "user", content: "Say hello in one short sentence." },
@@ -834,8 +856,9 @@ client.on(Events.MessageCreate, async (message) => {
 
     return await safeReply(message, `✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
   } catch (error) {
-    return await safeReply(message, 
-      `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? error?.code ?? "?"}): ${error?.message || error}`.slice(0, 1900)
+    return await safeReply(
+      message,
+      `❌ AI failed:\n${error?.message || error}`.slice(0, 1900)
     );
   }
 });
