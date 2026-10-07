@@ -548,7 +548,7 @@ client.once(Events.ClientReady, (bot) => {
       ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
       : process.env.AI_ENABLED === "false"
         ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
-        : "🤖 AI ticket assistant OFF: ANTHROPIC_API_KEY is missing in the environment variables."
+        : "🤖 AI ticket assistant OFF: OPENAI_API_KEY is missing in the environment variables."
   );
 });
 
@@ -584,18 +584,18 @@ client.on(Events.GuildMemberAdd, async (member) => {
 /*
   Answers the ticket owner in Purchase and Support tickets until a staff
   member joins the conversation, claims the ticket, or the AI asks for staff.
-  Needs ANTHROPIC_API_KEY (Railway variable). AI_ENABLED=false turns it off,
-  AI_MODEL overrides the model.
+  Uses ChatGPT (OpenAI). Needs OPENAI_API_KEY (Railway variable).
+  AI_ENABLED=false turns it off, AI_MODEL overrides the model.
 */
 
-const Anthropic = require("@anthropic-ai/sdk");
+const OpenAI = require("openai");
 
-const AI_MODEL = process.env.AI_MODEL || "claude-opus-5-5";
+const AI_MODEL = process.env.AI_MODEL || "gpt-5";
 const AI_ENABLED =
-  Boolean(process.env.ANTHROPIC_API_KEY) &&
+  Boolean(process.env.OPENAI_API_KEY) &&
   process.env.AI_ENABLED !== "false";
 
-const anthropic = AI_ENABLED ? new Anthropic() : null;
+const openai = AI_ENABLED ? new OpenAI() : null;
 
 const AI_PREFIX = "🤖 ";
 const HANDOFF_PREFIX = "🔔 ";
@@ -672,29 +672,25 @@ async function runTicketAi(message) {
 
   await channel.sendTyping().catch(() => {});
 
-  const response = await anthropic.beta.messages.create({
+  const response = await openai.chat.completions.create({
     model: AI_MODEL,
-    max_tokens: 1024,
-    system: AI_SYSTEM_PROMPT,
-    output_config: { effort: "low" },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    messages: turns,
+    max_completion_tokens: 2000,
+    messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
   });
 
-  if (response.stop_reason === "refusal") {
+  const choice = response.choices?.[0];
+
+  if (choice?.message?.refusal) {
     console.warn(`AI refused to answer in #${channel.name}.`);
     return;
   }
 
-  let text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
+  let text = (choice?.message?.content || "").trim();
 
   if (!text) {
-    console.warn(`AI returned no text in #${channel.name} (stop: ${response.stop_reason}).`);
+    console.warn(
+      `AI returned no text in #${channel.name} (finish: ${choice?.finish_reason}).`
+    );
     return;
   }
 
