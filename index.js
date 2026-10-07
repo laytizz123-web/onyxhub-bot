@@ -9,9 +9,6 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   Events,
   REST,
   Routes,
@@ -22,835 +19,673 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-const {
-  DISCORD_TOKEN,
-  CLIENT_ID,
-  GUILD_ID,
-  STAFF_ROLE_ID,
-  OWNER_ID,
-} = process.env;
-
 const SHOP_URL = "https://onyxhub7.mysellauth.com/";
 
 const COLORS = {
   main: 0x7c3aed,
   success: 0x22c55e,
   error: 0xef4444,
-  warning: 0xf59e0b,
 };
 
+// =====================================================
+// CLAIM SYSTEM
+// =====================================================
+
+// channelId -> staffUserId
 const claimedTickets = new Map();
 
-/* =========================================================
-   CHECK ENV
-========================================================= */
+// =====================================================
+// BOT READY
+// =====================================================
 
-if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID || !OWNER_ID) {
-  console.error(
-    "❌ Missing DISCORD_TOKEN, CLIENT_ID, GUILD_ID or OWNER_ID."
-  );
-  process.exit(1);
-}
-
-/* =========================================================
-   STAFF CHECK
-========================================================= */
-
-function isStaff(interaction) {
-  if (
-    interaction.memberPermissions &&
-    interaction.memberPermissions.has(
-      PermissionFlagsBits.ManageChannels
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    STAFF_ROLE_ID &&
-    interaction.member &&
-    interaction.member.roles &&
-    interaction.member.roles.cache.has(STAFF_ROLE_ID)
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-/* =========================================================
-   TICKET BUTTONS
-========================================================= */
-
-function ticketButtons(channelId, type) {
-  const claimed = claimedTickets.has(channelId);
-
-  const buttons = [
-    new ButtonBuilder()
-      .setCustomId(
-        claimed ? "ticket_unclaim" : "ticket_claim"
-      )
-      .setLabel(
-        claimed
-          ? "🔓 Unclaim Ticket"
-          : "🎫 Claim Ticket"
-      )
-      .setStyle(
-        claimed
-          ? ButtonStyle.Secondary
-          : ButtonStyle.Primary
-      ),
-
-    new ButtonBuilder()
-      .setCustomId("ticket_close")
-      .setLabel("🔒 Close Ticket")
-      .setStyle(ButtonStyle.Danger),
-  ];
-
-  // Only Purchase tickets get the Brainrot button
-  if (type === "purchase") {
-    buttons.push(
-      new ButtonBuilder()
-        .setCustomId("buy_brainrot")
-        .setLabel("🧠 Buy with Brainrot")
-        .setStyle(ButtonStyle.Success)
-    );
-  }
-
-  return new ActionRowBuilder().addComponents(buttons);
-}
-
-/* =========================================================
-   SLASH COMMAND
-========================================================= */
-
-const commands = [
-  new SlashCommandBuilder()
-    .setName("tickets")
-    .setDescription("Send the ticket panel")
-    .setDefaultMemberPermissions(
-      PermissionFlagsBits.Administrator
-    ),
-].map((command) => command.toJSON());
-
-/* =========================================================
-   READY
-========================================================= */
-
-client.once(Events.ClientReady, async (readyClient) => {
-  console.log(
-    `✅ Logged in as ${readyClient.user.tag}`
-  );
-
-  try {
-    const rest = new REST({ version: "10" }).setToken(
-      DISCORD_TOKEN
-    );
-
-    await rest.put(
-      Routes.applicationGuildCommands(
-        CLIENT_ID,
-        GUILD_ID
-      ),
-      {
-        body: commands,
-      }
-    );
-
-    console.log("✅ /tickets command registered.");
-  } catch (error) {
-    console.error(
-      "❌ Error registering commands:",
-      error
-    );
-  }
+client.once(Events.ClientReady, (bot) => {
+  console.log(`✅ ${bot.user.tag} est connecté !`);
 });
 
-/* =========================================================
-   INTERACTIONS
-========================================================= */
+// =====================================================
+// INTERACTIONS
+// =====================================================
 
-client.on(
-  Events.InteractionCreate,
-  async (interaction) => {
-    try {
-      /* =====================================================
-         /tickets
-      ===================================================== */
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    // =================================================
+    // /tickets
+    // =================================================
 
-      if (interaction.isChatInputCommand()) {
-        if (interaction.commandName !== "tickets") {
-          return;
-        }
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName !== "tickets") return;
 
-        if (
-          !interaction.memberPermissions.has(
-            PermissionFlagsBits.Administrator
-          )
-        ) {
-          return interaction.reply({
-            content:
-              "❌ You do not have permission to use this command.",
-            ephemeral: true,
-          });
-        }
+      if (
+        !interaction.memberPermissions.has(
+          PermissionFlagsBits.Administrator
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "❌ Seuls les administrateurs peuvent utiliser cette commande.",
+          ephemeral: true,
+        });
+      }
 
-        const embed = new EmbedBuilder()
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setTitle("ONYX HUB | Support Center")
+        .setDescription(
+          [
+            "Welcome to **Onyx Hub**!",
+            "",
+            "Choose a category below to open a private ticket.",
+            "",
+            "🛒 **Purchase**",
+            "Open a ticket if you want to purchase or ask about an order.",
+            "",
+            "🛠️ **Support**",
+            "Open a ticket if you need help or have a question.",
+            "",
+            "🌐 **Want to buy directly?**",
+            "You can also purchase directly from our website:",
+            SHOP_URL,
+            "",
+            "Our team will assist you as soon as possible.",
+          ].join("\n")
+        )
+        .setFooter({
+          text: "Onyx Hub • Ticket System",
+        })
+        .setTimestamp();
+
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("ticket_purchase")
+          .setLabel("Purchase")
+          .setEmoji("🛒")
+          .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+          .setCustomId("ticket_support")
+          .setLabel("Support")
+          .setEmoji("🛠️")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.channel.send({
+        embeds: [embed],
+        components: [buttons],
+      });
+
+      return interaction.reply({
+        content: "✅ Onyx Hub ticket panel created!",
+        ephemeral: true,
+      });
+    }
+
+    // =================================================
+    // BUTTONS
+    // =================================================
+
+    if (!interaction.isButton()) return;
+
+    // =================================================
+    // CREATE TICKET
+    // =================================================
+
+    if (
+      interaction.customId === "ticket_purchase" ||
+      interaction.customId === "ticket_support"
+    ) {
+      await interaction.deferReply({
+        ephemeral: true,
+      });
+
+      const guild = interaction.guild;
+      const user = interaction.user;
+
+      const isPurchase =
+        interaction.customId === "ticket_purchase";
+
+      // -------------------------------------------------
+      // CHECK EXISTING TICKET
+      // -------------------------------------------------
+
+      const existing = guild.channels.cache.find(
+        (channel) =>
+          channel.type === ChannelType.GuildText &&
+          channel.topic?.startsWith(`onyx-ticket:${user.id}`)
+      );
+
+      if (existing) {
+        return interaction.editReply({
+          content: `❌ You already have an open ticket: ${existing}`,
+        });
+      }
+
+      // -------------------------------------------------
+      // FIND / CREATE CATEGORY
+      // -------------------------------------------------
+
+      let category = guild.channels.cache.find(
+        (channel) =>
+          channel.type === ChannelType.GuildCategory &&
+          channel.name === "ONYX TICKETS"
+      );
+
+      if (!category) {
+        category = await guild.channels.create({
+          name: "ONYX TICKETS",
+          type: ChannelType.GuildCategory,
+        });
+      }
+
+      // -------------------------------------------------
+      // USERNAME
+      // -------------------------------------------------
+
+      const safeName =
+        user.username
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "")
+          .slice(0, 18) || "user";
+
+      const channelName =
+        `${isPurchase ? "purchase" : "support"}-${safeName}`.slice(
+          0,
+          90
+        );
+
+      // -------------------------------------------------
+      // PERMISSIONS
+      // -------------------------------------------------
+
+      const permissionOverwrites = [
+        {
+          id: guild.roles.everyone.id,
+
+          deny: [
+            PermissionFlagsBits.ViewChannel,
+          ],
+        },
+
+        // Ticket owner
+        {
+          id: user.id,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks,
+          ],
+        },
+
+        // Bot
+        {
+          id: client.user.id,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        },
+      ];
+
+      // -------------------------------------------------
+      // STAFF ROLE
+      // -------------------------------------------------
+
+      if (process.env.STAFF_ROLE_ID) {
+        permissionOverwrites.push({
+          id: process.env.STAFF_ROLE_ID,
+
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        });
+      }
+
+      // -------------------------------------------------
+      // CREATE CHANNEL
+      // -------------------------------------------------
+
+      const ticketChannel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: category.id,
+
+        topic: `onyx-ticket:${user.id}`,
+
+        permissionOverwrites,
+      });
+
+      // =================================================
+      // BUTTONS
+      // =================================================
+
+      const ticketButtons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("ticket_claim")
+          .setLabel("Claim Ticket")
+          .setEmoji("🎫")
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId("ticket_close")
+          .setLabel("Close Ticket")
+          .setEmoji("🔒")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      // =================================================
+      // PURCHASE TICKET
+      // =================================================
+
+      if (isPurchase) {
+        const purchaseEmbed = new EmbedBuilder()
           .setColor(COLORS.main)
-          .setTitle("ONYX HUB | Support Center")
+          .setTitle("🛒 Purchase Ticket")
           .setDescription(
             [
-              "Welcome to **Onyx Hub Support**.",
+              `Hello ${user}, welcome to your purchase ticket!`,
               "",
-              "🛒 **Purchase**",
-              "Open a ticket if you want to make a purchase.",
-              `🌐 Shop: ${SHOP_URL}`,
+              "Please tell us what you want to purchase and include any useful information about your order.",
               "",
-              "🛠️ **Support**",
-              "Open a ticket if you need help or have a question.",
+              "🌐 You can also buy directly from our website:",
+              SHOP_URL,
               "",
-              "Please select a ticket type below.",
+              "Please wait for a staff member to respond.",
             ].join("\n")
           )
           .setFooter({
-            text: "ONYX HUB",
-          });
+            text: "Onyx Hub • Purchase",
+          })
+          .setTimestamp();
 
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("ticket_purchase")
-            .setLabel("🛒 Purchase")
-            .setStyle(ButtonStyle.Primary),
+        await ticketChannel.send({
+          content: `${user}`,
+          embeds: [purchaseEmbed],
+          components: [ticketButtons],
+          allowedMentions: {
+            users: [user.id],
+          },
+        });
+      }
 
-          new ButtonBuilder()
-            .setCustomId("ticket_support")
-            .setLabel("🛠️ Support")
-            .setStyle(ButtonStyle.Secondary)
-        );
+      // =================================================
+      // SUPPORT TICKET
+      // =================================================
 
-        await interaction.reply({
-          content: "✅ Ticket panel sent.",
+      else {
+        const supportEmbed = new EmbedBuilder()
+          .setColor(COLORS.main)
+          .setTitle("🛠️ Support Ticket")
+          .setDescription(
+            [
+              `Hello ${user}, welcome to your support ticket!`,
+              "",
+              "🛠️ This ticket is for **help and support only**.",
+              "",
+              "Please explain your problem or question as clearly as possible.",
+              "",
+              "You can provide:",
+              "• Screenshots",
+              "• Error messages",
+              "• Details about your problem",
+              "• Any information that could help our team",
+              "",
+              "Please wait for a staff member to respond.",
+            ].join("\n")
+          )
+          .setFooter({
+            text: "Onyx Hub • Support",
+          })
+          .setTimestamp();
+
+        await ticketChannel.send({
+          content: `${user}`,
+          embeds: [supportEmbed],
+          components: [ticketButtons],
+          allowedMentions: {
+            users: [user.id],
+          },
+        });
+      }
+
+      // -------------------------------------------------
+      // CONFIRMATION
+      // -------------------------------------------------
+
+      return interaction.editReply({
+        content: `✅ Your ticket has been created: ${ticketChannel}`,
+      });
+    }
+
+    // =================================================
+    // CLAIM TICKET
+    // =================================================
+
+    if (interaction.customId === "ticket_claim") {
+      const channel = interaction.channel;
+
+      // Vérifier que c'est bien un ticket
+      if (
+        !channel ||
+        channel.type !== ChannelType.GuildText ||
+        !channel.topic?.startsWith("onyx-ticket:")
+      ) {
+        return interaction.reply({
+          content: "❌ This is not an Onyx Hub ticket.",
           ephemeral: true,
         });
-
-        await interaction.channel.send({
-          embeds: [embed],
-          components: [row],
-        });
-
-        return;
       }
 
-      /* =====================================================
-         CREATE PURCHASE TICKET
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "ticket_purchase"
-      ) {
-        await createTicket(
-          interaction,
-          "purchase"
+      // Vérifier le staff
+      const isStaff =
+        interaction.memberPermissions.has(
+          PermissionFlagsBits.ManageChannels
         );
 
-        return;
-      }
-
-      /* =====================================================
-         CREATE SUPPORT TICKET
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "ticket_support"
-      ) {
-        await createTicket(
-          interaction,
-          "support"
-        );
-
-        return;
-      }
-
-      /* =====================================================
-         BUY WITH BRAINROT
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "buy_brainrot"
-      ) {
-        const modal = new ModalBuilder()
-          .setCustomId("brainrot_purchase_modal")
-          .setTitle("Buy with Brainrot");
-
-        const robloxUsername =
-          new TextInputBuilder()
-            .setCustomId("roblox_username")
-            .setLabel("Roblox username")
-            .setPlaceholder(
-              "Example: RobloxPlayer123"
-            )
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMinLength(3)
-            .setMaxLength(30);
-
-        const brainrotName =
-          new TextInputBuilder()
-            .setCustomId("brainrot_name")
-            .setLabel("Brainrot you are giving")
-            .setPlaceholder(
-              "Example: Garama"
-            )
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMinLength(1)
-            .setMaxLength(100);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            robloxUsername
-          ),
-          new ActionRowBuilder().addComponents(
-            brainrotName
-          )
-        );
-
-        await interaction.showModal(modal);
-
-        return;
-      }
-
-      /* =====================================================
-         CLAIM
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "ticket_claim"
-      ) {
-        if (!isStaff(interaction)) {
-          return interaction.reply({
-            content:
-              "❌ You do not have permission to claim this ticket.",
-            ephemeral: true,
-          });
-        }
-
-        if (
-          claimedTickets.has(
-            interaction.channel.id
-          )
-        ) {
-          return interaction.reply({
-            content:
-              "❌ This ticket has already been claimed.",
-            ephemeral: true,
-          });
-        }
-
-        claimedTickets.set(
-          interaction.channel.id,
-          interaction.user.id
-        );
-
-        const type =
-          interaction.channel.name.startsWith(
-            "purchase-"
-          )
-            ? "purchase"
-            : "support";
-
-        await interaction.update({
-          components: [
-            ticketButtons(
-              interaction.channel.id,
-              type
-            ),
-          ],
-        });
-
-        await interaction.channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(COLORS.success)
-              .setDescription(
-                `🎫 This ticket has been claimed by ${interaction.user}.`
-              ),
-          ],
-        });
-
-        return;
-      }
-
-      /* =====================================================
-         UNCLAIM
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "ticket_unclaim"
-      ) {
-        const claimedBy =
-          claimedTickets.get(
-            interaction.channel.id
-          );
-
-        if (!claimedBy) {
-          return interaction.reply({
-            content:
-              "❌ This ticket is not currently claimed.",
-            ephemeral: true,
-          });
-        }
-
-        if (
-          claimedBy !== interaction.user.id
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Only the staff member who claimed this ticket can unclaim it.",
-            ephemeral: true,
-          });
-        }
-
-        claimedTickets.delete(
-          interaction.channel.id
-        );
-
-        const type =
-          interaction.channel.name.startsWith(
-            "purchase-"
-          )
-            ? "purchase"
-            : "support";
-
-        await interaction.update({
-          components: [
-            ticketButtons(
-              interaction.channel.id,
-              type
-            ),
-          ],
-        });
-
-        await interaction.channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(COLORS.warning)
-              .setDescription(
-                `🔓 ${interaction.user} unclaimed this ticket.`
-              ),
-          ],
-        });
-
-        return;
-      }
-
-      /* =====================================================
-         CLOSE TICKET
-      ===================================================== */
-
-      if (
-        interaction.isButton() &&
-        interaction.customId === "ticket_close"
-      ) {
-        const topic =
-          interaction.channel.topic || "";
-
-        const match = topic.match(
-          /^onyx-ticket:(\d+)$/
-        );
-
-        if (!match) {
-          return interaction.reply({
-            content:
-              "❌ This channel is not an Onyx Hub ticket.",
-            ephemeral: true,
-          });
-        }
-
-        const ownerId = match[1];
-
-        const canClose =
-          interaction.user.id === ownerId ||
-          isStaff(interaction);
-
-        if (!canClose) {
-          return interaction.reply({
-            content:
-              "❌ You cannot close this ticket.",
-            ephemeral: true,
-          });
-        }
-
-        claimedTickets.delete(
-          interaction.channel.id
-        );
-
-        await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(COLORS.error)
-              .setDescription(
-                "🔒 This ticket will be closed in **5 seconds**."
-              ),
-          ],
-        });
-
-        setTimeout(async () => {
-          try {
-            await interaction.channel.delete();
-          } catch (error) {
-            console.error(
-              "❌ Could not delete ticket:",
-              error
-            );
-          }
-        }, 5000);
-
-        return;
-      }
-
-      /* =====================================================
-         BRAINROT MODAL
-      ===================================================== */
-
-      if (
-        interaction.isModalSubmit() &&
-        interaction.customId ===
-          "brainrot_purchase_modal"
-      ) {
-        const robloxUsername =
-          interaction.fields.getTextInputValue(
-            "roblox_username"
-          );
-
-        const brainrotName =
-          interaction.fields.getTextInputValue(
-            "brainrot_name"
-          );
-
-        const user = interaction.user;
-        const channel = interaction.channel;
-
-        /* ---------------------------------------------
-           MESSAGE IN TICKET
-        --------------------------------------------- */
-
-        await interaction.reply({
+      if (!isStaff) {
+        return interaction.reply({
           content:
-            "🧠 **Wait for the owner to take your Brainrot.**",
+            "❌ Only staff members can claim tickets.",
+          ephemeral: true,
         });
+      }
 
-        /* ---------------------------------------------
-           SEND DM TO OWNER
-        --------------------------------------------- */
+      // Vérifier si déjà claim
+      const currentClaim = claimedTickets.get(
+        channel.id
+      );
 
-        try {
-          const owner =
-            await client.users.fetch(OWNER_ID);
+      if (currentClaim) {
+        const claimedUser =
+          await client.users
+            .fetch(currentClaim)
+            .catch(() => null);
 
-          const dmEmbed = new EmbedBuilder()
+        return interaction.reply({
+          content: claimedUser
+            ? `❌ This ticket is already claimed by ${claimedUser}.`
+            : "❌ This ticket is already claimed.",
+          ephemeral: true,
+        });
+      }
+
+      // Claim
+      claimedTickets.set(
+        channel.id,
+        interaction.user.id
+      );
+
+      const unclaimButton =
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_unclaim")
+            .setLabel("Unclaim Ticket")
+            .setEmoji("🔓")
+            .setStyle(ButtonStyle.Secondary),
+
+          new ButtonBuilder()
+            .setCustomId("ticket_close")
+            .setLabel("Close Ticket")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      await interaction.update({
+        components: [unclaimButton],
+      });
+
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.success)
+            .setDescription(
+              `🎫 This ticket has been claimed by ${interaction.user}.`
+            ),
+        ],
+      });
+
+      return;
+    }
+
+    // =================================================
+    // UNCLAIM TICKET
+    // =================================================
+
+    if (interaction.customId === "ticket_unclaim") {
+      const channel = interaction.channel;
+
+      if (
+        !channel ||
+        channel.type !== ChannelType.GuildText ||
+        !channel.topic?.startsWith("onyx-ticket:")
+      ) {
+        return interaction.reply({
+          content: "❌ This is not an Onyx Hub ticket.",
+          ephemeral: true,
+        });
+      }
+
+      const claimedBy = claimedTickets.get(
+        channel.id
+      );
+
+      if (!claimedBy) {
+        return interaction.reply({
+          content:
+            "❌ This ticket is not currently claimed.",
+          ephemeral: true,
+        });
+      }
+
+      // Seul le staff qui a claim peut unclaim
+      if (claimedBy !== interaction.user.id) {
+        return interaction.reply({
+          content:
+            "❌ Only the staff member who claimed this ticket can unclaim it.",
+          ephemeral: true,
+        });
+      }
+
+      claimedTickets.delete(channel.id);
+
+      const claimButtons =
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_claim")
+            .setLabel("Claim Ticket")
+            .setEmoji("🎫")
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId("ticket_close")
+            .setLabel("Close Ticket")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      await interaction.update({
+        components: [claimButtons],
+      });
+
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
             .setColor(COLORS.main)
-            .setTitle(
-              "🧠 New Brainrot Payment"
-            )
-            .addFields(
-              {
-                name: "👤 Discord",
-                value:
-                  `${user.tag}\n\`${user.id}\``,
-                inline: true,
-              },
-              {
-                name: "🎮 Roblox",
-                value:
-                  `\`${robloxUsername}\``,
-                inline: true,
-              },
-              {
-                name: "🧠 Brainrot",
-                value:
-                  `\`${brainrotName}\``,
-                inline: false,
-              },
-              {
-                name: "🎫 Ticket",
-                value:
-                  `<#${channel.id}>`,
-                inline: false,
-              }
-            )
-            .setFooter({
-              text:
-                "ONYX HUB • Brainrot Payment",
-            })
-            .setTimestamp();
+            .setDescription(
+              `🔓 ${interaction.user} has unclaimed this ticket.`
+            ),
+        ],
+      });
 
-          await owner.send({
-            embeds: [dmEmbed],
-          });
+      return;
+    }
 
-          console.log(
-            `🧠 Brainrot request received from ${user.tag}`
+    // =================================================
+    // CLOSE TICKET
+    // =================================================
+
+    if (interaction.customId === "ticket_close") {
+      const channel = interaction.channel;
+
+      if (
+        !channel ||
+        channel.type !== ChannelType.GuildText ||
+        !channel.topic?.startsWith("onyx-ticket:")
+      ) {
+        return interaction.reply({
+          content:
+            "❌ This is not an Onyx Hub ticket.",
+          ephemeral: true,
+        });
+      }
+
+      const ticketOwnerId =
+        channel.topic.slice(
+          "onyx-ticket:".length
+        );
+
+      const isOwner =
+        interaction.user.id === ticketOwnerId;
+
+      const isStaff =
+        interaction.memberPermissions.has(
+          PermissionFlagsBits.ManageChannels
+        );
+
+      if (!isOwner && !isStaff) {
+        return interaction.reply({
+          content:
+            "❌ Only the ticket owner or staff can close this ticket.",
+          ephemeral: true,
+        });
+      }
+
+      // Remove claim from memory
+      claimedTickets.delete(channel.id);
+
+      await interaction.reply({
+        content:
+          "🔒 Ticket closed. This channel will be deleted in 5 seconds.",
+      });
+
+      setTimeout(async () => {
+        try {
+          await channel.delete(
+            "Onyx Hub ticket closed"
           );
         } catch (error) {
           console.error(
-            "❌ Could not send DM to owner:",
+            "❌ Could not delete ticket:",
             error
           );
         }
+      }, 5000);
+    }
+  } catch (error) {
+    console.error(
+      "❌ Interaction error:",
+      error
+    );
 
-        return;
-      }
-    } catch (error) {
-      console.error(
-        "❌ Interaction error:",
-        error
-      );
-
-      try {
-        if (
-          interaction.replied ||
-          interaction.deferred
-        ) {
-          await interaction.followUp({
-            content:
-              "❌ An error occurred.",
-            ephemeral: true,
-          });
-        } else {
-          await interaction.reply({
-            content:
-              "❌ An error occurred.",
-            ephemeral: true,
-          });
-        }
-      } catch {}
+    if (
+      interaction.deferred &&
+      !interaction.replied
+    ) {
+      await interaction
+        .editReply({
+          content:
+            "❌ An error occurred. Check the bot console.",
+        })
+        .catch(() => {});
+    } else if (!interaction.replied) {
+      await interaction
+        .reply({
+          content:
+            "❌ An error occurred. Check the bot console.",
+          ephemeral: true,
+        })
+        .catch(() => {});
     }
   }
-);
+});
 
-/* =========================================================
-   CREATE TICKET
-========================================================= */
+// =====================================================
+// CHECK ENV VARIABLES
+// =====================================================
 
-async function createTicket(
-  interaction,
-  type
+if (
+  !process.env.DISCORD_TOKEN ||
+  !process.env.CLIENT_ID ||
+  !process.env.GUILD_ID
 ) {
-  const guild = interaction.guild;
-  const user = interaction.user;
+  console.error(
+    "❌ Missing DISCORD_TOKEN, CLIENT_ID or GUILD_ID in .env"
+  );
 
-  const categoryName = "ONYX TICKETS";
-
-  let category =
-    guild.channels.cache.find(
-      (channel) =>
-        channel.type ===
-          ChannelType.GuildCategory &&
-        channel.name === categoryName
-    );
-
-  if (!category) {
-    category =
-      await guild.channels.create({
-        name: categoryName,
-        type: ChannelType.GuildCategory,
-      });
-  }
-
-  const channelName =
-    `${type}-${user.username}`
-      .toLowerCase()
-      .replace(
-        /[^a-z0-9-_]/g,
-        "-"
-      )
-      .slice(0, 90);
-
-  /* ---------------------------------------------
-     CHECK EXISTING TICKET
-  --------------------------------------------- */
-
-  const existingTicket =
-    guild.channels.cache.find(
-      (channel) =>
-        channel.parentId === category.id &&
-        channel.topic ===
-          `onyx-ticket:${user.id}`
-    );
-
-  if (existingTicket) {
-    return interaction.reply({
-      content:
-        `❌ You already have an open ticket: ${existingTicket}`,
-      ephemeral: true,
-    });
-  }
-
-  /* ---------------------------------------------
-     PERMISSIONS
-  --------------------------------------------- */
-
-  const permissionOverwrites = [
-    {
-      id: guild.roles.everyone.id,
-      deny: [
-        PermissionFlagsBits.ViewChannel,
-      ],
-    },
-
-    {
-      id: user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles,
-        PermissionFlagsBits.EmbedLinks,
-      ],
-    },
-
-    {
-      id: client.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageChannels,
-      ],
-    },
-  ];
-
-  if (STAFF_ROLE_ID) {
-    permissionOverwrites.push({
-      id: STAFF_ROLE_ID,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles,
-        PermissionFlagsBits.EmbedLinks,
-        PermissionFlagsBits.ManageChannels,
-      ],
-    });
-  }
-
-  /* ---------------------------------------------
-     CREATE CHANNEL
-  --------------------------------------------- */
-
-  const channel =
-    await guild.channels.create({
-      name: channelName,
-      type: ChannelType.GuildText,
-      parent: category.id,
-      topic:
-        `onyx-ticket:${user.id}`,
-      permissionOverwrites,
-    });
-
-  /* ---------------------------------------------
-     PURCHASE TICKET
-  --------------------------------------------- */
-
-  if (type === "purchase") {
-    const embed =
-      new EmbedBuilder()
-        .setColor(COLORS.main)
-        .setTitle(
-          "🛒 Purchase Ticket"
-        )
-        .setDescription(
-          [
-            `Hello ${user}, welcome to your purchase ticket!`,
-            "",
-            "🛒 This ticket is for purchases.",
-            "",
-            `🌐 Shop: ${SHOP_URL}`,
-            "",
-            "You can also use **Buy with Brainrot** if you want to pay with a Brainrot.",
-            "",
-            "Please wait for a staff member to assist you.",
-          ].join("\n")
-        )
-        .setFooter({
-          text: "ONYX HUB",
-        });
-
-    await channel.send({
-      content: `${user}`,
-      embeds: [embed],
-      components: [
-        ticketButtons(
-          channel.id,
-          "purchase"
-        ),
-      ],
-    });
-  }
-
-  /* ---------------------------------------------
-     SUPPORT TICKET
-  --------------------------------------------- */
-
-  if (type === "support") {
-    const embed =
-      new EmbedBuilder()
-        .setColor(COLORS.main)
-        .setTitle(
-          "🛠️ Support Ticket"
-        )
-        .setDescription(
-          [
-            `Hello ${user}, welcome to your support ticket!`,
-            "",
-            "🛠️ This ticket is for help and support only.",
-            "",
-            "Please explain your problem or question as clearly as possible.",
-            "",
-            "You can provide:",
-            "• Screenshots",
-            "• Error messages",
-            "• Details about your problem",
-            "• Any information that could help our team",
-            "",
-            "Please wait for a staff member to respond.",
-          ].join("\n")
-        )
-        .setFooter({
-          text: "ONYX HUB",
-        });
-
-    await channel.send({
-      content: `${user}`,
-      embeds: [embed],
-      components: [
-        ticketButtons(
-          channel.id,
-          "support"
-        ),
-      ],
-    });
-  }
-
-  /* ---------------------------------------------
-     CONFIRM TICKET CREATION
-  --------------------------------------------- */
-
-  await interaction.reply({
-    content:
-      `✅ Your ticket has been created: ${channel}`,
-    ephemeral: true,
-  });
+  process.exit(1);
 }
 
-/* =========================================================
-   LOGIN
-========================================================= */
+// =====================================================
+// REGISTER COMMAND
+// =====================================================
 
-client.login(DISCORD_TOKEN);
+async function registerCommands() {
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("tickets")
+      .setDescription(
+        "Post the Onyx Hub ticket panel."
+      )
+      .toJSON(),
+  ];
+
+  const rest = new REST({
+    version: "10",
+  }).setToken(
+    process.env.DISCORD_TOKEN
+  );
+
+  await rest.put(
+    Routes.applicationGuildCommands(
+      process.env.CLIENT_ID,
+      process.env.GUILD_ID
+    ),
+    {
+      body: commands,
+    }
+  );
+
+  console.log(
+    "✅ Slash commands registered."
+  );
+}
+
+// =====================================================
+// START BOT
+// =====================================================
+
+async function startBot() {
+  try {
+    await registerCommands();
+
+    await client.login(
+      process.env.DISCORD_TOKEN
+    );
+  } catch (error) {
+    console.error(
+      "❌ Failed to start bot:",
+      error
+    );
+  }
+}
+
+startBot();
