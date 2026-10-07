@@ -664,14 +664,28 @@ async function aiGenerate(turns) {
     }
   }
 
-  const response = await gemini.models.generateContent({
-    model: AI_MODEL,
-    contents,
-    config: {
-      systemInstruction: AI_SYSTEM_PROMPT,
-      maxOutputTokens: 4000,
-    },
-  });
+  // Google sometimes answers 429/500/503 during demand spikes: retry a few times.
+  let response;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await gemini.models.generateContent({
+        model: AI_MODEL,
+        contents,
+        config: {
+          systemInstruction: AI_SYSTEM_PROMPT,
+          maxOutputTokens: 4000,
+        },
+      });
+      break;
+    } catch (error) {
+      const retryable = [429, 500, 503].includes(Number(error?.status));
+
+      if (!retryable || attempt >= 3) throw error;
+
+      await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+    }
+  }
 
   const text = (response.text || "").trim();
 
