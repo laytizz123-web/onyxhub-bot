@@ -155,17 +155,45 @@ function formatDuration(ms) {
    LOCK / UNLOCK / NUKE
 ===================================================== */
 
+/*
+  While locked, only the Owner role can write. Staff is denied too; on unlock
+  staff gets its write access back (explicitly in tickets, where it is needed).
+*/
 async function setChannelLock(channel, locked, moderator) {
+  const options = {
+    reason: `${locked ? "Locked" : "Unlocked"} by ${moderator.tag}`,
+  };
+
+  const writePermissions = (value) => ({
+    SendMessages: value,
+    SendMessagesInThreads: value,
+    CreatePublicThreads: value,
+    CreatePrivateThreads: value,
+  });
+
+  const isTicket = channel.topic?.startsWith("oryx-ticket:");
+
   await channel.permissionOverwrites.edit(
     channel.guild.roles.everyone,
-    {
-      SendMessages: locked ? false : null,
-      SendMessagesInThreads: locked ? false : null,
-      CreatePublicThreads: locked ? false : null,
-      CreatePrivateThreads: locked ? false : null,
-    },
-    { reason: `${locked ? "Locked" : "Unlocked"} by ${moderator.tag}` }
+    writePermissions(locked ? false : null),
+    options
   );
+
+  await channel.permissionOverwrites.edit(
+    STAFF_ROLE_ID,
+    locked
+      ? writePermissions(false)
+      : { ...writePermissions(null), SendMessages: isTicket ? true : null },
+    options
+  );
+
+  if (locked) {
+    await channel.permissionOverwrites.edit(
+      OWNER_ROLE_ID,
+      { ViewChannel: true, ...writePermissions(true) },
+      options
+    );
+  }
 
   await channel.send({
     embeds: [
