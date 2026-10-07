@@ -115,7 +115,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     /* =================================================
-       BUTTONS
+       ONLY BUTTONS AFTER THIS
     ================================================= */
 
     if (!interaction.isButton()) return;
@@ -172,7 +172,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       /* -------------------------------------------------
-         USERNAME
+         CHANNEL NAME
       ------------------------------------------------- */
 
       const safeName =
@@ -194,16 +194,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const permissionOverwrites = [
         {
           id: guild.roles.everyone.id,
-
           deny: [
             PermissionFlagsBits.ViewChannel,
           ],
         },
 
-        // Ticket owner
         {
           id: user.id,
-
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -213,10 +210,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ],
         },
 
-        // Bot
         {
           id: client.user.id,
-
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -233,7 +228,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (process.env.STAFF_ROLE_ID) {
         permissionOverwrites.push({
           id: process.env.STAFF_ROLE_ID,
-
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -255,14 +249,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         name: channelName,
         type: ChannelType.GuildText,
         parent: category.id,
-
         topic: `onyx-ticket:${user.id}`,
-
         permissionOverwrites,
       });
 
       /* =================================================
-         SEND TICKET INFORMATION TO OWNER
+         SEND TICKET INFO TO OWNER BY DM
       ================================================= */
 
       try {
@@ -274,22 +266,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
         } else {
           const owner = await client.users.fetch(ownerId);
-
-          const member = await guild.members
-            .fetch(user.id)
-            .catch(() => null);
-
-          /* -------------------------------------------------
-             ACCOUNT DATES
-          ------------------------------------------------- */
-
-          const accountCreated = Math.floor(
-            user.createdTimestamp / 1000
-          );
-
-          const joinedServer = member?.joinedTimestamp
-            ? Math.floor(member.joinedTimestamp / 1000)
-            : null;
 
           /* -------------------------------------------------
              TICKET TYPE
@@ -308,7 +284,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setTitle("🎫 New Onyx Hub Ticket")
             .setThumbnail(user.displayAvatarURL())
             .setDescription(
-              `A new ticket has been opened in **${guild.name}**.`
+              `A new ticket has been opened.`
             )
             .addFields(
               {
@@ -322,34 +298,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
               },
 
               {
-                name: "📅 Account Information",
-                value:
-                  `**Account created:** <t:${accountCreated}:F>\n` +
-                  `**Account created:** <t:${accountCreated}:R>\n` +
-                  (joinedServer
-                    ? `**Joined server:** <t:${joinedServer}:F>\n` +
-                      `**Joined server:** <t:${joinedServer}:R>`
-                    : "**Joined server:** Unknown"),
-                inline: false,
-              },
-
-              {
                 name: "🎫 Ticket Information",
                 value:
                   `**Type:** ${ticketType}\n` +
                   `**Channel:** ${ticketChannel}\n` +
                   `**Channel name:** \`${ticketChannel.name}\`\n` +
                   `**Channel ID:** \`${ticketChannel.id}\``,
-                inline: false,
-              },
-
-              {
-                name: "🏠 Server Information",
-                value:
-                  `**Server:** ${guild.name}\n` +
-                  `**Server ID:** \`${guild.id}\`\n` +
-                  `**Server owner:** <@${guild.ownerId}>\n` +
-                  `**Member count:** ${guild.memberCount}`,
                 inline: false,
               },
 
@@ -392,7 +346,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       /* =================================================
-         BUTTONS
+         TICKET BUTTONS
       ================================================= */
 
       const ticketButtons =
