@@ -37,6 +37,7 @@ const SHOP_URL =
 
 const OWNER_ROLE_ID = "1555941354096427040";
 const STAFF_ROLE_ID = "1557110463907766432";
+const MEMBER_ROLE_ID = "1556375804894515331";
 
 const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || "";
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || "";
@@ -156,7 +157,8 @@ function formatDuration(ms) {
 ===================================================== */
 
 /*
-  While locked, only the Owner role can write. Staff is denied too; on unlock
+  While locked, only the Owner role can write. Members and staff are denied
+  too (role allows would otherwise override the @everyone deny); on unlock
   staff gets its write access back (explicitly in tickets, where it is needed).
 */
 async function setChannelLock(channel, locked, moderator) {
@@ -184,6 +186,12 @@ async function setChannelLock(channel, locked, moderator) {
     locked
       ? writePermissions(false)
       : { ...writePermissions(null), SendMessages: isTicket ? true : null },
+    options
+  );
+
+  await channel.permissionOverwrites.edit(
+    MEMBER_ROLE_ID,
+    writePermissions(locked ? false : null),
     options
   );
 
