@@ -262,7 +262,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
 
       /* =================================================
-         SEND PRIVATE TICKET INFORMATION TO OWNER
+         SEND TICKET INFORMATION TO OWNER
       ================================================= */
 
       try {
@@ -275,48 +275,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else {
           const owner = await client.users.fetch(ownerId);
 
-          const member =
-            await guild.members
-              .fetch(user.id)
-              .catch(() => null);
-
-          /* -------------------------------------------------
-             USER ROLES
-          ------------------------------------------------- */
-
-          let userRoles = "No roles";
-
-          if (member) {
-            const roles = member.roles.cache
-              .filter(
-                (role) =>
-                  role.id !== guild.id
-              )
-              .map(
-                (role) =>
-                  `<@&${role.id}>`
-              );
-
-            if (roles.length > 0) {
-              userRoles = roles.join(", ");
-            }
-          }
+          const member = await guild.members
+            .fetch(user.id)
+            .catch(() => null);
 
           /* -------------------------------------------------
              ACCOUNT DATES
           ------------------------------------------------- */
 
-          const accountCreated =
-            Math.floor(
-              user.createdTimestamp / 1000
-            );
+          const accountCreated = Math.floor(
+            user.createdTimestamp / 1000
+          );
 
-          const joinedServer =
-            member?.joinedTimestamp
-              ? Math.floor(
-                  member.joinedTimestamp / 1000
-                )
-              : null;
+          const joinedServer = member?.joinedTimestamp
+            ? Math.floor(member.joinedTimestamp / 1000)
+            : null;
 
           /* -------------------------------------------------
              TICKET TYPE
@@ -361,21 +334,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
               },
 
               {
-                name: "🏷️ User Roles",
-                value: userRoles,
-                inline: false,
-              },
-
-              {
                 name: "🎫 Ticket Information",
                 value:
                   `**Type:** ${ticketType}\n` +
                   `**Channel:** ${ticketChannel}\n` +
                   `**Channel name:** \`${ticketChannel.name}\`\n` +
-                  `**Channel ID:** \`${ticketChannel.id}\`\n` +
-                  `**Category:** ${category.name}\n` +
-                  `**Category ID:** \`${category.id}\`\n` +
-                  `**Topic:** \`${ticketChannel.topic}\``,
+                  `**Channel ID:** \`${ticketChannel.id}\``,
                 inline: false,
               },
 
@@ -404,14 +368,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
               {
                 name: "🔗 Direct Ticket Link",
                 value: `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
-                inline: false,
-              },
-
-              {
-                name: "🤖 Bot",
-                value:
-                  `**Bot:** ${client.user.tag}\n` +
-                  `**Bot ID:** \`${client.user.id}\``,
                 inline: false,
               }
             )
@@ -725,8 +681,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
       const isOwner =
-        interaction.user.id ===
-        ticketOwnerId;
+        interaction.user.id === ticketOwnerId;
 
       const isStaff =
         interaction.memberPermissions.has(
