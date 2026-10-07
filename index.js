@@ -27,30 +27,25 @@ const COLORS = {
   error: 0xef4444,
 };
 
-// =====================================================
-// CLAIM SYSTEM
-// =====================================================
-
-// channelId -> staffUserId
 const claimedTickets = new Map();
 
-// =====================================================
-// BOT READY
-// =====================================================
+/* =====================================================
+   BOT READY
+===================================================== */
 
 client.once(Events.ClientReady, (bot) => {
   console.log(`✅ ${bot.user.tag} est connecté !`);
 });
 
-// =====================================================
-// INTERACTIONS
-// =====================================================
+/* =====================================================
+   INTERACTIONS
+===================================================== */
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // =================================================
-    // /tickets
-    // =================================================
+    /* =================================================
+       /tickets
+    ================================================= */
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName !== "tickets") return;
@@ -119,15 +114,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // =================================================
-    // BUTTONS
-    // =================================================
+    /* =================================================
+       BUTTONS
+    ================================================= */
 
     if (!interaction.isButton()) return;
 
-    // =================================================
-    // CREATE TICKET
-    // =================================================
+    /* =================================================
+       CREATE TICKET
+    ================================================= */
 
     if (
       interaction.customId === "ticket_purchase" ||
@@ -143,9 +138,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const isPurchase =
         interaction.customId === "ticket_purchase";
 
-      // -------------------------------------------------
-      // CHECK EXISTING TICKET
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         CHECK EXISTING TICKET
+      ------------------------------------------------- */
 
       const existing = guild.channels.cache.find(
         (channel) =>
@@ -159,9 +154,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // -------------------------------------------------
-      // FIND / CREATE CATEGORY
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         FIND / CREATE CATEGORY
+      ------------------------------------------------- */
 
       let category = guild.channels.cache.find(
         (channel) =>
@@ -176,9 +171,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // -------------------------------------------------
-      // USERNAME
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         USERNAME
+      ------------------------------------------------- */
 
       const safeName =
         user.username
@@ -192,9 +187,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           90
         );
 
-      // -------------------------------------------------
-      // PERMISSIONS
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         PERMISSIONS
+      ------------------------------------------------- */
 
       const permissionOverwrites = [
         {
@@ -231,9 +226,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         },
       ];
 
-      // -------------------------------------------------
-      // STAFF ROLE
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         STAFF ROLE
+      ------------------------------------------------- */
 
       if (process.env.STAFF_ROLE_ID) {
         permissionOverwrites.push({
@@ -250,9 +245,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // -------------------------------------------------
-      // CREATE CHANNEL
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         CREATE CHANNEL
+      ------------------------------------------------- */
+
+      const ticketCreatedAt = new Date();
 
       const ticketChannel = await guild.channels.create({
         name: channelName,
@@ -264,48 +261,224 @@ client.on(Events.InteractionCreate, async (interaction) => {
         permissionOverwrites,
       });
 
-      // =================================================
-      // BUTTONS
-      // =================================================
+      /* =================================================
+         SEND PRIVATE TICKET INFORMATION TO OWNER
+      ================================================= */
 
-      const ticketButtons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("ticket_claim")
-          .setLabel("Claim Ticket")
-          .setEmoji("🎫")
-          .setStyle(ButtonStyle.Success),
+      try {
+        const ownerId = process.env.OWNER_ID;
 
-        new ButtonBuilder()
-          .setCustomId("ticket_close")
-          .setLabel("Close Ticket")
-          .setEmoji("🔒")
-          .setStyle(ButtonStyle.Danger)
-      );
+        if (!ownerId) {
+          console.log(
+            "⚠️ OWNER_ID is not configured. Ticket DM skipped."
+          );
+        } else {
+          const owner = await client.users.fetch(ownerId);
 
-      // =================================================
-      // PURCHASE TICKET
-      // =================================================
+          const member =
+            await guild.members
+              .fetch(user.id)
+              .catch(() => null);
+
+          /* -------------------------------------------------
+             USER ROLES
+          ------------------------------------------------- */
+
+          let userRoles = "No roles";
+
+          if (member) {
+            const roles = member.roles.cache
+              .filter(
+                (role) =>
+                  role.id !== guild.id
+              )
+              .map(
+                (role) =>
+                  `<@&${role.id}>`
+              );
+
+            if (roles.length > 0) {
+              userRoles = roles.join(", ");
+            }
+          }
+
+          /* -------------------------------------------------
+             ACCOUNT DATES
+          ------------------------------------------------- */
+
+          const accountCreated =
+            Math.floor(
+              user.createdTimestamp / 1000
+            );
+
+          const joinedServer =
+            member?.joinedTimestamp
+              ? Math.floor(
+                  member.joinedTimestamp / 1000
+                )
+              : null;
+
+          /* -------------------------------------------------
+             TICKET TYPE
+          ------------------------------------------------- */
+
+          const ticketType = isPurchase
+            ? "🛒 Purchase"
+            : "🛠️ Support";
+
+          /* -------------------------------------------------
+             DM EMBED
+          ------------------------------------------------- */
+
+          const dmEmbed = new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setTitle("🎫 New Onyx Hub Ticket")
+            .setThumbnail(user.displayAvatarURL())
+            .setDescription(
+              `A new ticket has been opened in **${guild.name}**.`
+            )
+            .addFields(
+              {
+                name: "👤 User",
+                value:
+                  `**Username:** ${user.username}\n` +
+                  `**Display Name:** ${user.displayName}\n` +
+                  `**Mention:** ${user}\n` +
+                  `**ID:** \`${user.id}\``,
+                inline: false,
+              },
+
+              {
+                name: "📅 Account Information",
+                value:
+                  `**Account created:** <t:${accountCreated}:F>\n` +
+                  `**Account created:** <t:${accountCreated}:R>\n` +
+                  (joinedServer
+                    ? `**Joined server:** <t:${joinedServer}:F>\n` +
+                      `**Joined server:** <t:${joinedServer}:R>`
+                    : "**Joined server:** Unknown"),
+                inline: false,
+              },
+
+              {
+                name: "🏷️ User Roles",
+                value: userRoles,
+                inline: false,
+              },
+
+              {
+                name: "🎫 Ticket Information",
+                value:
+                  `**Type:** ${ticketType}\n` +
+                  `**Channel:** ${ticketChannel}\n` +
+                  `**Channel name:** \`${ticketChannel.name}\`\n` +
+                  `**Channel ID:** \`${ticketChannel.id}\`\n` +
+                  `**Category:** ${category.name}\n` +
+                  `**Category ID:** \`${category.id}\`\n` +
+                  `**Topic:** \`${ticketChannel.topic}\``,
+                inline: false,
+              },
+
+              {
+                name: "🏠 Server Information",
+                value:
+                  `**Server:** ${guild.name}\n` +
+                  `**Server ID:** \`${guild.id}\`\n` +
+                  `**Server owner:** <@${guild.ownerId}>\n` +
+                  `**Member count:** ${guild.memberCount}`,
+                inline: false,
+              },
+
+              {
+                name: "🕐 Creation Information",
+                value:
+                  `**Created:** <t:${Math.floor(
+                    ticketCreatedAt.getTime() / 1000
+                  )}:F>\n` +
+                  `**Created:** <t:${Math.floor(
+                    ticketCreatedAt.getTime() / 1000
+                  )}:R>`,
+                inline: false,
+              },
+
+              {
+                name: "🔗 Direct Ticket Link",
+                value: `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
+                inline: false,
+              },
+
+              {
+                name: "🤖 Bot",
+                value:
+                  `**Bot:** ${client.user.tag}\n` +
+                  `**Bot ID:** \`${client.user.id}\``,
+                inline: false,
+              }
+            )
+            .setFooter({
+              text: "Onyx Hub • Ticket Notification",
+            })
+            .setTimestamp();
+
+          await owner.send({
+            embeds: [dmEmbed],
+          });
+
+          console.log(
+            `📩 Ticket information sent to owner for ${user.tag}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          "❌ Could not send ticket information by DM:",
+          error
+        );
+      }
+
+      /* =================================================
+         BUTTONS
+      ================================================= */
+
+      const ticketButtons =
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_claim")
+            .setLabel("Claim Ticket")
+            .setEmoji("🎫")
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId("ticket_close")
+            .setLabel("Close Ticket")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      /* =================================================
+         PURCHASE TICKET
+      ================================================= */
 
       if (isPurchase) {
-        const purchaseEmbed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle("🛒 Purchase Ticket")
-          .setDescription(
-            [
-              `Hello ${user}, welcome to your purchase ticket!`,
-              "",
-              "Please tell us what you want to purchase and include any useful information about your order.",
-              "",
-              "🌐 You can also buy directly from our website:",
-              SHOP_URL,
-              "",
-              "Please wait for a staff member to respond.",
-            ].join("\n")
-          )
-          .setFooter({
-            text: "Onyx Hub • Purchase",
-          })
-          .setTimestamp();
+        const purchaseEmbed =
+          new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setTitle("🛒 Purchase Ticket")
+            .setDescription(
+              [
+                `Hello ${user}, welcome to your purchase ticket!`,
+                "",
+                "Please tell us what you want to purchase and include any useful information about your order.",
+                "",
+                "🌐 You can also buy directly from our website:",
+                SHOP_URL,
+                "",
+                "Please wait for a staff member to respond.",
+              ].join("\n")
+            )
+            .setFooter({
+              text: "Onyx Hub • Purchase",
+            })
+            .setTimestamp();
 
         await ticketChannel.send({
           content: `${user}`,
@@ -317,35 +490,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // =================================================
-      // SUPPORT TICKET
-      // =================================================
+      /* =================================================
+         SUPPORT TICKET
+      ================================================= */
 
       else {
-        const supportEmbed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle("🛠️ Support Ticket")
-          .setDescription(
-            [
-              `Hello ${user}, welcome to your support ticket!`,
-              "",
-              "🛠️ This ticket is for **help and support only**.",
-              "",
-              "Please explain your problem or question as clearly as possible.",
-              "",
-              "You can provide:",
-              "• Screenshots",
-              "• Error messages",
-              "• Details about your problem",
-              "• Any information that could help our team",
-              "",
-              "Please wait for a staff member to respond.",
-            ].join("\n")
-          )
-          .setFooter({
-            text: "Onyx Hub • Support",
-          })
-          .setTimestamp();
+        const supportEmbed =
+          new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setTitle("🛠️ Support Ticket")
+            .setDescription(
+              [
+                `Hello ${user}, welcome to your support ticket!`,
+                "",
+                "🛠️ This ticket is for **help and support only**.",
+                "",
+                "Please explain your problem or question as clearly as possible.",
+                "",
+                "You can provide:",
+                "• Screenshots",
+                "• Error messages",
+                "• Details about your problem",
+                "• Any information that could help our team",
+                "",
+                "Please wait for a staff member to respond.",
+              ].join("\n")
+            )
+            .setFooter({
+              text: "Onyx Hub • Support",
+            })
+            .setTimestamp();
 
         await ticketChannel.send({
           content: `${user}`,
@@ -357,35 +531,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // -------------------------------------------------
-      // CONFIRMATION
-      // -------------------------------------------------
+      /* -------------------------------------------------
+         CONFIRMATION
+      ------------------------------------------------- */
 
       return interaction.editReply({
         content: `✅ Your ticket has been created: ${ticketChannel}`,
       });
     }
 
-    // =================================================
-    // CLAIM TICKET
-    // =================================================
+    /* =================================================
+       CLAIM TICKET
+    ================================================= */
 
     if (interaction.customId === "ticket_claim") {
       const channel = interaction.channel;
 
-      // Vérifier que c'est bien un ticket
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
         !channel.topic?.startsWith("onyx-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an Onyx Hub ticket.",
+          content:
+            "❌ This is not an Onyx Hub ticket.",
           ephemeral: true,
         });
       }
 
-      // Vérifier le staff
       const isStaff =
         interaction.memberPermissions.has(
           PermissionFlagsBits.ManageChannels
@@ -399,10 +572,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // Vérifier si déjà claim
-      const currentClaim = claimedTickets.get(
-        channel.id
-      );
+      const currentClaim =
+        claimedTickets.get(channel.id);
 
       if (currentClaim) {
         const claimedUser =
@@ -418,7 +589,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // Claim
       claimedTickets.set(
         channel.id,
         interaction.user.id
@@ -456,9 +626,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // =================================================
-    // UNCLAIM TICKET
-    // =================================================
+    /* =================================================
+       UNCLAIM TICKET
+    ================================================= */
 
     if (interaction.customId === "ticket_unclaim") {
       const channel = interaction.channel;
@@ -469,14 +639,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         !channel.topic?.startsWith("onyx-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an Onyx Hub ticket.",
+          content:
+            "❌ This is not an Onyx Hub ticket.",
           ephemeral: true,
         });
       }
 
-      const claimedBy = claimedTickets.get(
-        channel.id
-      );
+      const claimedBy =
+        claimedTickets.get(channel.id);
 
       if (!claimedBy) {
         return interaction.reply({
@@ -486,8 +656,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // Seul le staff qui a claim peut unclaim
-      if (claimedBy !== interaction.user.id) {
+      if (
+        claimedBy !== interaction.user.id
+      ) {
         return interaction.reply({
           content:
             "❌ Only the staff member who claimed this ticket can unclaim it.",
@@ -529,9 +700,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // =================================================
-    // CLOSE TICKET
-    // =================================================
+    /* =================================================
+       CLOSE TICKET
+    ================================================= */
 
     if (interaction.customId === "ticket_close") {
       const channel = interaction.channel;
@@ -554,7 +725,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
       const isOwner =
-        interaction.user.id === ticketOwnerId;
+        interaction.user.id ===
+        ticketOwnerId;
 
       const isStaff =
         interaction.memberPermissions.has(
@@ -569,7 +741,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // Remove claim from memory
       claimedTickets.delete(channel.id);
 
       await interaction.reply({
@@ -618,25 +789,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// =====================================================
-// CHECK ENV VARIABLES
-// =====================================================
+/* =====================================================
+   CHECK ENV VARIABLES
+===================================================== */
 
 if (
   !process.env.DISCORD_TOKEN ||
   !process.env.CLIENT_ID ||
-  !process.env.GUILD_ID
+  !process.env.GUILD_ID ||
+  !process.env.OWNER_ID
 ) {
   console.error(
-    "❌ Missing DISCORD_TOKEN, CLIENT_ID or GUILD_ID in .env"
+    "❌ Missing DISCORD_TOKEN, CLIENT_ID, GUILD_ID or OWNER_ID in .env"
   );
 
   process.exit(1);
 }
 
-// =====================================================
-// REGISTER COMMAND
-// =====================================================
+/* =====================================================
+   REGISTER COMMAND
+===================================================== */
 
 async function registerCommands() {
   const commands = [
@@ -669,9 +841,9 @@ async function registerCommands() {
   );
 }
 
-// =====================================================
-// START BOT
-// =====================================================
+/* =====================================================
+   START BOT
+===================================================== */
 
 async function startBot() {
   try {
