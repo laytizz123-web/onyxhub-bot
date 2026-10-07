@@ -1,7 +1,5 @@
 require("dotenv").config();
 
-const crypto = require("crypto");
-
 const {
   Client,
   GatewayIntentBits,
@@ -53,11 +51,6 @@ const COLORS = {
 
 const claimedTickets = new Map();
 
-/*
-  Simple in-memory key store.
-  Keys disappear if the bot restarts.
-*/
-
 /* =====================================================
    HELPERS
 ===================================================== */
@@ -85,6 +78,31 @@ async function sendLog(guild, embed) {
   if (!channel || !channel.isTextBased()) return;
 
   await channel.send({ embeds: [embed] }).catch(() => {});
+}
+
+/*
+  Prefix commands can't be ephemeral, so the reply goes to the author's DMs
+  and their command message is deleted. If DMs are closed, the reply is
+  posted in the channel and deleted after a few seconds.
+*/
+async function privateReply(message, payload) {
+  if (typeof payload === "string") payload = { content: payload };
+
+  await message.delete().catch(() => {});
+
+  const sent = await message.author.send(payload).catch(() => null);
+
+  if (sent) return sent;
+
+  const fallback = await message.channel.send({
+    ...payload,
+    content: `${message.author} ${payload.content || ""}`.trim(),
+    allowedMentions: { users: [message.author.id] },
+  });
+
+  setTimeout(() => fallback.delete().catch(() => {}), 15000);
+
+  return fallback;
 }
 
 function ticketPermissionOverwrites(guild, user) {
@@ -390,11 +408,11 @@ client.on(Events.MessageCreate, async (message) => {
 
     const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets"];
     if (staffOnly.includes(command) && !isStaff(message)) {
-      return message.reply("❌ Only staff can use this command.");
+      return privateReply(message, "❌ Only staff can use this command.");
     }
 
     if (command === "help") {
-      return message.reply({ embeds: [new EmbedBuilder()
+      return privateReply(message, { embeds: [new EmbedBuilder()
         .setColor(COLORS.main)
         .setTitle("ORYX HUB | Commands")
         .setDescription([
@@ -404,13 +422,13 @@ client.on(Events.MessageCreate, async (message) => {
           "**Staff:** `!announce Title | message`",
           "",
           "Every command is also available with `/`.",
-        ].join("\\n"))
+        ].join("\n"))
         .setTimestamp()] });
     }
 
     if (command === "tickets") {
       const embed = new EmbedBuilder().setColor(COLORS.main).setTitle("ORYX HUB | Ticket Center")
-        .setDescription(["Welcome to **ORYX HUB**!", "", "Choose a category below to open a private ticket.", "", "🛒 **Purchase**", "Open a ticket for purchases or order questions.", "", "🛠️ **Support**", "Open a ticket if you need help or have a question.", "", "🤝 **Partnership**", "Open a ticket for partnership requests.", "", "🌐 **Website**", SHOP_URL, "", "Our support is available 24/7 through the ticket system."].join("\\n"))
+        .setDescription(["Welcome to **ORYX HUB**!", "", "Choose a category below to open a private ticket.", "", "🛒 **Purchase**", "Open a ticket for purchases or order questions.", "", "🛠️ **Support**", "Open a ticket if you need help or have a question.", "", "🤝 **Partnership**", "Open a ticket for partnership requests.", "", "🌐 **Website**", SHOP_URL, "", "Our support is available 24/7 through the ticket system."].join("\n"))
         .setFooter({ text: "ORYX HUB • Ticket System" }).setTimestamp();
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("ticket_purchase").setLabel("Purchase").setEmoji("🛒").setStyle(ButtonStyle.Primary),
@@ -425,14 +443,14 @@ client.on(Events.MessageCreate, async (message) => {
       const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("Server Information")
         .addFields({name:"Name",value:g.name,inline:true},{name:"Members",value:String(g.memberCount),inline:true},{name:"Channels",value:String(g.channels.cache.size),inline:true},{name:"Server ID",value:g.id})
         .setTimestamp();
-      return message.reply({embeds:[embed]});
+      return privateReply(message, {embeds:[embed]});
     }
 
     if (command === "userinfo") {
       const target = message.mentions.members.first() || message.member;
       const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("User Information").setThumbnail(target.user.displayAvatarURL())
         .addFields({name:"User",value:`${target.user} (\`${target.id}\`)`},{name:"Joined Server",value:target.joinedAt ? `<t:${Math.floor(target.joinedAt.getTime()/1000)}:F>` : "Unknown",inline:true},{name:"Highest Role",value:target.roles.highest?.toString() || "@everyone",inline:true}).setTimestamp();
-      return message.reply({embeds:[embed]});
+      return privateReply(message, {embeds:[embed]});
     }
 
     if (command === "announce") {
@@ -652,7 +670,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           )
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       /* -----------------------------------------------
@@ -699,7 +717,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           )
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       /* -----------------------------------------------
