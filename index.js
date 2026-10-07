@@ -934,6 +934,13 @@ async function runTicketAi(message) {
       content: `${HANDOFF_PREFIX}<@&${STAFF_ROLE_ID}> This user has a specific request, please take the ticket.`,
       allowedMentions: { roles: [STAFF_ROLE_ID] },
     });
+
+    // The channel is renamed so staff can spot it in the list (the ticket is still found by its topic).
+    await channel
+      .setName("need-staff", "The customer needs a staff member")
+      .catch((error) =>
+        console.error("Could not rename the ticket:", error?.message || error)
+      );
   }
 }
 
