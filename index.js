@@ -80,6 +80,31 @@ async function sendLog(guild, embed) {
   await channel.send({ embeds: [embed] }).catch(() => {});
 }
 
+/*
+  Prefix commands can't be ephemeral, so the reply goes to the author's DMs
+  and their command message is deleted. If DMs are closed, the reply is
+  posted in the channel and deleted after a few seconds.
+*/
+async function privateReply(message, payload) {
+  if (typeof payload === "string") payload = { content: payload };
+
+  await message.delete().catch(() => {});
+
+  const sent = await message.author.send(payload).catch(() => null);
+
+  if (sent) return sent;
+
+  const fallback = await message.channel.send({
+    ...payload,
+    content: `${message.author} ${payload.content || ""}`.trim(),
+    allowedMentions: { users: [message.author.id] },
+  });
+
+  setTimeout(() => fallback.delete().catch(() => {}), 15000);
+
+  return fallback;
+}
+
 function ticketPermissionOverwrites(guild, user) {
   return [
     {
@@ -373,6 +398,113 @@ client.on(Events.GuildMemberAdd, async (member) => {
    INTERACTIONS
 ===================================================== */
 
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (message.author.bot || !message.guild || !message.content.startsWith("!")) return;
+
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const command = (args.shift() || "").toLowerCase();
+    if (!command) return;
+
+    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets"];
+    if (staffOnly.includes(command) && !isStaff(message)) {
+      return privateReply(message, "❌ Only staff can use this command.");
+    }
+
+    if (command === "help") {
+      return privateReply(message, { embeds: [new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setTitle("ORYX HUB | Commands")
+        .setDescription([
+          "**Tickets:** `!tickets`",
+          "**Information:** `!serverinfo`, `!userinfo @user`",
+          "**Moderation:** `!warn @user reason`, `!timeout @user minutes reason`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Staff:** `!announce Title | message`",
+          "",
+          "Every command is also available with `/`.",
+        ].join("\n"))
+        .setTimestamp()] });
+    }
+
+    if (command === "tickets") {
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle("ORYX HUB | Ticket Center")
+        .setDescription(["Welcome to **ORYX HUB**!", "", "Choose a category below to open a private ticket.", "", "🛒 **Purchase**", "Open a ticket for purchases or order questions.", "", "🛠️ **Support**", "Open a ticket if you need help or have a question.", "", "🤝 **Partnership**", "Open a ticket for partnership requests.", "", "🌐 **Website**", SHOP_URL, "", "Our support is available 24/7 through the ticket system."].join("\n"))
+        .setFooter({ text: "ORYX HUB • Ticket System" }).setTimestamp();
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("ticket_purchase").setLabel("Purchase").setEmoji("🛒").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("ticket_support").setLabel("Support").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("ticket_partnership").setLabel("Partnership").setEmoji("🤝").setStyle(ButtonStyle.Success)
+      );
+      return message.channel.send({ embeds: [embed], components: [buttons] });
+    }
+
+    if (command === "serverinfo") {
+      const g = message.guild;
+      const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("Server Information")
+        .addFields({name:"Name",value:g.name,inline:true},{name:"Members",value:String(g.memberCount),inline:true},{name:"Channels",value:String(g.channels.cache.size),inline:true},{name:"Server ID",value:g.id})
+        .setTimestamp();
+      return privateReply(message, {embeds:[embed]});
+    }
+
+    if (command === "userinfo") {
+      const target = message.mentions.members.first() || message.member;
+      const embed = new EmbedBuilder().setColor(COLORS.info).setTitle("User Information").setThumbnail(target.user.displayAvatarURL())
+        .addFields({name:"User",value:`${target.user} (\`${target.id}\`)`},{name:"Joined Server",value:target.joinedAt ? `<t:${Math.floor(target.joinedAt.getTime()/1000)}:F>` : "Unknown",inline:true},{name:"Highest Role",value:target.roles.highest?.toString() || "@everyone",inline:true}).setTimestamp();
+      return privateReply(message, {embeds:[embed]});
+    }
+
+    if (command === "announce") {
+      const raw = args.join(" ");
+      const parts = raw.split("|");
+      if (parts.length < 2) return message.reply("❌ Usage: `!announce Title | message`");
+      const title = parts.shift().trim();
+      const text = parts.join("|").trim();
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
+      await message.channel.send({embeds:[embed]});
+      return message.reply({content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
+    }
+
+    if (command === "clear") {
+      const amount = Number(args[0]);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return message.reply("❌ Usage: `!clear 1-100`");
+      const deleted = await message.channel.bulkDelete(amount, true);
+      return message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
+    }
+
+    const target = message.mentions.members.first();
+    if (["warn","timeout","kick","ban"].includes(command) && !target) return message.reply("❌ Usage: !" + command + " @user ...");
+
+    if (command === "warn") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.send(`⚠️ You have been warned in **${message.guild.name}**. Reason: ${reason}`).catch(()=>{});
+      return message.reply(`⚠️ ${target} has been warned. Reason: ${reason}`);
+    }
+
+    if (command === "timeout") {
+      const minutes = Number(args[1]);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 40320) return message.reply("❌ Usage: `!timeout @user minutes reason`");
+      const reason = args.slice(2).join(" ") || "No reason provided.";
+      await target.timeout(minutes * 60 * 1000, reason);
+      return message.reply(`⏱️ ${target} has been timed out for ${minutes} minute(s).`);
+    }
+
+    if (command === "kick") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.kick(reason);
+      return message.reply(`👢 ${target.user.tag} has been kicked.`);
+    }
+
+    if (command === "ban") {
+      const reason = args.slice(1).join(" ") || "No reason provided.";
+      await target.ban({reason});
+      return message.reply(`🔨 ${target.user.tag} has been banned.`);
+    }
+  } catch (error) {
+    console.error("Prefix command error:", error);
+    await message.reply("❌ An error occurred. Check the bot console.").catch(()=>{});
+  }
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     /* =================================================
@@ -484,8 +616,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             {
               name: "📢 Administration",
               value:
-                "`/announce` — Send an announcement.\n" +
-                "`/say` — Send a message as the bot.",
+                "`/announce` — Send an announcement.",
             }
           )
           .setFooter({ text: "ORYX HUB • Multifunction Bot" })
@@ -539,7 +670,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           )
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       /* -----------------------------------------------
@@ -586,62 +717,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           )
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
-      }
-
-      /* -----------------------------------------------
-         /announce
-      ----------------------------------------------- */
-
-      if (command === "announce") {
-        if (!isStaff(interaction)) {
-          return interaction.reply({
-            content: "❌ Only staff can use this command.",
-            ephemeral: true,
-          });
-        }
-
-        const title = interaction.options.getString("title", true);
-        const message = interaction.options.getString("message", true);
-
-        const embed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle(`📢 ${title}`)
-          .setDescription(message)
-          .setFooter({ text: `Posted by ${interaction.user.tag}` })
-          .setTimestamp();
-
-        await interaction.channel.send({ embeds: [embed] });
-
-        return interaction.reply({
-          content: "✅ Announcement sent.",
-          ephemeral: true,
-        });
-      }
-
-      /* -----------------------------------------------
-         /say
-      ----------------------------------------------- */
-
-      if (command === "say") {
-        if (!isStaff(interaction)) {
-          return interaction.reply({
-            content: "❌ Only staff can use this command.",
-            ephemeral: true,
-          });
-        }
-
-        const message = interaction.options.getString("message", true);
-
-        await interaction.channel.send({
-          content: message,
-          allowedMentions: { parse: [] },
-        });
-
-        return interaction.reply({
-          content: "✅ Message sent.",
-          ephemeral: true,
-        });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       /* -----------------------------------------------
@@ -1106,16 +1182,6 @@ async function registerCommands() {
       ),
 
     new SlashCommandBuilder()
-      .setName("say")
-      .setDescription("Send a message as the bot.")
-      .addStringOption((option) =>
-        option
-          .setName("message")
-          .setDescription("Message to send.")
-          .setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
       .setName("clear")
       .setDescription("Delete messages from the current channel.")
       .addIntegerOption((option) =>
@@ -1198,6 +1264,7 @@ async function registerCommands() {
           .setDescription("Reason for the ban.")
           .setRequired(false)
       ),
+
   ];
 
   const rest = new REST({ version: "10" }).setToken(
