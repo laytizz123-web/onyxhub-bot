@@ -105,6 +105,52 @@ async function privateReply(message, payload) {
   return fallback;
 }
 
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
+
+const DURATION_UNITS = {
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000,
+};
+
+/*
+  Parses durations like "30m", "1h", "1d", "1h30m" or "45" (minutes).
+  Returns milliseconds, or null if the text is not a duration.
+*/
+function parseDuration(text) {
+  if (!text) return null;
+
+  const value = text.toLowerCase();
+
+  if (/^\d+$/.test(value)) return Number(value) * DURATION_UNITS.m;
+
+  if (!/^(\d+[smhdw])+$/.test(value)) return null;
+
+  let total = 0;
+
+  for (const [, amount, unit] of value.matchAll(/(\d+)([smhdw])/g)) {
+    total += Number(amount) * DURATION_UNITS[unit];
+  }
+
+  return total;
+}
+
+function formatDuration(ms) {
+  const parts = [];
+  let rest = Math.floor(ms / 1000);
+
+  for (const [unit, size] of [["d", 86400], ["h", 3600], ["m", 60], ["s", 1]]) {
+    const amount = Math.floor(rest / size);
+    if (amount) parts.push(`${amount}${unit}`);
+    rest %= size;
+  }
+
+  return parts.join(" ") || "0s";
+}
+
 function ticketPermissionOverwrites(guild, user) {
   return [
     {
@@ -418,7 +464,7 @@ client.on(Events.MessageCreate, async (message) => {
         .setDescription([
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
-          "**Moderation:** `!warn @user reason`, `!timeout @user minutes reason`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Staff:** `!announce Title | message`",
           "",
           "Every command is also available with `/`.",
@@ -481,11 +527,12 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     if (command === "timeout") {
-      const minutes = Number(args[1]);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 40320) return message.reply("❌ Usage: `!timeout @user minutes reason`");
-      const reason = args.slice(2).join(" ") || "No reason provided.";
-      await target.timeout(minutes * 60 * 1000, reason);
-      return message.reply(`⏱️ ${target} has been timed out for ${minutes} minute(s).`);
+      const parsed = parseDuration(args[1]);
+      const duration = parsed ?? DEFAULT_TIMEOUT_MS;
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return message.reply("❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
+      await target.timeout(duration, reason);
+      return message.reply(`⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
@@ -813,7 +860,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         const member = interaction.options.getMember("user");
-        const minutes = interaction.options.getInteger("minutes", true);
+        const durationText = interaction.options.getString("duration");
+        const parsed = parseDuration(durationText);
+        const duration = parsed ?? DEFAULT_TIMEOUT_MS;
         const reason =
           interaction.options.getString("reason") || "No reason provided.";
 
@@ -824,10 +873,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        await member.timeout(minutes * 60 * 1000, reason);
+        if (
+          (durationText && parsed === null) ||
+          duration < 1000 ||
+          duration > MAX_TIMEOUT_MS
+        ) {
+          return interaction.reply({
+            content:
+              "❌ Invalid duration. Use something like `30m`, `1h`, `1d` (max 28d).",
+            ephemeral: true,
+          });
+        }
+
+        await member.timeout(duration, reason);
 
         return interaction.reply({
-          content: `⏱️ ${member} has been timed out for ${minutes} minute(s).`,
+          content: `⏱️ ${member} has been timed out for ${formatDuration(duration)}.`,
           ephemeral: true,
         });
       }
@@ -1218,13 +1279,11 @@ async function registerCommands() {
           .setDescription("Member to timeout.")
           .setRequired(true)
       )
-      .addIntegerOption((option) =>
+      .addStringOption((option) =>
         option
-          .setName("minutes")
-          .setDescription("Timeout duration in minutes.")
-          .setMinValue(1)
-          .setMaxValue(40320)
-          .setRequired(true)
+          .setName("duration")
+          .setDescription("Duration, e.g. 30m, 1h, 1d (default: 10m, max: 28d).")
+          .setRequired(false)
       )
       .addStringOption((option) =>
         option
