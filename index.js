@@ -685,49 +685,74 @@ async function aiGenerate(turns) {
     }
   }
 
-  // Google sometimes answers 429/500/503 during demand spikes: retry a few times.
-  let response;
+  /*
+    Try AI_MODEL, then each model of AI_FALLBACK_MODELS (comma separated).
+    Free-tier quotas are per model, so another model may still have requests
+    left. 503/500 (demand spike) are retried on the same model first; 429
+    (quota), 404 (model gone) and timeouts go straight to the next model.
+  */
+  const models = [
+    AI_MODEL,
+    ...(process.env.AI_FALLBACK_MODELS || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  ];
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      response = await Promise.race([
-        gemini.models.generateContent({
-          model: AI_MODEL,
-          contents,
-          config: {
-            systemInstruction: AI_SYSTEM_PROMPT,
-            maxOutputTokens: 4000,
-          },
-        }),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`${AI_MODEL} did not answer within 45s`)),
-            45000
-          )
-        ),
-      ]);
-      break;
-    } catch (error) {
-      const retryable = [429, 500, 503].includes(Number(error?.status));
+  let lastError;
 
-      if (!retryable || attempt >= 3) throw error;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await Promise.race([
+          gemini.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: AI_SYSTEM_PROMPT,
+              maxOutputTokens: 4000,
+            },
+          }),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`${model} did not answer within 45s`)),
+              45000
+            )
+          ),
+        ]);
 
-      await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+        const text = (response.text || "").trim();
+
+        if (text) return text;
+
+        const why =
+          response.promptFeedback?.blockReason ||
+          response.candidates?.[0]?.finishReason ||
+          "unknown";
+
+        throw new Error(`empty answer from ${model} (${why})`);
+      } catch (error) {
+        lastError = error;
+
+        const status = Number(error?.status);
+
+        if (status === 500 || status === 503) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2000 * (attempt + 1))
+          );
+          continue;
+        }
+
+        break; // 429, 404, timeout...: next model
+      }
     }
+
+    console.warn(
+      `AI model ${model} failed: ${lastError?.message || lastError}`.slice(0, 300)
+    );
   }
 
-  const text = (response.text || "").trim();
-
-  if (!text) {
-    const why =
-      response.promptFeedback?.blockReason ||
-      response.candidates?.[0]?.finishReason ||
-      "unknown";
-
-    throw new Error(`empty answer from ${AI_MODEL} (${why})`);
-  }
-
-  return text;
+  throw lastError;
 }
 
 async function runTicketAi(message) {
