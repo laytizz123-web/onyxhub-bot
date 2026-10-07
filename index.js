@@ -648,6 +648,27 @@ function isAiReply(message) {
   );
 }
 
+/*
+  Replying needs "Read Message History" in the channel. If the reply fails
+  (missing permission, deleted message...), fall back to a plain message.
+*/
+async function safeReply(message, payload) {
+  try {
+    return await message.reply(payload);
+  } catch (replyError) {
+    try {
+      return await message.channel.send(
+        typeof payload === "string" ? { content: payload } : payload
+      );
+    } catch (sendError) {
+      console.error(
+        `Could not answer in #${message.channel?.name}:`,
+        sendError?.message || sendError
+      );
+    }
+  }
+}
+
 /* turns: [{ role: "user" | "assistant", content }] -> Gemini answer text. */
 async function aiGenerate(turns) {
   // Gemini wants "user"/"model" roles, with same-role turns merged.
@@ -669,14 +690,22 @@ async function aiGenerate(turns) {
 
   for (let attempt = 0; ; attempt++) {
     try {
-      response = await gemini.models.generateContent({
-        model: AI_MODEL,
-        contents,
-        config: {
-          systemInstruction: AI_SYSTEM_PROMPT,
-          maxOutputTokens: 4000,
-        },
-      });
+      response = await Promise.race([
+        gemini.models.generateContent({
+          model: AI_MODEL,
+          contents,
+          config: {
+            systemInstruction: AI_SYSTEM_PROMPT,
+            maxOutputTokens: 4000,
+          },
+        }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`${AI_MODEL} did not answer within 45s`)),
+            45000
+          )
+        ),
+      ]);
       break;
     } catch (error) {
       const retryable = [429, 500, 503].includes(Number(error?.status));
@@ -786,8 +815,10 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!allowed) return;
 
+  console.log(`!aitest from ${message.author.tag} in #${message.channel.name}`);
+
   if (!AI_ENABLED) {
-    return await message.reply(
+    return await safeReply(message, 
       "❌ AI is off: `GEMINI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
     );
   }
@@ -797,9 +828,9 @@ client.on(Events.MessageCreate, async (message) => {
       { role: "user", content: "Say hello in one short sentence." },
     ]);
 
-    return await message.reply(`✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
+    return await safeReply(message, `✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
   } catch (error) {
-    return await message.reply(
+    return await safeReply(message, 
       `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? error?.code ?? "?"}): ${error?.message || error}`.slice(0, 1900)
     );
   }
@@ -934,17 +965,17 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "announce") {
       const raw = args.join(" ");
       const parts = raw.split("|");
-      if (parts.length < 2) return await message.reply("❌ Usage: `!announce Title | message`");
+      if (parts.length < 2) return await safeReply(message, "❌ Usage: `!announce Title | message`");
       const title = parts.shift().trim();
       const text = parts.join("|").trim();
       const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
       await message.channel.send({embeds:[embed]});
-      return await message.reply({content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
+      return await safeReply(message, {content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
     }
 
     if (command === "clear") {
       const amount = Number(args[0]);
-      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return await message.reply("❌ Usage: `!clear 1-100`");
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100) return await safeReply(message, "❌ Usage: `!clear 1-100`");
       const deleted = await message.channel.bulkDelete(amount, true);
       return await message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
     }
@@ -964,37 +995,37 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     const target = message.mentions.members.first();
-    if (["warn","timeout","kick","ban"].includes(command) && !target) return await message.reply("❌ Usage: !" + command + " @user ...");
+    if (["warn","timeout","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
 
     if (command === "warn") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.send(`⚠️ You have been warned in **${message.guild.name}**. Reason: ${reason}`).catch(()=>{});
-      return await message.reply(`⚠️ ${target} has been warned. Reason: ${reason}`);
+      return await safeReply(message, `⚠️ ${target} has been warned. Reason: ${reason}`);
     }
 
     if (command === "timeout") {
       const parsed = parseDuration(args[1]);
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
-      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await message.reply("❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
       await target.timeout(duration, reason);
-      return await message.reply(`⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
+      return await safeReply(message, `⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.kick(reason);
-      return await message.reply(`👢 ${target.user.tag} has been kicked.`);
+      return await safeReply(message, `👢 ${target.user.tag} has been kicked.`);
     }
 
     if (command === "ban") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
       await target.ban({reason});
-      return await message.reply(`🔨 ${target.user.tag} has been banned.`);
+      return await safeReply(message, `🔨 ${target.user.tag} has been banned.`);
     }
   } catch (error) {
     console.error("Prefix command error:", error);
-    await message.reply("❌ An error occurred. Check the bot console.").catch(()=>{});
+    await safeReply(message, "❌ An error occurred. Check the bot console.").catch(()=>{});
   }
 });
 
