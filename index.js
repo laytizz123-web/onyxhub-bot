@@ -27,6 +27,7 @@ const {
   CLIENT_ID,
   GUILD_ID,
   STAFF_ROLE_ID,
+  OWNER_ID,
 } = process.env;
 
 const SHOP_URL = "https://onyxhub7.mysellauth.com/";
@@ -44,21 +45,23 @@ const claimedTickets = new Map();
    CHECK ENV
 ========================================================= */
 
-if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
+if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID || !OWNER_ID) {
   console.error(
-    "❌ Il manque DISCORD_TOKEN, CLIENT_ID ou GUILD_ID dans les variables d'environnement."
+    "❌ Missing DISCORD_TOKEN, CLIENT_ID, GUILD_ID or OWNER_ID."
   );
   process.exit(1);
 }
 
 /* =========================================================
-   HELPERS
+   STAFF CHECK
 ========================================================= */
 
 function isStaff(interaction) {
   if (
     interaction.memberPermissions &&
-    interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)
+    interaction.memberPermissions.has(
+      PermissionFlagsBits.ManageChannels
+    )
   ) {
     return true;
   }
@@ -75,25 +78,46 @@ function isStaff(interaction) {
   return false;
 }
 
-function ticketButtons(channelId) {
+/* =========================================================
+   TICKET BUTTONS
+========================================================= */
+
+function ticketButtons(channelId, type) {
   const claimed = claimedTickets.has(channelId);
 
-  return new ActionRowBuilder().addComponents(
+  const buttons = [
     new ButtonBuilder()
-      .setCustomId(claimed ? "ticket_unclaim" : "ticket_claim")
-      .setLabel(claimed ? "🔓 Unclaim Ticket" : "🎫 Claim Ticket")
-      .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      .setCustomId(
+        claimed ? "ticket_unclaim" : "ticket_claim"
+      )
+      .setLabel(
+        claimed
+          ? "🔓 Unclaim Ticket"
+          : "🎫 Claim Ticket"
+      )
+      .setStyle(
+        claimed
+          ? ButtonStyle.Secondary
+          : ButtonStyle.Primary
+      ),
 
     new ButtonBuilder()
       .setCustomId("ticket_close")
       .setLabel("🔒 Close Ticket")
       .setStyle(ButtonStyle.Danger),
+  ];
 
-    new ButtonBuilder()
-      .setCustomId("buy_brainrot")
-      .setLabel("🧠 Buy with Brainrot")
-      .setStyle(ButtonStyle.Success)
-  );
+  // Only Purchase tickets get the Brainrot button
+  if (type === "purchase") {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId("buy_brainrot")
+        .setLabel("🧠 Buy with Brainrot")
+        .setStyle(ButtonStyle.Success)
+    );
+  }
+
+  return new ActionRowBuilder().addComponents(buttons);
 }
 
 /* =========================================================
@@ -103,8 +127,10 @@ function ticketButtons(channelId) {
 const commands = [
   new SlashCommandBuilder()
     .setName("tickets")
-    .setDescription("Envoie le panneau des tickets")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription("Send the ticket panel")
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
 ].map((command) => command.toJSON());
 
 /* =========================================================
@@ -112,19 +138,31 @@ const commands = [
 ========================================================= */
 
 client.once(Events.ClientReady, async (readyClient) => {
-  console.log(`✅ Connecté en tant que ${readyClient.user.tag}`);
+  console.log(
+    `✅ Logged in as ${readyClient.user.tag}`
+  );
 
   try {
-    const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
+    const rest = new REST({ version: "10" }).setToken(
+      DISCORD_TOKEN
     );
 
-    console.log("✅ Commande /tickets enregistrée.");
+    await rest.put(
+      Routes.applicationGuildCommands(
+        CLIENT_ID,
+        GUILD_ID
+      ),
+      {
+        body: commands,
+      }
+    );
+
+    console.log("✅ /tickets command registered.");
   } catch (error) {
-    console.error("❌ Erreur enregistrement commande :", error);
+    console.error(
+      "❌ Error registering commands:",
+      error
+    );
   }
 });
 
@@ -132,147 +170,183 @@ client.once(Events.ClientReady, async (readyClient) => {
    INTERACTIONS
 ========================================================= */
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    /* =====================================================
-       /tickets
-    ===================================================== */
+client.on(
+  Events.InteractionCreate,
+  async (interaction) => {
+    try {
+      /* =====================================================
+         /tickets
+      ===================================================== */
 
-    if (interaction.isChatInputCommand()) {
-      if (interaction.commandName !== "tickets") return;
+      if (interaction.isChatInputCommand()) {
+        if (interaction.commandName !== "tickets") {
+          return;
+        }
 
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({
-          content: "❌ Tu n'as pas la permission d'utiliser cette commande.",
-          ephemeral: true,
-        });
-      }
-
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.main)
-        .setTitle("ONYX HUB | Support Center")
-        .setDescription(
-          [
-            "Bienvenue dans le support **Onyx Hub**.",
-            "",
-            "🛒 **Purchase**",
-            "Ouvre un ticket pour effectuer un achat.",
-            `🌐 Site : ${SHOP_URL}`,
-            "",
-            "🛠️ **Support**",
-            "Ouvre un ticket si tu as besoin d'aide ou si tu as une question.",
-            "",
-            "Choisis le type de ticket ci-dessous."
-          ].join("\n")
-        )
-        .setFooter({ text: "ONYX HUB" });
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("ticket_purchase")
-          .setLabel("🛒 Purchase")
-          .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-          .setCustomId("ticket_support")
-          .setLabel("🛠️ Support")
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      await interaction.reply({
-        content: "✅ Panel envoyé.",
-        ephemeral: true,
-      });
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: [row],
-      });
-
-      return;
-    }
-
-    /* =====================================================
-       BUY WITH BRAINROT
-    ===================================================== */
-
-    if (interaction.isButton() && interaction.customId === "buy_brainrot") {
-      const modal = new ModalBuilder()
-        .setCustomId("brainrot_purchase_modal")
-        .setTitle("Buy with Brainrot");
-
-      const robloxUsername = new TextInputBuilder()
-        .setCustomId("roblox_username")
-        .setLabel("Ton pseudo Roblox")
-        .setPlaceholder("Exemple : RobloxPlayer123")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMinLength(3)
-        .setMaxLength(30);
-
-      const brainrotName = new TextInputBuilder()
-        .setCustomId("brainrot_name")
-        .setLabel("Brainrot que tu donnes")
-        .setPlaceholder("Exemple : Secret Brainrot")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMinLength(1)
-        .setMaxLength(100);
-
-      const firstRow = new ActionRowBuilder().addComponents(
-        robloxUsername
-      );
-
-      const secondRow = new ActionRowBuilder().addComponents(
-        brainrotName
-      );
-
-      modal.addComponents(firstRow, secondRow);
-
-      await interaction.showModal(modal);
-      return;
-    }
-
-    /* =====================================================
-       TICKET BUTTONS
-    ===================================================== */
-
-    if (interaction.isButton()) {
-      const customId = interaction.customId;
-
-      /* ---------------------------------------------
-         CREATE PURCHASE TICKET
-      --------------------------------------------- */
-
-      if (customId === "ticket_purchase") {
-        await createTicket(interaction, "purchase");
-        return;
-      }
-
-      /* ---------------------------------------------
-         CREATE SUPPORT TICKET
-      --------------------------------------------- */
-
-      if (customId === "ticket_support") {
-        await createTicket(interaction, "support");
-        return;
-      }
-
-      /* ---------------------------------------------
-         CLAIM
-      --------------------------------------------- */
-
-      if (customId === "ticket_claim") {
-        if (!isStaff(interaction)) {
+        if (
+          !interaction.memberPermissions.has(
+            PermissionFlagsBits.Administrator
+          )
+        ) {
           return interaction.reply({
-            content: "❌ Tu n'as pas la permission de claim ce ticket.",
+            content:
+              "❌ You do not have permission to use this command.",
             ephemeral: true,
           });
         }
 
-        if (claimedTickets.has(interaction.channel.id)) {
+        const embed = new EmbedBuilder()
+          .setColor(COLORS.main)
+          .setTitle("ONYX HUB | Support Center")
+          .setDescription(
+            [
+              "Welcome to **Onyx Hub Support**.",
+              "",
+              "🛒 **Purchase**",
+              "Open a ticket if you want to make a purchase.",
+              `🌐 Shop: ${SHOP_URL}`,
+              "",
+              "🛠️ **Support**",
+              "Open a ticket if you need help or have a question.",
+              "",
+              "Please select a ticket type below.",
+            ].join("\n")
+          )
+          .setFooter({
+            text: "ONYX HUB",
+          });
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("ticket_purchase")
+            .setLabel("🛒 Purchase")
+            .setStyle(ButtonStyle.Primary),
+
+          new ButtonBuilder()
+            .setCustomId("ticket_support")
+            .setLabel("🛠️ Support")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.reply({
+          content: "✅ Ticket panel sent.",
+          ephemeral: true,
+        });
+
+        await interaction.channel.send({
+          embeds: [embed],
+          components: [row],
+        });
+
+        return;
+      }
+
+      /* =====================================================
+         CREATE PURCHASE TICKET
+      ===================================================== */
+
+      if (
+        interaction.isButton() &&
+        interaction.customId === "ticket_purchase"
+      ) {
+        await createTicket(
+          interaction,
+          "purchase"
+        );
+
+        return;
+      }
+
+      /* =====================================================
+         CREATE SUPPORT TICKET
+      ===================================================== */
+
+      if (
+        interaction.isButton() &&
+        interaction.customId === "ticket_support"
+      ) {
+        await createTicket(
+          interaction,
+          "support"
+        );
+
+        return;
+      }
+
+      /* =====================================================
+         BUY WITH BRAINROT
+      ===================================================== */
+
+      if (
+        interaction.isButton() &&
+        interaction.customId === "buy_brainrot"
+      ) {
+        const modal = new ModalBuilder()
+          .setCustomId("brainrot_purchase_modal")
+          .setTitle("Buy with Brainrot");
+
+        const robloxUsername =
+          new TextInputBuilder()
+            .setCustomId("roblox_username")
+            .setLabel("Roblox username")
+            .setPlaceholder(
+              "Example: RobloxPlayer123"
+            )
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(3)
+            .setMaxLength(30);
+
+        const brainrotName =
+          new TextInputBuilder()
+            .setCustomId("brainrot_name")
+            .setLabel("Brainrot you are giving")
+            .setPlaceholder(
+              "Example: Garama"
+            )
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(100);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            robloxUsername
+          ),
+          new ActionRowBuilder().addComponents(
+            brainrotName
+          )
+        );
+
+        await interaction.showModal(modal);
+
+        return;
+      }
+
+      /* =====================================================
+         CLAIM
+      ===================================================== */
+
+      if (
+        interaction.isButton() &&
+        interaction.customId === "ticket_claim"
+      ) {
+        if (!isStaff(interaction)) {
           return interaction.reply({
-            content: "❌ Ce ticket est déjà claim.",
+            content:
+              "❌ You do not have permission to claim this ticket.",
+            ephemeral: true,
+          });
+        }
+
+        if (
+          claimedTickets.has(
+            interaction.channel.id
+          )
+        ) {
+          return interaction.reply({
+            content:
+              "❌ This ticket has already been claimed.",
             ephemeral: true,
           });
         }
@@ -282,8 +356,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
           interaction.user.id
         );
 
+        const type =
+          interaction.channel.name.startsWith(
+            "purchase-"
+          )
+            ? "purchase"
+            : "support";
+
         await interaction.update({
-          components: [ticketButtons(interaction.channel.id)],
+          components: [
+            ticketButtons(
+              interaction.channel.id,
+              type
+            ),
+          ],
         });
 
         await interaction.channel.send({
@@ -291,7 +377,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             new EmbedBuilder()
               .setColor(COLORS.success)
               .setDescription(
-                `🎫 Ce ticket a été claim par ${interaction.user}.`
+                `🎫 This ticket has been claimed by ${interaction.user}.`
               ),
           ],
         });
@@ -299,32 +385,55 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      /* ---------------------------------------------
+      /* =====================================================
          UNCLAIM
-      --------------------------------------------- */
+      ===================================================== */
 
-      if (customId === "ticket_unclaim") {
-        const claimedBy = claimedTickets.get(interaction.channel.id);
+      if (
+        interaction.isButton() &&
+        interaction.customId === "ticket_unclaim"
+      ) {
+        const claimedBy =
+          claimedTickets.get(
+            interaction.channel.id
+          );
 
         if (!claimedBy) {
           return interaction.reply({
-            content: "❌ Ce ticket n'est actuellement pas claim.",
+            content:
+              "❌ This ticket is not currently claimed.",
             ephemeral: true,
           });
         }
 
-        if (claimedBy !== interaction.user.id) {
+        if (
+          claimedBy !== interaction.user.id
+        ) {
           return interaction.reply({
             content:
-              "❌ Seul le membre du staff qui a claim ce ticket peut l'unclaim.",
+              "❌ Only the staff member who claimed this ticket can unclaim it.",
             ephemeral: true,
           });
         }
 
-        claimedTickets.delete(interaction.channel.id);
+        claimedTickets.delete(
+          interaction.channel.id
+        );
+
+        const type =
+          interaction.channel.name.startsWith(
+            "purchase-"
+          )
+            ? "purchase"
+            : "support";
 
         await interaction.update({
-          components: [ticketButtons(interaction.channel.id)],
+          components: [
+            ticketButtons(
+              interaction.channel.id,
+              type
+            ),
+          ],
         });
 
         await interaction.channel.send({
@@ -332,7 +441,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             new EmbedBuilder()
               .setColor(COLORS.warning)
               .setDescription(
-                `🔓 ${interaction.user} a unclaim le ticket.`
+                `🔓 ${interaction.user} unclaimed this ticket.`
               ),
           ],
         });
@@ -340,18 +449,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      /* ---------------------------------------------
-         CLOSE
-      --------------------------------------------- */
+      /* =====================================================
+         CLOSE TICKET
+      ===================================================== */
 
-      if (customId === "ticket_close") {
-        const topic = interaction.channel.topic || "";
+      if (
+        interaction.isButton() &&
+        interaction.customId === "ticket_close"
+      ) {
+        const topic =
+          interaction.channel.topic || "";
 
-        const match = topic.match(/^onyx-ticket:(\d+)$/);
+        const match = topic.match(
+          /^onyx-ticket:(\d+)$/
+        );
 
         if (!match) {
           return interaction.reply({
-            content: "❌ Ce channel n'est pas un ticket Onyx Hub.",
+            content:
+              "❌ This channel is not an Onyx Hub ticket.",
             ephemeral: true,
           });
         }
@@ -364,19 +480,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         if (!canClose) {
           return interaction.reply({
-            content: "❌ Tu ne peux pas fermer ce ticket.",
+            content:
+              "❌ You cannot close this ticket.",
             ephemeral: true,
           });
         }
 
-        claimedTickets.delete(interaction.channel.id);
+        claimedTickets.delete(
+          interaction.channel.id
+        );
 
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
               .setColor(COLORS.error)
               .setDescription(
-                "🔒 Ce ticket sera fermé dans **5 secondes**."
+                "🔒 This ticket will be closed in **5 seconds**."
               ),
           ],
         });
@@ -385,180 +504,206 @@ client.on(Events.InteractionCreate, async (interaction) => {
           try {
             await interaction.channel.delete();
           } catch (error) {
-            console.error("❌ Impossible de supprimer le ticket :", error);
+            console.error(
+              "❌ Could not delete ticket:",
+              error
+            );
           }
         }, 5000);
 
         return;
       }
-    }
 
-    /* =====================================================
-       BRAINROT MODAL
-    ===================================================== */
+      /* =====================================================
+         BRAINROT MODAL
+      ===================================================== */
 
-    if (
-      interaction.isModalSubmit() &&
-      interaction.customId === "brainrot_purchase_modal"
-    ) {
-      const robloxUsername =
-        interaction.fields.getTextInputValue("roblox_username");
+      if (
+        interaction.isModalSubmit() &&
+        interaction.customId ===
+          "brainrot_purchase_modal"
+      ) {
+        const robloxUsername =
+          interaction.fields.getTextInputValue(
+            "roblox_username"
+          );
 
-      const brainrotName =
-        interaction.fields.getTextInputValue("brainrot_name");
+        const brainrotName =
+          interaction.fields.getTextInputValue(
+            "brainrot_name"
+          );
 
-      const user = interaction.user;
-      const channel = interaction.channel;
+        const user = interaction.user;
+        const channel = interaction.channel;
 
-      /* ---------------------------------------------
-         TICKET STATUS
-      --------------------------------------------- */
+        /* ---------------------------------------------
+           MESSAGE IN TICKET
+        --------------------------------------------- */
 
-      const statusEmbed = new EmbedBuilder()
-        .setColor(COLORS.warning)
-        .setTitle("🧠 Buy with Brainrot")
-        .setDescription(
-          [
-            `👤 **Discord :** ${user}`,
-            `🎮 **Roblox :** \`${robloxUsername}\``,
-            `🧠 **Brainrot :** \`${brainrotName}\``,
-            "",
-            "🟡 **Waiting for trade**",
-            "",
-            "Un membre du staff va prendre en charge votre demande.",
-          ].join("\n")
-        )
-        .setTimestamp();
+        await interaction.reply({
+          content:
+            "🧠 **Wait for the owner to take your Brainrot.**",
+        });
 
-      await interaction.reply({
-        embeds: [statusEmbed],
-      });
+        /* ---------------------------------------------
+           SEND DM TO OWNER
+        --------------------------------------------- */
 
-      /* ---------------------------------------------
-         DM STAFF / OWNER
-      --------------------------------------------- */
+        try {
+          const owner =
+            await client.users.fetch(OWNER_ID);
 
-      const ownerId = process.env.OWNER_ID;
+          const dmEmbed = new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setTitle(
+              "🧠 New Brainrot Payment"
+            )
+            .addFields(
+              {
+                name: "👤 Discord",
+                value:
+                  `${user.tag}\n\`${user.id}\``,
+                inline: true,
+              },
+              {
+                name: "🎮 Roblox",
+                value:
+                  `\`${robloxUsername}\``,
+                inline: true,
+              },
+              {
+                name: "🧠 Brainrot",
+                value:
+                  `\`${brainrotName}\``,
+                inline: false,
+              },
+              {
+                name: "🎫 Ticket",
+                value:
+                  `<#${channel.id}>`,
+                inline: false,
+              }
+            )
+            .setFooter({
+              text:
+                "ONYX HUB • Brainrot Payment",
+            })
+            .setTimestamp();
 
-      if (!ownerId) {
-        console.warn(
-          "⚠️ OWNER_ID n'est pas configuré dans les variables d'environnement."
-        );
+          await owner.send({
+            embeds: [dmEmbed],
+          });
+
+          console.log(
+            `🧠 Brainrot request received from ${user.tag}`
+          );
+        } catch (error) {
+          console.error(
+            "❌ Could not send DM to owner:",
+            error
+          );
+        }
 
         return;
       }
+    } catch (error) {
+      console.error(
+        "❌ Interaction error:",
+        error
+      );
 
       try {
-        const owner = await client.users.fetch(ownerId);
-
-        const dmEmbed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle("🧠 Nouvelle demande — Buy with Brainrot")
-          .addFields(
-            {
-              name: "👤 Discord",
-              value: `${user.tag}\n\`${user.id}\``,
-              inline: true,
-            },
-            {
-              name: "🎮 Roblox",
-              value: `\`${robloxUsername}\``,
-              inline: true,
-            },
-            {
-              name: "🧠 Brainrot",
-              value: `\`${brainrotName}\``,
-              inline: false,
-            },
-            {
-              name: "🎫 Ticket",
-              value: `<#${channel.id}>`,
-              inline: false,
-            }
-          )
-          .setFooter({
-            text: "ONYX HUB • Buy with Brainrot",
-          })
-          .setTimestamp();
-
-        await owner.send({
-          embeds: [dmEmbed],
-        });
-      } catch (error) {
-        console.error(
-          "❌ Impossible d'envoyer le DM au propriétaire :",
-          error
-        );
-      }
-
-      return;
+        if (
+          interaction.replied ||
+          interaction.deferred
+        ) {
+          await interaction.followUp({
+            content:
+              "❌ An error occurred.",
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content:
+              "❌ An error occurred.",
+            ephemeral: true,
+          });
+        }
+      } catch {}
     }
-  } catch (error) {
-    console.error("❌ Erreur interaction :", error);
-
-    try {
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: "❌ Une erreur est survenue.",
-          ephemeral: true,
-        });
-      } else {
-        await interaction.reply({
-          content: "❌ Une erreur est survenue.",
-          ephemeral: true,
-        });
-      }
-    } catch {}
   }
-});
+);
 
 /* =========================================================
    CREATE TICKET
 ========================================================= */
 
-async function createTicket(interaction, type) {
+async function createTicket(
+  interaction,
+  type
+) {
   const guild = interaction.guild;
   const user = interaction.user;
 
   const categoryName = "ONYX TICKETS";
 
-  let category = guild.channels.cache.find(
-    (channel) =>
-      channel.type === ChannelType.GuildCategory &&
-      channel.name === categoryName
-  );
+  let category =
+    guild.channels.cache.find(
+      (channel) =>
+        channel.type ===
+          ChannelType.GuildCategory &&
+        channel.name === categoryName
+    );
 
   if (!category) {
-    category = await guild.channels.create({
-      name: categoryName,
-      type: ChannelType.GuildCategory,
-    });
+    category =
+      await guild.channels.create({
+        name: categoryName,
+        type: ChannelType.GuildCategory,
+      });
   }
 
   const channelName =
     `${type}-${user.username}`
       .toLowerCase()
-      .replace(/[^a-z0-9-_]/g, "-")
+      .replace(
+        /[^a-z0-9-_]/g,
+        "-"
+      )
       .slice(0, 90);
 
-  const existingTicket = guild.channels.cache.find(
-    (channel) =>
-      channel.parentId === category.id &&
-      channel.topic === `onyx-ticket:${user.id}`
-  );
+  /* ---------------------------------------------
+     CHECK EXISTING TICKET
+  --------------------------------------------- */
+
+  const existingTicket =
+    guild.channels.cache.find(
+      (channel) =>
+        channel.parentId === category.id &&
+        channel.topic ===
+          `onyx-ticket:${user.id}`
+    );
 
   if (existingTicket) {
     return interaction.reply({
-      content: `❌ Tu as déjà un ticket ouvert : ${existingTicket}`,
+      content:
+        `❌ You already have an open ticket: ${existingTicket}`,
       ephemeral: true,
     });
   }
 
+  /* ---------------------------------------------
+     PERMISSIONS
+  --------------------------------------------- */
+
   const permissionOverwrites = [
     {
       id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel],
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+      ],
     },
+
     {
       id: user.id,
       allow: [
@@ -569,6 +714,7 @@ async function createTicket(interaction, type) {
         PermissionFlagsBits.EmbedLinks,
       ],
     },
+
     {
       id: client.user.id,
       allow: [
@@ -594,64 +740,111 @@ async function createTicket(interaction, type) {
     });
   }
 
-  const channel = await guild.channels.create({
-    name: channelName,
-    type: ChannelType.GuildText,
-    parent: category.id,
-    topic: `onyx-ticket:${user.id}`,
-    permissionOverwrites,
-  });
+  /* ---------------------------------------------
+     CREATE CHANNEL
+  --------------------------------------------- */
 
-  let embed;
+  const channel =
+    await guild.channels.create({
+      name: channelName,
+      type: ChannelType.GuildText,
+      parent: category.id,
+      topic:
+        `onyx-ticket:${user.id}`,
+      permissionOverwrites,
+    });
+
+  /* ---------------------------------------------
+     PURCHASE TICKET
+  --------------------------------------------- */
 
   if (type === "purchase") {
-    embed = new EmbedBuilder()
-      .setColor(COLORS.main)
-      .setTitle("🛒 Purchase Ticket")
-      .setDescription(
-        [
-          `Hello ${user}, welcome to your purchase ticket!`,
-          "",
-          "🛒 This ticket is for purchases.",
-          "",
-          `🌐 Shop: ${SHOP_URL}`,
-          "",
-          "You can also use **Buy with Brainrot** below if you want to pay with a Brainrot.",
-          "",
-          "Please wait for a staff member to assist you.",
-        ].join("\n")
-      );
-  } else {
-    embed = new EmbedBuilder()
-      .setColor(COLORS.main)
-      .setTitle("🛠️ Support Ticket")
-      .setDescription(
-        [
-          `Hello ${user}, welcome to your support ticket!`,
-          "",
-          "🛠️ This ticket is for help and support only.",
-          "",
-          "Please explain your problem or question as clearly as possible.",
-          "",
-          "You can provide:",
-          "• Screenshots",
-          "• Error messages",
-          "• Details about your problem",
-          "• Any information that could help our team",
-          "",
-          "Please wait for a staff member to respond.",
-        ].join("\n")
-      );
+    const embed =
+      new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setTitle(
+          "🛒 Purchase Ticket"
+        )
+        .setDescription(
+          [
+            `Hello ${user}, welcome to your purchase ticket!`,
+            "",
+            "🛒 This ticket is for purchases.",
+            "",
+            `🌐 Shop: ${SHOP_URL}`,
+            "",
+            "You can also use **Buy with Brainrot** if you want to pay with a Brainrot.",
+            "",
+            "Please wait for a staff member to assist you.",
+          ].join("\n")
+        )
+        .setFooter({
+          text: "ONYX HUB",
+        });
+
+    await channel.send({
+      content: `${user}`,
+      embeds: [embed],
+      components: [
+        ticketButtons(
+          channel.id,
+          "purchase"
+        ),
+      ],
+    });
   }
 
-  await channel.send({
-    content: `${user}`,
-    embeds: [embed],
-    components: [ticketButtons(channel.id)],
-  });
+  /* ---------------------------------------------
+     SUPPORT TICKET
+  --------------------------------------------- */
+
+  if (type === "support") {
+    const embed =
+      new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setTitle(
+          "🛠️ Support Ticket"
+        )
+        .setDescription(
+          [
+            `Hello ${user}, welcome to your support ticket!`,
+            "",
+            "🛠️ This ticket is for help and support only.",
+            "",
+            "Please explain your problem or question as clearly as possible.",
+            "",
+            "You can provide:",
+            "• Screenshots",
+            "• Error messages",
+            "• Details about your problem",
+            "• Any information that could help our team",
+            "",
+            "Please wait for a staff member to respond.",
+          ].join("\n")
+        )
+        .setFooter({
+          text: "ONYX HUB",
+        });
+
+    await channel.send({
+      content: `${user}`,
+      embeds: [embed],
+      components: [
+        ticketButtons(
+          channel.id,
+          "support"
+        ),
+      ],
+    });
+  }
+
+  /* ---------------------------------------------
+     CONFIRM TICKET CREATION
+  --------------------------------------------- */
 
   await interaction.reply({
-    content: `✅ Ton ticket a été créé : ${channel}`,
+    content:
+      `✅ Your ticket has been created: ${channel}`,
     ephemeral: true,
   });
 }
