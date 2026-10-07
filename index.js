@@ -105,6 +105,146 @@ async function privateReply(message, payload) {
   return fallback;
 }
 
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
+
+const DURATION_UNITS = {
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000,
+};
+
+/*
+  Parses durations like "30m", "1h", "1d", "1h30m" or "45" (minutes).
+  Returns milliseconds, or null if the text is not a duration.
+*/
+function parseDuration(text) {
+  if (!text) return null;
+
+  const value = text.toLowerCase();
+
+  if (/^\d+$/.test(value)) return Number(value) * DURATION_UNITS.m;
+
+  if (!/^(\d+[smhdw])+$/.test(value)) return null;
+
+  let total = 0;
+
+  for (const [, amount, unit] of value.matchAll(/(\d+)([smhdw])/g)) {
+    total += Number(amount) * DURATION_UNITS[unit];
+  }
+
+  return total;
+}
+
+function formatDuration(ms) {
+  const parts = [];
+  let rest = Math.floor(ms / 1000);
+
+  for (const [unit, size] of [["d", 86400], ["h", 3600], ["m", 60], ["s", 1]]) {
+    const amount = Math.floor(rest / size);
+    if (amount) parts.push(`${amount}${unit}`);
+    rest %= size;
+  }
+
+  return parts.join(" ") || "0s";
+}
+
+/* =====================================================
+   LOCK / UNLOCK / NUKE
+===================================================== */
+
+async function setChannelLock(channel, locked, moderator) {
+  await channel.permissionOverwrites.edit(
+    channel.guild.roles.everyone,
+    {
+      SendMessages: locked ? false : null,
+      SendMessagesInThreads: locked ? false : null,
+      CreatePublicThreads: locked ? false : null,
+      CreatePrivateThreads: locked ? false : null,
+    },
+    { reason: `${locked ? "Locked" : "Unlocked"} by ${moderator.tag}` }
+  );
+
+  await channel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(locked ? COLORS.error : COLORS.success)
+        .setDescription(
+          locked
+            ? `🔒 This channel has been locked by ${moderator}.`
+            : `🔓 This channel has been unlocked by ${moderator}.`
+        ),
+    ],
+  });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(locked ? COLORS.error : COLORS.success)
+      .setTitle(locked ? "🔒 Channel Locked" : "🔓 Channel Unlocked")
+      .addFields(
+        { name: "Channel", value: `${channel}` },
+        { name: "Moderator", value: `${moderator}` }
+      )
+      .setTimestamp()
+  );
+}
+
+function nukeConfirmButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("nuke_confirm")
+      .setLabel("Confirm Nuke")
+      .setEmoji("💣")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("nuke_cancel")
+      .setLabel("Cancel")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+const NUKE_WARNING =
+  "⚠️ This will delete this channel and recreate it with the same name, topic, category, position and permissions. **All messages will be lost.**";
+
+/*
+  Recreates the channel with the same settings and permission overwrites
+  (channel.clone copies them), then deletes the old one.
+*/
+async function nukeChannel(channel, moderator) {
+  const newChannel = await channel.clone({
+    reason: `Nuked by ${moderator.tag}`,
+  });
+
+  await newChannel.setPosition(channel.position).catch(() => {});
+  await channel.delete(`Nuked by ${moderator.tag}`);
+
+  await newChannel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(COLORS.main)
+        .setDescription(`💣 This channel has been nuked by ${moderator}.`)
+        .setTimestamp(),
+    ],
+  });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.warning)
+      .setTitle("💣 Channel Nuked")
+      .addFields(
+        { name: "Channel", value: `${newChannel} (#${channel.name})` },
+        { name: "Moderator", value: `${moderator}` }
+      )
+      .setTimestamp()
+  );
+
+  return newChannel;
+}
+
 function ticketPermissionOverwrites(guild, user) {
   return [
     {
@@ -406,7 +546,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets"];
+    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets", "lock", "unlock", "nuke"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return privateReply(message, "❌ Only staff can use this command.");
     }
@@ -418,7 +558,8 @@ client.on(Events.MessageCreate, async (message) => {
         .setDescription([
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
-          "**Moderation:** `!warn @user reason`, `!timeout @user minutes reason`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Channels:** `!lock`, `!unlock`, `!nuke`",
           "**Staff:** `!announce Title | message`",
           "",
           "Every command is also available with `/`.",
@@ -471,6 +612,20 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
     }
 
+    if (command === "lock" || command === "unlock") {
+      await setChannelLock(message.channel, command === "lock", message.author);
+      return message.delete().catch(() => {});
+    }
+
+    if (command === "nuke") {
+      await message.delete().catch(() => {});
+      return message.channel.send({
+        content: `${message.author} ${NUKE_WARNING}`,
+        components: [nukeConfirmButtons()],
+        allowedMentions: { users: [message.author.id] },
+      });
+    }
+
     const target = message.mentions.members.first();
     if (["warn","timeout","kick","ban"].includes(command) && !target) return message.reply("❌ Usage: !" + command + " @user ...");
 
@@ -481,11 +636,12 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     if (command === "timeout") {
-      const minutes = Number(args[1]);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 40320) return message.reply("❌ Usage: `!timeout @user minutes reason`");
-      const reason = args.slice(2).join(" ") || "No reason provided.";
-      await target.timeout(minutes * 60 * 1000, reason);
-      return message.reply(`⏱️ ${target} has been timed out for ${minutes} minute(s).`);
+      const parsed = parseDuration(args[1]);
+      const duration = parsed ?? DEFAULT_TIMEOUT_MS;
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return message.reply("❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
+      await target.timeout(duration, reason);
+      return message.reply(`⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
@@ -606,6 +762,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/kick` — Kick a member.\n" +
                 "`/ban` — Ban a member.\n" +
                 "`/clear` — Delete messages.",
+            },
+            {
+              name: "🔒 Channels",
+              value:
+                "`/lock` — Lock the current channel.\n" +
+                "`/unlock` — Unlock the current channel.\n" +
+                "`/nuke` — Recreate the channel with the same permissions.",
             },
             {
               name: "ℹ️ Information",
@@ -813,7 +976,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         const member = interaction.options.getMember("user");
-        const minutes = interaction.options.getInteger("minutes", true);
+        const durationText = interaction.options.getString("duration");
+        const parsed = parseDuration(durationText);
+        const duration = parsed ?? DEFAULT_TIMEOUT_MS;
         const reason =
           interaction.options.getString("reason") || "No reason provided.";
 
@@ -824,10 +989,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        await member.timeout(minutes * 60 * 1000, reason);
+        if (
+          (durationText && parsed === null) ||
+          duration < 1000 ||
+          duration > MAX_TIMEOUT_MS
+        ) {
+          return interaction.reply({
+            content:
+              "❌ Invalid duration. Use something like `30m`, `1h`, `1d` (max 28d).",
+            ephemeral: true,
+          });
+        }
+
+        await member.timeout(duration, reason);
 
         return interaction.reply({
-          content: `⏱️ ${member} has been timed out for ${minutes} minute(s).`,
+          content: `⏱️ ${member} has been timed out for ${formatDuration(duration)}.`,
           ephemeral: true,
         });
       }
@@ -894,6 +1071,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      /* -----------------------------------------------
+         /lock /unlock /nuke
+      ----------------------------------------------- */
+
+      if (command === "lock" || command === "unlock" || command === "nuke") {
+        if (!isStaff(interaction)) {
+          return interaction.reply({
+            content: "❌ Only staff can use this command.",
+            ephemeral: true,
+          });
+        }
+
+        if (command === "nuke") {
+          return interaction.reply({
+            content: NUKE_WARNING,
+            components: [nukeConfirmButtons()],
+            ephemeral: true,
+          });
+        }
+
+        await setChannelLock(
+          interaction.channel,
+          command === "lock",
+          interaction.user
+        );
+
+        return interaction.reply({
+          content: command === "lock" ? "🔒 Channel locked." : "🔓 Channel unlocked.",
+          ephemeral: true,
+        });
+      }
+
       return;
     }
 
@@ -902,6 +1111,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
     ================================================= */
 
     if (!interaction.isButton()) return;
+
+    /* -----------------------------------------------
+       NUKE CONFIRMATION
+    ----------------------------------------------- */
+
+    if (
+      interaction.customId === "nuke_confirm" ||
+      interaction.customId === "nuke_cancel"
+    ) {
+      if (!isStaff(interaction)) {
+        return interaction.reply({
+          content: "❌ Only staff can use this.",
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === "nuke_cancel") {
+        return interaction.update({
+          content: "❌ Nuke cancelled.",
+          components: [],
+        });
+      }
+
+      await interaction.update({
+        content: "💣 Nuking channel...",
+        components: [],
+      });
+
+      await nukeChannel(interaction.channel, interaction.user);
+      return;
+    }
 
     /* -----------------------------------------------
        CREATE TICKETS
@@ -1218,13 +1458,11 @@ async function registerCommands() {
           .setDescription("Member to timeout.")
           .setRequired(true)
       )
-      .addIntegerOption((option) =>
+      .addStringOption((option) =>
         option
-          .setName("minutes")
-          .setDescription("Timeout duration in minutes.")
-          .setMinValue(1)
-          .setMaxValue(40320)
-          .setRequired(true)
+          .setName("duration")
+          .setDescription("Duration, e.g. 30m, 1h, 1d (default: 10m, max: 28d).")
+          .setRequired(false)
       )
       .addStringOption((option) =>
         option
@@ -1264,6 +1502,18 @@ async function registerCommands() {
           .setDescription("Reason for the ban.")
           .setRequired(false)
       ),
+
+    new SlashCommandBuilder()
+      .setName("lock")
+      .setDescription("Lock the current channel."),
+
+    new SlashCommandBuilder()
+      .setName("unlock")
+      .setDescription("Unlock the current channel."),
+
+    new SlashCommandBuilder()
+      .setName("nuke")
+      .setDescription("Delete and recreate the current channel with the same permissions."),
 
   ];
 
