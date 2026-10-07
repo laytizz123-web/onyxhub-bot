@@ -732,6 +732,51 @@ async function runTicketAi(message) {
   }
 }
 
+/* !aitest (staff): calls OpenAI once and shows the exact result or error. */
+client.on(Events.MessageCreate, async (message) => {
+  if (
+    message.author.bot ||
+    !message.guild ||
+    message.content.trim().toLowerCase() !== "!aitest"
+  ) {
+    return;
+  }
+
+  const member = message.member;
+  const allowed =
+    member?.permissions?.has(PermissionFlagsBits.ManageChannels) ||
+    member?.roles?.cache?.has(STAFF_ROLE_ID) ||
+    member?.roles?.cache?.has(OWNER_ROLE_ID);
+
+  if (!allowed) return;
+
+  if (!AI_ENABLED) {
+    return message.reply(
+      "❌ AI is off: `OPENAI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
+    );
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: AI_MODEL,
+      max_completion_tokens: 2000,
+      messages: [{ role: "user", content: "Say hello in one short sentence." }],
+    });
+
+    const choice = response.choices?.[0];
+
+    return message.reply(
+      `✅ \`${AI_MODEL}\` answered: ${choice?.message?.content || "(empty answer, finish_reason: " + choice?.finish_reason + ")"}`
+    );
+  } catch (error) {
+    const reason = error?.error?.message || error?.message || String(error);
+
+    return message.reply(
+      `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? "?"}): ${reason}`.slice(0, 1900)
+    );
+  }
+});
+
 client.on(Events.MessageCreate, async (message) => {
   if (!AI_ENABLED) return;
 
