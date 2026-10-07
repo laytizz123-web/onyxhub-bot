@@ -19,7 +19,14 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
+/* =====================================================
+   CONFIG
+===================================================== */
+
 const SHOP_URL = "https://onyxhub7.mysellauth.com/";
+
+const OWNER_ROLE_ID = "1555941354096427040";
+const STAFF_ROLE_ID = "1557110463907766432";
 
 const COLORS = {
   main: 0x7c3aed,
@@ -115,7 +122,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     /* =================================================
-       ONLY BUTTONS AFTER THIS
+       BUTTONS
     ================================================= */
 
     if (!interaction.isButton()) return;
@@ -199,6 +206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ],
         },
 
+        // Ticket owner
         {
           id: user.id,
           allow: [
@@ -210,6 +218,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ],
         },
 
+        // Bot
         {
           id: client.user.id,
           allow: [
@@ -219,15 +228,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             PermissionFlagsBits.ManageChannels,
           ],
         },
-      ];
 
-      /* -------------------------------------------------
-         STAFF ROLE
-      ------------------------------------------------- */
-
-      if (process.env.STAFF_ROLE_ID) {
-        permissionOverwrites.push({
-          id: process.env.STAFF_ROLE_ID,
+        // Owner role
+        {
+          id: OWNER_ROLE_ID,
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -236,8 +240,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
             PermissionFlagsBits.EmbedLinks,
             PermissionFlagsBits.ManageChannels,
           ],
-        });
-      }
+        },
+
+        // Staff role
+        {
+          id: STAFF_ROLE_ID,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        },
+      ];
 
       /* -------------------------------------------------
          CREATE CHANNEL
@@ -267,24 +284,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else {
           const owner = await client.users.fetch(ownerId);
 
-          /* -------------------------------------------------
-             TICKET TYPE
-          ------------------------------------------------- */
-
           const ticketType = isPurchase
             ? "🛒 Purchase"
             : "🛠️ Support";
-
-          /* -------------------------------------------------
-             DM EMBED
-          ------------------------------------------------- */
 
           const dmEmbed = new EmbedBuilder()
             .setColor(COLORS.main)
             .setTitle("🎫 New Onyx Hub Ticket")
             .setThumbnail(user.displayAvatarURL())
             .setDescription(
-              `A new ticket has been opened.`
+              "A new ticket has been opened."
             )
             .addFields(
               {
@@ -321,7 +330,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
               {
                 name: "🔗 Direct Ticket Link",
-                value: `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
+                value:
+                  `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
                 inline: false,
               }
             )
@@ -391,10 +401,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setTimestamp();
 
         await ticketChannel.send({
-          content: `${user}`,
+          content:
+            `<@&${OWNER_ROLE_ID}> <@&${STAFF_ROLE_ID}> ${user}`,
           embeds: [purchaseEmbed],
           components: [ticketButtons],
           allowedMentions: {
+            roles: [
+              OWNER_ROLE_ID,
+              STAFF_ROLE_ID,
+            ],
             users: [user.id],
           },
         });
@@ -432,10 +447,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setTimestamp();
 
         await ticketChannel.send({
-          content: `${user}`,
+          content:
+            `<@&${OWNER_ROLE_ID}> <@&${STAFF_ROLE_ID}> ${user}`,
           embeds: [supportEmbed],
           components: [ticketButtons],
           allowedMentions: {
+            roles: [
+              OWNER_ROLE_ID,
+              STAFF_ROLE_ID,
+            ],
             users: [user.id],
           },
         });
