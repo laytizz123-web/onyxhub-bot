@@ -931,7 +931,7 @@ async function runTicketAi(message) {
 
   if (wantsStaff) {
     await channel.send({
-      content: `${HANDOFF_PREFIX}<@&${STAFF_ROLE_ID}> the customer needs a human, please take over this ticket.`,
+      content: `${HANDOFF_PREFIX}<@&${STAFF_ROLE_ID}> This user has a specific request, please take the ticket.`,
       allowedMentions: { roles: [STAFF_ROLE_ID] },
     });
   }
