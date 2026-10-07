@@ -561,7 +561,7 @@ client.once(Events.ClientReady, (bot) => {
       ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
       : process.env.AI_ENABLED === "false"
         ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
-        : "🤖 AI ticket assistant OFF: OPENAI_API_KEY is missing in the environment variables."
+        : "🤖 AI ticket assistant OFF: GEMINI_API_KEY is missing in the environment variables."
   );
 });
 
@@ -597,18 +597,20 @@ client.on(Events.GuildMemberAdd, async (member) => {
 /*
   Answers the ticket owner in Purchase and Support tickets until a staff
   member joins the conversation, claims the ticket, or the AI asks for staff.
-  Uses ChatGPT (OpenAI). Needs OPENAI_API_KEY (Railway variable).
+  Uses Google Gemini. Needs GEMINI_API_KEY (Railway variable).
   AI_ENABLED=false turns it off, AI_MODEL overrides the model.
 */
 
-const OpenAI = require("openai");
+const { GoogleGenAI } = require("@google/genai");
 
-const AI_MODEL = process.env.AI_MODEL || "gpt-5";
+const AI_MODEL = process.env.AI_MODEL || "gemini-2.5-flash";
 const AI_ENABLED =
-  Boolean(process.env.OPENAI_API_KEY) &&
+  Boolean(process.env.GEMINI_API_KEY) &&
   process.env.AI_ENABLED !== "false";
 
-const openai = AI_ENABLED ? new OpenAI() : null;
+const gemini = AI_ENABLED
+  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+  : null;
 
 const AI_PREFIX = "🤖 ";
 const HANDOFF_PREFIX = "🔔 ";
@@ -644,6 +646,45 @@ function isAiReply(message) {
     message.author.id === client.user.id &&
     message.content.startsWith(AI_PREFIX)
   );
+}
+
+/* turns: [{ role: "user" | "assistant", content }] -> Gemini answer text. */
+async function aiGenerate(turns) {
+  // Gemini wants "user"/"model" roles, with same-role turns merged.
+  const contents = [];
+
+  for (const turn of turns) {
+    const role = turn.role === "assistant" ? "model" : "user";
+    const last = contents[contents.length - 1];
+
+    if (last && last.role === role) {
+      last.parts[0].text += `\n${turn.content}`;
+    } else {
+      contents.push({ role, parts: [{ text: turn.content }] });
+    }
+  }
+
+  const response = await gemini.models.generateContent({
+    model: AI_MODEL,
+    contents,
+    config: {
+      systemInstruction: AI_SYSTEM_PROMPT,
+      maxOutputTokens: 4000,
+    },
+  });
+
+  const text = (response.text || "").trim();
+
+  if (!text) {
+    const why =
+      response.promptFeedback?.blockReason ||
+      response.candidates?.[0]?.finishReason ||
+      "unknown";
+
+    throw new Error(`empty answer from ${AI_MODEL} (${why})`);
+  }
+
+  return text;
 }
 
 async function runTicketAi(message) {
@@ -687,31 +728,12 @@ async function runTicketAi(message) {
   await channel.sendTyping().catch(() => {});
   const typing = setInterval(() => channel.sendTyping().catch(() => {}), 8000);
 
-  let response;
+  let text;
 
   try {
-    response = await openai.chat.completions.create({
-      model: AI_MODEL,
-      max_completion_tokens: 4000,
-      messages: [{ role: "system", content: AI_SYSTEM_PROMPT }, ...turns],
-    });
+    text = await aiGenerate(turns);
   } finally {
     clearInterval(typing);
-  }
-
-  const choice = response.choices?.[0];
-
-  if (choice?.message?.refusal) {
-    console.warn(`AI refused to answer in #${channel.name}.`);
-    return;
-  }
-
-  let text = (choice?.message?.content || "").trim();
-
-  if (!text) {
-    throw new Error(
-      `empty answer from ${AI_MODEL} (finish_reason: ${choice?.finish_reason})`
-    );
   }
 
   const wantsStaff = text.includes("[[STAFF]]");
@@ -732,7 +754,7 @@ async function runTicketAi(message) {
   }
 }
 
-/* !aitest (staff): calls OpenAI once and shows the exact result or error. */
+/* !aitest (staff): calls Gemini once and shows the exact result or error. */
 client.on(Events.MessageCreate, async (message) => {
   if (
     message.author.bot ||
@@ -752,27 +774,19 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!AI_ENABLED) {
     return message.reply(
-      "❌ AI is off: `OPENAI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
+      "❌ AI is off: `GEMINI_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
     );
   }
 
   try {
-    const response = await openai.chat.completions.create({
-      model: AI_MODEL,
-      max_completion_tokens: 2000,
-      messages: [{ role: "user", content: "Say hello in one short sentence." }],
-    });
+    const answer = await aiGenerate([
+      { role: "user", content: "Say hello in one short sentence." },
+    ]);
 
-    const choice = response.choices?.[0];
-
-    return message.reply(
-      `✅ \`${AI_MODEL}\` answered: ${choice?.message?.content || "(empty answer, finish_reason: " + choice?.finish_reason + ")"}`
-    );
+    return message.reply(`✅ \`${AI_MODEL}\` answered: ${answer}`.slice(0, 1900));
   } catch (error) {
-    const reason = error?.error?.message || error?.message || String(error);
-
     return message.reply(
-      `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? "?"}): ${reason}`.slice(0, 1900)
+      `❌ \`${AI_MODEL}\` failed (HTTP ${error?.status ?? error?.code ?? "?"}): ${error?.message || error}`.slice(0, 1900)
     );
   }
 });
@@ -818,7 +832,7 @@ client.on(Events.MessageCreate, async (message) => {
   } catch (error) {
     console.error("AI ticket error:", error);
 
-    const reason = error?.error?.message || error?.message || String(error);
+    const reason = error?.message || String(error);
 
     await sendLog(
       message.guild,
