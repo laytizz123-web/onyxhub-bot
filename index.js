@@ -441,6 +441,12 @@ async function createTicket(interaction, type) {
     description = [
       `Hello ${user}, welcome to your partnership ticket!`,
       "",
+      "**How it works**",
+      "1️⃣ Send your server ad in this ticket.",
+      "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
+      "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
+      "4️⃣ Post our ad in your server. A staff member will take it from there.",
+      "",
       "**Send your ad.**",
     ].join("\n");
   }
