@@ -445,9 +445,7 @@ async function createTicket(interaction, type) {
       "1️⃣ Send your server ad in this ticket.",
       "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
       "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
-      "4️⃣ Post our ad in your server. A staff member will take it from there.",
-      "",
-      "**Send your ad.**",
+      "4️⃣ Post our ad in your server. The ticket is then locked.",
     ].join("\n");
   }
 
@@ -480,6 +478,10 @@ async function createTicket(interaction, type) {
       users: [user.id],
     },
   });
+
+  if (type === "partnership") {
+    await ticketChannel.send("Send your ad.");
+  }
 
   /* Original owner DM notification, kept and translated. */
   try {
@@ -1156,6 +1158,52 @@ async function removeQuestionButtons(channel, state) {
   state.questionId = null;
 }
 
+/*
+  Once everything is sent the ticket is renamed "done" and locked: nobody can write anymore
+  (the buttons, like Close Ticket, still work; people with the Administrator permission can always write).
+*/
+async function lockPartnershipTicket(channel, user) {
+  const reason = "Partnership done";
+  const deny = {
+    SendMessages: false,
+    SendMessagesInThreads: false,
+    CreatePublicThreads: false,
+    CreatePrivateThreads: false,
+    AddReactions: false,
+  };
+
+  const everyone = [
+    channel.guild.roles.everyone,
+    user,
+    STAFF_ROLE_ID,
+    OWNER_ROLE_ID,
+    MEMBER_ROLE_ID,
+  ];
+
+  for (const target of everyone) {
+    await channel.permissionOverwrites
+      .edit(target, deny, { reason })
+      .catch((error) =>
+        console.error("Could not lock the ticket:", error?.message || error)
+      );
+  }
+
+  // The bot itself keeps its access.
+  await channel.permissionOverwrites
+    .edit(
+      client.user.id,
+      { ViewChannel: true, SendMessages: true, ManageChannels: true },
+      { reason }
+    )
+    .catch(() => {});
+
+  await channel
+    .setName("done", reason)
+    .catch((error) =>
+      console.error("Could not rename the ticket:", error?.message || error)
+    );
+}
+
 async function answerPartnershipAd(channel, user, isYes) {
   const state = partnershipTickets.get(channel.id);
 
@@ -1214,6 +1262,9 @@ async function answerPartnershipAd(channel, user, isYes) {
       )
       .setTimestamp()
   );
+
+  // Only lock when everything went through; otherwise staff must be able to write.
+  if (posted) await lockPartnershipTicket(channel, user);
 }
 
 async function handlePartnershipMessage(message) {
