@@ -1080,16 +1080,47 @@ client.on(Events.MessageCreate, async (message) => {
 const PARTNERSHIP_CHANNEL_ID =
   process.env.PARTNERSHIP_CHANNEL_ID || "1556371939277152306";
 
-/* Our own ad, sent to the partner. Replace it with your real ad (or set the OUR_AD variable, use \n for line breaks). */
-const OUR_AD = (
-  process.env.OUR_AD ||
-  [
-    "**ONYX HUB** | Steal a Brainrot script",
-    "• Speed boost, auto steal, anti-ragdoll, TP tools, ESP and more",
-    "• Works on PC and mobile",
-    "• Join us: https://discord.gg/onyxhb",
-  ].join("\n")
-).replace(/\\n/g, "\n");
+/* Our own ad, sent to the partner. The OUR_AD variable (use \n for line breaks) overrides it. */
+const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・ORYX HUB
+
+**ORYX HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
+
+### ⚡・WHY ORYX HUB?
+
+> 🏆 ・**The BEST Duel Script / All Gear**
+> <:update:1360465468393001110> ・**Daily updates** & improvements
+> 💡 ・**Completely open to suggestions**
+> <a:Moderator:1524824578055082238> ・Constantly adding new features
+> 📰 ・Active community & frequent announcements
+> <:Friends:1401940276687405147> ・Friendly and active community
+
+### 🤖・AI ASSISTANCE IN TICKETS
+
+Need help or have a question? Our **AI assistant is available to help you 24/7**.
+
+> 🤖 ・**Instant AI assistance**
+> ⚡ ・Fast answers to your questions
+> 💡 ・Help with common issues & information
+
+### 💡・COMMUNITY FIRST
+
+We are **completely open to suggestions**.
+Have an idea, feature request, or improvement? Let us know — your feedback helps us make **ORYX HUB** even better.
+
+### 🎫・24/7 SUPPORT
+
+Our **ticket system is open 24/7**.
+Need help with your Key, Script, or have a question? **Open a ticket anytime and our staff or our AI will assist you as soon as possible.**
+
+> **ORYX HUB**
+> *The best. Updated daily. Built with the community. 🟢*
+
+discord.gg/onyxhb
+||@everyone||`;
+
+const OUR_AD = process.env.OUR_AD
+  ? process.env.OUR_AD.replace(/\\n/g, "\n")
+  : DEFAULT_OUR_AD;
 
 const YES_ANSWER = /^\s*(yes|y|yeah|yep|yup|oui|ouais|ye)\s*[.!]*\s*$/i;
 const NO_ANSWER = /^\s*(no|n|nope|nah|non)\s*[.!]*\s*$/i;
