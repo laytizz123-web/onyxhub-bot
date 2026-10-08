@@ -55,6 +55,9 @@ const COLORS = {
 
 const claimedTickets = new Map();
 
+// channelId -> { step: "ad" | "confirm" | "done", adText, attachments, questionId }
+const partnershipTickets = new Map();
+
 /* =====================================================
    HELPERS
 ===================================================== */
@@ -438,13 +441,7 @@ async function createTicket(interaction, type) {
     description = [
       `Hello ${user}, welcome to your partnership ticket!`,
       "",
-      "Please send the following information:",
-      "• Server name",
-      "• Server invite",
-      "• Member count",
-      "• Partnership offer/details",
-      "",
-      "Our team will review your request.",
+      "**Send your ad.**",
     ].join("\n");
   }
 
@@ -595,7 +592,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 ===================================================== */
 
 /*
-  Answers the ticket owner in Purchase, Support and Partnership tickets until a staff
+  Answers the ticket owner in Purchase and Support tickets (Partnership tickets use the ad flow below) until a staff
   member joins the conversation, claims the ticket, or the customer asks for staff.
   Uses Groq (free tier, OpenAI-compatible API). Needs GROQ_API_KEY.
   AI_ENABLED=false turns it off, AI_MODEL overrides the model.
@@ -1020,7 +1017,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const [, ownerId, type] = channel.topic.split(":");
 
-    if (type !== "purchase" && type !== "support" && type !== "partnership") return;
+    if (type !== "purchase" && type !== "support") return;
     if (message.author.id !== ownerId) return;
     if (claimedTickets.has(channel.id)) return;
     if (message.content.startsWith("!")) return;
@@ -1066,6 +1063,182 @@ client.on(Events.MessageCreate, async (message) => {
         allowedMentions: { roles: [STAFF_ROLE_ID] },
       })
       .catch(() => {});
+  }
+});
+
+/* =====================================================
+   PARTNERSHIP TICKETS (ad exchange)
+===================================================== */
+
+/*
+  1. The ticket opens with "Send your ad."
+  2. The customer sends a message -> "Is it your ad?" (Yes / No buttons, or typing yes / no).
+  3. Yes -> their ad is posted in the partnership channel and our ad is sent in the ticket.
+     No  -> "Send your ad." again.
+*/
+
+const PARTNERSHIP_CHANNEL_ID =
+  process.env.PARTNERSHIP_CHANNEL_ID || "1556371939277152306";
+
+/* Our own ad, sent to the partner. Replace it with your real ad (or set the OUR_AD variable, use \n for line breaks). */
+const OUR_AD = (
+  process.env.OUR_AD ||
+  [
+    "**ONYX HUB** | Steal a Brainrot script",
+    "• Speed boost, auto steal, anti-ragdoll, TP tools, ESP and more",
+    "• Works on PC and mobile",
+    "• Join us: https://discord.gg/onyxhb",
+  ].join("\n")
+).replace(/\\n/g, "\n");
+
+const YES_ANSWER = /^\s*(yes|y|yeah|yep|yup|oui|ouais|ye)\s*[.!]*\s*$/i;
+const NO_ANSWER = /^\s*(no|n|nope|nah|non)\s*[.!]*\s*$/i;
+
+function partnershipButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("partner_yes")
+      .setLabel("Yes")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("partner_no")
+      .setLabel("No")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+async function removeQuestionButtons(channel, state) {
+  if (!state?.questionId) return;
+
+  const question = await channel.messages
+    .fetch(state.questionId)
+    .catch(() => null);
+
+  if (question) await question.edit({ components: [] }).catch(() => {});
+
+  state.questionId = null;
+}
+
+async function answerPartnershipAd(channel, user, isYes) {
+  const state = partnershipTickets.get(channel.id);
+
+  if (!state || state.step !== "confirm") return;
+
+  await removeQuestionButtons(channel, state);
+
+  if (!isYes) {
+    state.step = "ad";
+    state.adText = "";
+    state.attachments = [];
+    await channel.send("Send your ad.");
+    return;
+  }
+
+  state.step = "done";
+
+  // Their ad goes to our partnership channel (no mention can ping anyone).
+  let posted = true;
+
+  try {
+    const target = await channel.guild.channels.fetch(PARTNERSHIP_CHANNEL_ID);
+
+    await target.send({
+      content: state.adText ? state.adText.slice(0, 2000) : undefined,
+      files: state.attachments?.length ? state.attachments : undefined,
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    posted = false;
+    console.error("Could not post the partner ad:", error?.message || error);
+  }
+
+  if (!posted) {
+    await channel.send({
+      content: `<@&${STAFF_ROLE_ID}> I could not post this ad in the partnership channel, please check it.`,
+      allowedMentions: { roles: [STAFF_ROLE_ID] },
+    });
+  } else {
+    await channel.send(
+      "Your ad has been posted in our partnership channel. Here is our ad, please post it in your server:"
+    );
+  }
+
+  await channel.send({ content: OUR_AD, allowedMentions: { parse: [] } });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.info)
+      .setTitle("🤝 Partnership ad exchanged")
+      .addFields(
+        { name: "User", value: `${user} (\`${user.id}\`)` },
+        { name: "Ticket", value: `${channel}`, inline: true },
+        { name: "Posted", value: posted ? "yes" : "no", inline: true }
+      )
+      .setTimestamp()
+  );
+}
+
+async function handlePartnershipMessage(message) {
+  const channel = message.channel;
+  const [, ownerId, type] = channel.topic.split(":");
+
+  if (type !== "partnership" || message.author.id !== ownerId) return;
+  if (claimedTickets.has(channel.id)) return;
+  if (message.content.startsWith("!")) return;
+
+  // No state (the bot restarted): start again from the first step.
+  let state = partnershipTickets.get(channel.id);
+
+  if (!state) {
+    state = { step: "ad", adText: "", attachments: [], questionId: null };
+    partnershipTickets.set(channel.id, state);
+  }
+
+  if (state.step === "done") return;
+
+  const text = message.content.trim();
+
+  if (state.step === "confirm") {
+    if (YES_ANSWER.test(text)) return answerPartnershipAd(channel, message.author, true);
+    if (NO_ANSWER.test(text)) return answerPartnershipAd(channel, message.author, false);
+  }
+
+  // Anything else is (a new version of) the ad.
+  const attachments = [...message.attachments.values()].map((file) => file.url);
+
+  if (!text && !attachments.length) return;
+
+  await removeQuestionButtons(channel, state);
+
+  state.step = "confirm";
+  state.adText = text;
+  state.attachments = attachments;
+
+  const question = await channel.send({
+    content: "Is it your ad?",
+    components: [partnershipButtons()],
+  });
+
+  state.questionId = question.id;
+}
+
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    const channel = message.channel;
+
+    if (
+      message.author.bot ||
+      !message.guild ||
+      channel.type !== ChannelType.GuildText ||
+      !channel.topic?.startsWith("oryx-ticket:")
+    ) {
+      return;
+    }
+
+    await handlePartnershipMessage(message);
+  } catch (error) {
+    console.error("Partnership flow error:", error);
   }
 });
 
@@ -1679,6 +1852,45 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     /* -----------------------------------------------
+       PARTNERSHIP: IS IT YOUR AD? (Yes / No)
+    ----------------------------------------------- */
+
+    if (
+      interaction.customId === "partner_yes" ||
+      interaction.customId === "partner_no"
+    ) {
+      const channel = interaction.channel;
+      const [, ownerId, type] = (channel?.topic || "").split(":");
+
+      if (type !== "partnership" || interaction.user.id !== ownerId) {
+        return interaction.reply({
+          content: "❌ Only the person who opened this ticket can answer.",
+          ephemeral: true,
+        });
+      }
+
+      const state = partnershipTickets.get(channel.id);
+
+      if (!state || state.step !== "confirm") {
+        return interaction.reply({
+          content: "❌ Please send your ad first.",
+          ephemeral: true,
+        });
+      }
+
+      await interaction.update({ components: [] });
+      state.questionId = null;
+
+      await answerPartnershipAd(
+        channel,
+        interaction.user,
+        interaction.customId === "partner_yes"
+      );
+
+      return;
+    }
+
+    /* -----------------------------------------------
        CREATE TICKETS
     ----------------------------------------------- */
 
@@ -1864,6 +2076,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       claimedTickets.delete(channel.id);
+      partnershipTickets.delete(channel.id);
 
       await interaction.reply({
         content:
