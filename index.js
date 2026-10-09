@@ -309,7 +309,7 @@ function ticketPanelEmbed() {
         "ORYX HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
         "",
         "🌐 **Official Website**",
-        `[${SHOP_URL}](${SHOP_URL})`,
+        SHOP_URL,
         "",
         "⏰ **Support available 24/7 through our ticket system.**",
         "",
