@@ -1579,32 +1579,74 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-/* Explains why the bot cannot timeout / kick / ban someone (instead of a generic error). */
+/*
+  Timeout / kick / ban: the bot always TRIES the action. Only the cases that can never work are refused up
+  front (owner, bot itself, timing out an administrator). If Discord refuses (error 50013), the answer shows
+  the bot's highest role, the target's highest role and the permission, so the real cause is visible.
+*/
 const MOD_PERMISSION_NAME = {
   timeout: "Moderate Members",
   kick: "Kick Members",
   ban: "Ban Members",
 };
+const MOD_PERMISSION_FLAG = {
+  timeout: PermissionFlagsBits.ModerateMembers,
+  kick: PermissionFlagsBits.KickMembers,
+  ban: PermissionFlagsBits.BanMembers,
+};
 
 function moderationBlock(member, action) {
-  const possible =
-    action === "timeout"
-      ? member.moderatable
-      : action === "kick"
-        ? member.kickable
-        : member.bannable;
-
-  if (possible) return null;
-
   if (member.id === member.guild.ownerId) {
     return `❌ I can't ${action} the server owner.`;
+  }
+
+  if (member.id === member.client.user.id) {
+    return `❌ I can't ${action} myself.`;
   }
 
   if (action === "timeout" && member.permissions.has(PermissionFlagsBits.Administrator)) {
     return "❌ Discord does not allow timing out a member who has the **Administrator** permission.";
   }
 
-  return `❌ I can't ${action} ${member}. The bot needs the **${MOD_PERMISSION_NAME[action]}** permission, and the bot's role must be **above** this member's highest role (Server Settings → Roles → drag the bot's role higher).`;
+  return null;
+}
+
+function moderationDiagnostic(member, action) {
+  const me = member.guild.members.me;
+  const botTop = me?.roles?.highest;
+  const targetTop = member.roles.highest;
+  const permission = MOD_PERMISSION_NAME[action];
+  const hasPermission = Boolean(me?.permissions?.has(MOD_PERMISSION_FLAG[action]));
+  const above = botTop && botTop.position > targetTop.position;
+
+  let verdict;
+
+  if (!hasPermission) {
+    verdict = `→ The bot's roles do not give the **${permission}** permission: add it to the bot's role.`;
+  } else if (!above) {
+    verdict = `→ The bot's highest role must be **above** **${targetTop.name}**: Server Settings → Roles → drag the bot's role higher.`;
+  } else {
+    verdict =
+      "→ The permission and the role order look fine, so Discord blocks this for another reason. Check that the target is not a bot whose role is managed by an integration placed above the bot's role, and that the server option **Require 2FA for moderation** is not blocking the bot.";
+  }
+
+  return [
+    `❌ Discord refused to ${action} ${member}.`,
+    `• Bot's highest role: **${botTop?.name ?? "?"}** (position ${botTop?.position ?? "?"}), ${permission}: ${hasPermission ? "✅" : "❌ missing"}`,
+    `• ${member.user.username}'s highest role: **${targetTop.name}** (position ${targetTop.position})`,
+    verdict,
+  ].join("\n");
+}
+
+/* Runs the action. Returns null if it worked, or the explanation if Discord refused it. */
+async function runModeration(member, action, perform) {
+  try {
+    await perform();
+    return null;
+  } catch (error) {
+    if (error?.code !== 50013) throw error;
+    return moderationDiagnostic(member, action);
+  }
 }
 
 const MISSING_PERMISSIONS_TEXT =
@@ -1735,25 +1777,28 @@ client.on(Events.MessageCreate, async (message) => {
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
       if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
-      const blockedTimeout = moderationBlock(target, "timeout");
-      if (blockedTimeout) return await safeReply(message, blockedTimeout);
-      await target.timeout(duration, reason);
+      const failedTimeout =
+        moderationBlock(target, "timeout") ||
+        (await runModeration(target, "timeout", () => target.timeout(duration, reason)));
+      if (failedTimeout) return await safeReply(message, failedTimeout);
       return await safeReply(message, `⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
-      const blockedKick = moderationBlock(target, "kick");
-      if (blockedKick) return await safeReply(message, blockedKick);
-      await target.kick(reason);
+      const failedKick =
+        moderationBlock(target, "kick") ||
+        (await runModeration(target, "kick", () => target.kick(reason)));
+      if (failedKick) return await safeReply(message, failedKick);
       return await safeReply(message, `👢 ${target.user.tag} has been kicked.`);
     }
 
     if (command === "ban") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
-      const blockedBan = moderationBlock(target, "ban");
-      if (blockedBan) return await safeReply(message, blockedBan);
-      await target.ban({reason});
+      const failedBan =
+        moderationBlock(target, "ban") ||
+        (await runModeration(target, "ban", () => target.ban({ reason })));
+      if (failedBan) return await safeReply(message, failedBan);
       return await safeReply(message, `🔨 ${target.user.tag} has been banned.`);
     }
   } catch (error) {
@@ -2086,13 +2131,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const blockedTimeout = moderationBlock(member, "timeout");
+        const failedTimeout =
+          moderationBlock(member, "timeout") ||
+          (await runModeration(member, "timeout", () => member.timeout(duration, reason)));
 
-        if (blockedTimeout) {
-          return interaction.reply({ content: blockedTimeout, ephemeral: true });
+        if (failedTimeout) {
+          return interaction.reply({ content: failedTimeout, ephemeral: true });
         }
-
-        await member.timeout(duration, reason);
 
         return interaction.reply({
           content: `⏱️ ${member} has been timed out for ${formatDuration(duration)}.`,
@@ -2123,13 +2168,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const blockedKick = moderationBlock(member, "kick");
+        const failedKick =
+          moderationBlock(member, "kick") ||
+          (await runModeration(member, "kick", () => member.kick(reason)));
 
-        if (blockedKick) {
-          return interaction.reply({ content: blockedKick, ephemeral: true });
+        if (failedKick) {
+          return interaction.reply({ content: failedKick, ephemeral: true });
         }
-
-        await member.kick(reason);
 
         return interaction.reply({
           content: `👢 ${member.user.tag} has been kicked.`,
@@ -2160,13 +2205,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const blockedBan = moderationBlock(member, "ban");
+        const failedBan =
+          moderationBlock(member, "ban") ||
+          (await runModeration(member, "ban", () => member.ban({ reason })));
 
-        if (blockedBan) {
-          return interaction.reply({ content: blockedBan, ephemeral: true });
+        if (failedBan) {
+          return interaction.reply({ content: failedBan, ephemeral: true });
         }
-
-        await member.ban({ reason });
 
         return interaction.reply({
           content: `🔨 ${member.user.tag} has been banned.`,
