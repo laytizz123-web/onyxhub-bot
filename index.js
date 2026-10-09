@@ -1534,7 +1534,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "timeout", "kick", "ban", "lock", "unlock", "nuke", "antilink",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -1604,6 +1604,10 @@ function moderationBlock(member, action) {
     return `❌ I can't ${action} myself.`;
   }
 
+  if (action === "ban" && member.roles.cache.has(OWNER_ROLE_ID)) {
+    return "❌ Members with the Owner role can't be banned.";
+  }
+
   if (action === "timeout" && member.permissions.has(PermissionFlagsBits.Administrator)) {
     return "❌ Discord does not allow timing out a member who has the **Administrator** permission.";
   }
@@ -1664,7 +1668,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -1764,7 +1768,7 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     const target = message.mentions.members.first();
-    if (["warn","timeout","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
+    if (["warn","to","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
 
     if (command === "warn") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
@@ -1772,7 +1776,7 @@ client.on(Events.MessageCreate, async (message) => {
       return await safeReply(message, `⚠️ ${target} has been warned. Reason: ${reason}`);
     }
 
-    if (command === "timeout") {
+    if (command === "to") {
       const parsed = parseDuration(args[1]);
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
       if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
