@@ -1676,7 +1676,7 @@ client.on(Events.MessageCreate, async (message) => {
         .setDescription([
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
-          "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
@@ -1775,7 +1775,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "timeout") {
       const parsed = parseDuration(args[1]);
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
-      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!to @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
       const failedTimeout =
         moderationBlock(target, "timeout") ||
