@@ -441,11 +441,13 @@ async function createTicket(interaction, type) {
     description = [
       `Hello ${user}, welcome to your partnership ticket!`,
       "",
-      "**How it works**",
-      "1️⃣ Send your server ad in this ticket.",
-      "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
-      "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
-      "4️⃣ Post our ad in your server. The ticket is then locked.",
+      "**What is a partnership?**",
+      "A partnership is an ad exchange between two Discord communities: your ad is posted in our partnership channel, and you post our ad in your server.",
+      "",
+      "**About ORYX HUB**",
+      "ORYX HUB is a Duel Script / All Gear community with daily updates, an active community and a 24/7 ticket support.",
+      "",
+      "Everything is done here, in this ticket, and it only takes a minute.",
     ].join("\n");
   }
 
@@ -480,6 +482,7 @@ async function createTicket(interaction, type) {
   });
 
   if (type === "partnership") {
+    await ticketChannel.send(PARTNERSHIP_INSTRUCTIONS);
     await ticketChannel.send("Send your ad.");
   }
 
@@ -1130,6 +1133,15 @@ const OUR_AD = process.env.OUR_AD
   ? process.env.OUR_AD.replace(/\\n/g, "\n")
   : DEFAULT_OUR_AD;
 
+/* The instructions are sent as a plain text message right after the ticket presentation. */
+const PARTNERSHIP_INSTRUCTIONS = [
+  "**How it works**",
+  "1️⃣ Send your server ad in this ticket.",
+  "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
+  "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
+  "4️⃣ Post our ad in your server. The ticket is then locked.",
+].join("\n");
+
 const YES_ANSWER = /^\s*(yes|y|yeah|yep|yup|oui|ouais|ye)\s*[.!]*\s*$/i;
 const NO_ANSWER = /^\s*(no|n|nope|nah|non)\s*[.!]*\s*$/i;
 
@@ -1331,6 +1343,146 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 /* =====================================================
+   ANTI LINK / ANTI DISCORD (per channel)
+===================================================== */
+
+/*
+  Configured channel by channel (not the whole server) with /antilink or !antilink:
+    links   -> every link is deleted (Discord invites included)
+    discord -> only Discord invites are deleted
+    off     -> nothing is filtered
+  Staff, Owner and Administrators are never filtered. The bot needs "Manage Messages" in those channels.
+  The settings are saved in antilink.json (in DATA_DIR if set). On Railway the file is erased by every
+  redeploy unless a Volume is mounted: set DATA_DIR to its path. You can also seed channels with the
+  variables ANTILINK_LINKS_CHANNELS and ANTILINK_DISCORD_CHANNELS (channel ids separated by commas).
+*/
+
+const fs = require("fs");
+const path = require("path");
+
+const ANTILINK_FILE = path.join(process.env.DATA_DIR || __dirname, "antilink.json");
+
+function loadAntiLink() {
+  const config = {};
+  const ids = (name) =>
+    (process.env[name] || "").split(",").map((id) => id.trim()).filter(Boolean);
+
+  for (const id of ids("ANTILINK_LINKS_CHANNELS")) config[id] = "links";
+  for (const id of ids("ANTILINK_DISCORD_CHANNELS")) config[id] = "discord";
+
+  try {
+    Object.assign(config, JSON.parse(fs.readFileSync(ANTILINK_FILE, "utf8")));
+  } catch {
+    /* no file yet */
+  }
+
+  return config;
+}
+
+const antiLink = loadAntiLink();
+
+function setAntiLink(channelId, mode) {
+  antiLink[channelId] = mode;
+
+  try {
+    fs.writeFileSync(ANTILINK_FILE, JSON.stringify(antiLink, null, 2));
+  } catch (error) {
+    console.error("Could not save antilink.json:", error?.message || error);
+  }
+}
+
+const ANTILINK_MODES = {
+  links: "🔗 Links (all links, Discord invites included)",
+  discord: "📨 Discord invites only",
+  off: "⚪ Off",
+};
+
+const DISCORD_INVITE =
+  /(?:discord(?:app)?\s*\.\s*com\s*\/\s*invite|discord\s*(?:\.|\(dot\)|dot)\s*(?:gg|io|me|li)|dsc\s*\.\s*gg|invite\s*\.\s*gg)\s*\/?\s*[\w-]*/i;
+const ANY_LINK =
+  /(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|gg|xyz|me|co|tv|ly|to|cc|shop|store|link|app|dev|ru|fr|de|uk|us|ca|info|site|online|club|top|ai|pro)\b(?:\/\S*)?/i;
+
+function violatesAntiLink(mode, content) {
+  if (mode === "links") return ANY_LINK.test(content) || DISCORD_INVITE.test(content);
+  if (mode === "discord") return DISCORD_INVITE.test(content);
+  return false;
+}
+
+async function checkAntiLink(message) {
+  if (!message.guild || !message.author || message.author.bot || !message.content) return;
+
+  const mode = antiLink[message.channel.id] || antiLink[message.channel.parentId];
+
+  if (!mode || mode === "off") return;
+  if (!violatesAntiLink(mode, message.content)) return;
+
+  const member = message.member;
+
+  if (
+    member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+    isStaff(message)
+  ) {
+    return;
+  }
+
+  const deleted = await message.delete().then(() => true).catch(() => false);
+
+  if (!deleted) return;
+
+  const warning = await message.channel
+    .send({
+      content: `${message.author}, ${
+        mode === "links" ? "links are" : "Discord invites are"
+      } not allowed in this channel.`,
+      allowedMentions: { users: [message.author.id] },
+    })
+    .catch(() => null);
+
+  if (warning) setTimeout(() => warning.delete().catch(() => {}), 5000);
+
+  await sendLog(
+    message.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.warning)
+      .setTitle(mode === "links" ? "🔗 Link deleted" : "📨 Discord invite deleted")
+      .addFields(
+        { name: "User", value: `${message.author} (\`${message.author.id}\`)` },
+        { name: "Channel", value: `${message.channel}`, inline: true },
+        { name: "Message", value: message.content.slice(0, 900) }
+      )
+      .setTimestamp()
+  );
+}
+
+client.on(Events.MessageCreate, (message) => {
+  checkAntiLink(message).catch((error) =>
+    console.error("Anti-link error:", error?.message || error)
+  );
+});
+
+// Someone edits a message to add a link afterwards.
+client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+  if (!newMessage.content) return;
+
+  checkAntiLink(newMessage).catch((error) =>
+    console.error("Anti-link error:", error?.message || error)
+  );
+});
+
+function antiLinkListEmbed(guild) {
+  const lines = Object.entries(antiLink)
+    .filter(([id, mode]) => mode !== "off" && guild.channels.cache.has(id))
+    .map(([id, mode]) => `<#${id}> — ${ANTILINK_MODES[mode]}`);
+
+  return new EmbedBuilder()
+    .setColor(COLORS.main)
+    .setTitle("🛡️ Anti-link channels")
+    .setDescription(
+      lines.length ? lines.join("\n") : "No channel has a filter yet."
+    );
+}
+
+/* =====================================================
    INTERACTIONS
 ===================================================== */
 
@@ -1342,7 +1494,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets", "lock", "unlock", "nuke"];
+    const staffOnly = ["announce", "clear", "warn", "timeout", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -1356,6 +1508,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
+          "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
           "",
           "Every command is also available with `/`.",
@@ -1406,6 +1559,26 @@ client.on(Events.MessageCreate, async (message) => {
       if (!Number.isInteger(amount) || amount < 1 || amount > 100) return await safeReply(message, "❌ Usage: `!clear 1-100`");
       const deleted = await message.channel.bulkDelete(amount, true);
       return await message.channel.send(`🧹 Deleted ${deleted.size} message(s).`).then(m=>setTimeout(()=>m.delete().catch(()=>{}),3000));
+    }
+
+    if (command === "antilink") {
+      if ((args[0] || "").toLowerCase() === "list") {
+        return await safeReply(message, { embeds: [antiLinkListEmbed(message.guild)] });
+      }
+
+      const mode = (args.find((a) => ANTILINK_MODES[a.toLowerCase()]) || "").toLowerCase();
+      const mentioned = message.mentions.channels.first();
+      const channelId = mentioned?.id || (args.includes("here") ? message.channel.id : null);
+
+      if (!mode || !channelId) {
+        return await safeReply(
+          message,
+          "❌ Usage: `!antilink #channel links|discord|off` (or `here` for this channel), `!antilink list`"
+        );
+      }
+
+      setAntiLink(channelId, mode);
+      return await safeReply(message, `✅ <#${channelId}>: ${ANTILINK_MODES[mode]}`);
     }
 
     if (command === "lock" || command === "unlock") {
@@ -1565,6 +1738,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/lock` — Lock the current channel.\n" +
                 "`/unlock` — Unlock the current channel.\n" +
                 "`/nuke` — Recreate the channel with the same permissions.",
+            },
+            {
+              name: "🛡️ Anti-link",
+              value:
+                "`/antilink set` — Block links or Discord invites in a channel.\n" +
+                "`/antilink list` — Show the filtered channels.",
             },
             {
               name: "ℹ️ Information",
@@ -1870,6 +2049,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
       /* -----------------------------------------------
          /lock /unlock /nuke
       ----------------------------------------------- */
+
+      if (command === "antilink") {
+        if (!isStaff(interaction)) {
+          return interaction.reply({
+            content: "❌ Only staff can use this command.",
+            ephemeral: true,
+          });
+        }
+
+        if (interaction.options.getSubcommand() === "list") {
+          return interaction.reply({
+            embeds: [antiLinkListEmbed(interaction.guild)],
+            ephemeral: true,
+          });
+        }
+
+        const target = interaction.options.getChannel("channel") || interaction.channel;
+        const mode = interaction.options.getString("mode", true);
+
+        setAntiLink(target.id, mode);
+
+        return interaction.reply({
+          content: `✅ ${target}: ${ANTILINK_MODES[mode]}`,
+          ephemeral: true,
+        });
+      }
 
       if (command === "lock" || command === "unlock" || command === "nuke") {
         if (!isStaff(interaction)) {
@@ -2346,6 +2551,36 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("unlock")
       .setDescription("Unlock the current channel."),
+
+    new SlashCommandBuilder()
+      .setName("antilink")
+      .setDescription("Block links or Discord invites in some channels.")
+      .addSubcommand((sub) =>
+        sub
+          .setName("set")
+          .setDescription("Choose what is blocked in a channel.")
+          .addStringOption((option) =>
+            option
+              .setName("mode")
+              .setDescription("What to block.")
+              .setRequired(true)
+              .addChoices(
+                { name: "Links (all links, Discord invites included)", value: "links" },
+                { name: "Discord invites only", value: "discord" },
+                { name: "Off", value: "off" }
+              )
+          )
+          .addChannelOption((option) =>
+            option
+              .setName("channel")
+              .setDescription("Channel to configure (default: this one).")
+              .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+              .setRequired(false)
+          )
+      )
+      .addSubcommand((sub) =>
+        sub.setName("list").setDescription("Show the channels with a filter.")
+      ),
 
     new SlashCommandBuilder()
       .setName("nuke")
