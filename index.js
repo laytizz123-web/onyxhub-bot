@@ -1579,6 +1579,37 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+/* Explains why the bot cannot timeout / kick / ban someone (instead of a generic error). */
+const MOD_PERMISSION_NAME = {
+  timeout: "Moderate Members",
+  kick: "Kick Members",
+  ban: "Ban Members",
+};
+
+function moderationBlock(member, action) {
+  const possible =
+    action === "timeout"
+      ? member.moderatable
+      : action === "kick"
+        ? member.kickable
+        : member.bannable;
+
+  if (possible) return null;
+
+  if (member.id === member.guild.ownerId) {
+    return `❌ I can't ${action} the server owner.`;
+  }
+
+  if (action === "timeout" && member.permissions.has(PermissionFlagsBits.Administrator)) {
+    return "❌ Discord does not allow timing out a member who has the **Administrator** permission.";
+  }
+
+  return `❌ I can't ${action} ${member}. The bot needs the **${MOD_PERMISSION_NAME[action]}** permission, and the bot's role must be **above** this member's highest role (Server Settings → Roles → drag the bot's role higher).`;
+}
+
+const MISSING_PERMISSIONS_TEXT =
+  "❌ Discord refused: the bot is missing a permission, or its role is not above the member's highest role (Server Settings → Roles).";
+
 /* =====================================================
    INTERACTIONS
 ===================================================== */
@@ -1704,24 +1735,33 @@ client.on(Events.MessageCreate, async (message) => {
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
       if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
+      const blockedTimeout = moderationBlock(target, "timeout");
+      if (blockedTimeout) return await safeReply(message, blockedTimeout);
       await target.timeout(duration, reason);
       return await safeReply(message, `⏱️ ${target} has been timed out for ${formatDuration(duration)}.`);
     }
 
     if (command === "kick") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
+      const blockedKick = moderationBlock(target, "kick");
+      if (blockedKick) return await safeReply(message, blockedKick);
       await target.kick(reason);
       return await safeReply(message, `👢 ${target.user.tag} has been kicked.`);
     }
 
     if (command === "ban") {
       const reason = args.slice(1).join(" ") || "No reason provided.";
+      const blockedBan = moderationBlock(target, "ban");
+      if (blockedBan) return await safeReply(message, blockedBan);
       await target.ban({reason});
       return await safeReply(message, `🔨 ${target.user.tag} has been banned.`);
     }
   } catch (error) {
     console.error("Prefix command error:", error);
-    await safeReply(message, "❌ An error occurred. Check the bot console.").catch(()=>{});
+    await safeReply(
+      message,
+      error?.code === 50013 ? MISSING_PERMISSIONS_TEXT : "❌ An error occurred. Check the bot console."
+    ).catch(()=>{});
   }
 });
 
@@ -2046,6 +2086,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
+        const blockedTimeout = moderationBlock(member, "timeout");
+
+        if (blockedTimeout) {
+          return interaction.reply({ content: blockedTimeout, ephemeral: true });
+        }
+
         await member.timeout(duration, reason);
 
         return interaction.reply({
@@ -2077,6 +2123,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
+        const blockedKick = moderationBlock(member, "kick");
+
+        if (blockedKick) {
+          return interaction.reply({ content: blockedKick, ephemeral: true });
+        }
+
         await member.kick(reason);
 
         return interaction.reply({
@@ -2106,6 +2158,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
             content: "❌ Member not found.",
             ephemeral: true,
           });
+        }
+
+        const blockedBan = moderationBlock(member, "ban");
+
+        if (blockedBan) {
+          return interaction.reply({ content: blockedBan, ephemeral: true });
         }
 
         await member.ban({ reason });
@@ -2471,18 +2529,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error("❌ Interaction error:", error);
 
+    const errorText =
+      error?.code === 50013
+        ? MISSING_PERMISSIONS_TEXT
+        : "❌ An error occurred. Check the bot console.";
+
     if (interaction.deferred && !interaction.replied) {
-      await interaction
-        .editReply({
-          content: "❌ An error occurred. Check the bot console.",
-        })
-        .catch(() => {});
+      await interaction.editReply({ content: errorText }).catch(() => {});
     } else if (!interaction.replied) {
       await interaction
-        .reply({
-          content: "❌ An error occurred. Check the bot console.",
-          ephemeral: true,
-        })
+        .reply({ content: errorText, ephemeral: true })
         .catch(() => {});
     }
   }
