@@ -287,6 +287,39 @@ async function nukeChannel(channel, moderator) {
   return newChannel;
 }
 
+/* The ticket panel posted by /tickets and !tickets. */
+function ticketPanelEmbed() {
+  return new EmbedBuilder()
+    .setColor(COLORS.main)
+    .setTitle("🌐 Welcome to ORYX HUB!")
+    .setDescription(
+      [
+        "Welcome to **ORYX HUB**, your all-in-one hub for support, purchases, partnerships, and more!",
+        "",
+        "🎫 **Ticket System**",
+        "",
+        "- 🛒 **Purchase:** Get help with purchases and orders.",
+        "- 🛠️ **Support:** Ask questions or get assistance.",
+        "- 🤝 **Partnership:** Submit partnership requests.",
+        "",
+        "🤖 **AI Support System**",
+        "Our AI-powered support system helps answer questions and provide assistance faster, making your experience smoother and easier.",
+        "",
+        "🤝 **Automatic Partnerships**",
+        "ORYX HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
+        "",
+        "🌐 **Official Website**",
+        `[${SHOP_URL}](${SHOP_URL})`,
+        "",
+        "⏰ **Support available 24/7 through our ticket system.**",
+        "",
+        "Thank you for being part of **ORYX HUB**! 💜",
+      ].join("\n")
+    )
+    .setFooter({ text: "ORYX HUB • Ticket System" })
+    .setTimestamp();
+}
+
 function ticketPermissionOverwrites(guild, user) {
   return [
     {
@@ -1483,6 +1516,70 @@ function antiLinkListEmbed(guild) {
 }
 
 /* =====================================================
+   COMMANDS-ONLY CHANNELS
+===================================================== */
+
+/*
+  In these channels members can only use commands (slash commands, or the bot's ! commands).
+  Any other message is deleted right away and the author is told why. Staff, Owner and Administrators
+  can write. Default: channel 1556325343193731132; override with COMMANDS_ONLY_CHANNELS (ids separated by commas).
+  The bot needs "Manage Messages" in those channels.
+*/
+const COMMANDS_ONLY_CHANNELS = (
+  process.env.COMMANDS_ONLY_CHANNELS || "1556325343193731132"
+)
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+
+const PREFIX_COMMAND_NAMES = new Set([
+  "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
+  "timeout", "kick", "ban", "lock", "unlock", "nuke", "antilink",
+]);
+
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (
+      !message.guild ||
+      !message.author ||
+      message.author.bot ||
+      message.system ||
+      !COMMANDS_ONLY_CHANNELS.includes(message.channel.id)
+    ) {
+      return;
+    }
+
+    if (
+      message.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+      isStaff(message)
+    ) {
+      return;
+    }
+
+    const prefixCommand = /^!(\w+)/.exec(message.content.trim());
+
+    if (prefixCommand && PREFIX_COMMAND_NAMES.has(prefixCommand[1].toLowerCase())) {
+      return;
+    }
+
+    const deleted = await message.delete().then(() => true).catch(() => false);
+
+    if (!deleted) return;
+
+    const notice = await message.channel
+      .send({
+        content: `${message.author}, you can't write in this channel: only commands are allowed here.`,
+        allowedMentions: { users: [message.author.id] },
+      })
+      .catch(() => null);
+
+    if (notice) setTimeout(() => notice.delete().catch(() => {}), 5000);
+  } catch (error) {
+    console.error("Commands-only channel error:", error?.message || error);
+  }
+});
+
+/* =====================================================
    INTERACTIONS
 ===================================================== */
 
@@ -1517,9 +1614,7 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     if (command === "tickets") {
-      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle("ORYX HUB | Ticket Center")
-        .setDescription(["Welcome to **ORYX HUB**!", "", "Choose a category below to open a private ticket.", "", "🛒 **Purchase**", "Open a ticket for purchases or order questions.", "", "🛠️ **Support**", "Open a ticket if you need help or have a question.", "", "🤝 **Partnership**", "Open a ticket for partnership requests.", "", "🌐 **Website**", SHOP_URL, "", "Our support is available 24/7 through the ticket system."].join("\n"))
-        .setFooter({ text: "ORYX HUB • Ticket System" }).setTimestamp();
+      const embed = ticketPanelEmbed();
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("ticket_purchase").setLabel("Purchase").setEmoji("🛒").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("ticket_support").setLabel("Support").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
@@ -1651,32 +1746,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const embed = new EmbedBuilder()
-          .setColor(COLORS.main)
-          .setTitle("ORYX HUB | Ticket Center")
-          .setDescription(
-            [
-              "Welcome to **ORYX HUB**!",
-              "",
-              "Choose a category below to open a private ticket.",
-              "",
-              "🛒 **Purchase**",
-              "Open a ticket for purchases or order questions.",
-              "",
-              "🛠️ **Support**",
-              "Open a ticket if you need help or have a question.",
-              "",
-              "🤝 **Partnership**",
-              "Open a ticket for partnership requests.",
-              "",
-              "🌐 **Website**",
-              SHOP_URL,
-              "",
-              "Our support is available 24/7 through the ticket system.",
-            ].join("\n")
-          )
-          .setFooter({ text: "ORYX HUB • Ticket System" })
-          .setTimestamp();
+        const embed = ticketPanelEmbed();
 
         const buttons = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
