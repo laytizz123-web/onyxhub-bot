@@ -1814,8 +1814,12 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+const license = require("./license");
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (await license.handleInteraction(interaction, { isStaff })) return;
+
     /* =================================================
        SLASH COMMANDS
     ================================================= */
@@ -2599,6 +2603,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 async function registerCommands() {
   const commands = [
+    ...license.commands,
     new SlashCommandBuilder()
       .setName("tickets")
       .setDescription("Post the ORYX HUB ticket panel."),
@@ -2822,4 +2827,5 @@ async function startBot() {
   }
 }
 
+license.startServer();
 startBot();
