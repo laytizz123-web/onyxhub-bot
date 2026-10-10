@@ -313,7 +313,7 @@ function ticketPanelEmbed() {
         "",
         "⏰ **Support available 24/7 through our ticket system.**",
         "",
-        "Thank you for being part of **ONYX HUB**! 💜",
+        "Thank you for being part of **ONYX HUB**! 💚",
       ].join("\n")
     )
     .setFooter({ text: "ONYX HUB • Ticket System" })
