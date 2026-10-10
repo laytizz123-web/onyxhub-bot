@@ -179,7 +179,7 @@ async function setChannelLock(channel, locked, moderator) {
     CreatePrivateThreads: value,
   });
 
-  const isTicket = channel.topic?.startsWith("oryx-ticket:");
+  const isTicket = channel.topic?.startsWith("ONYX-ticket:");
 
   await channel.permissionOverwrites.edit(
     channel.guild.roles.everyone,
@@ -291,10 +291,10 @@ async function nukeChannel(channel, moderator) {
 function ticketPanelEmbed() {
   return new EmbedBuilder()
     .setColor(COLORS.main)
-    .setTitle("🌐 Welcome to ORYX HUB!")
+    .setTitle("🌐 Welcome to ONYX HUB!")
     .setDescription(
       [
-        "Welcome to **ORYX HUB**, your all-in-one hub for support, purchases, partnerships, and more!",
+        "Welcome to **ONYX HUB**, your all-in-one hub for support, purchases, partnerships, and more!",
         "",
         "🎫 **Ticket System**",
         "",
@@ -306,17 +306,17 @@ function ticketPanelEmbed() {
         "Our AI-powered support system helps answer questions and provide assistance faster, making your experience smoother and easier.",
         "",
         "🤝 **Automatic Partnerships**",
-        "ORYX HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
+        "ONYX HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
         "",
         "🌐 **Official Website**",
         SHOP_URL,
         "",
         "⏰ **Support available 24/7 through our ticket system.**",
         "",
-        "Thank you for being part of **ORYX HUB**! 💜",
+        "Thank you for being part of **ONYX HUB**! 💜",
       ].join("\n")
     )
-    .setFooter({ text: "ORYX HUB • Ticket System" })
+    .setFooter({ text: "ONYX HUB • Ticket System" })
     .setTimestamp();
 }
 
@@ -379,18 +379,18 @@ async function getTicketCategory(guild) {
   if (configured?.type === ChannelType.GuildCategory) return configured;
 
   console.warn(
-    `Ticket category ${TICKET_CATEGORY_ID} not found, falling back to "ORYX TICKETS".`
+    `Ticket category ${TICKET_CATEGORY_ID} not found, falling back to "ONYX TICKETS".`
   );
 
   let category = guild.channels.cache.find(
     (channel) =>
       channel.type === ChannelType.GuildCategory &&
-      channel.name === "ORYX TICKETS"
+      channel.name === "ONYX TICKETS"
   );
 
   if (!category) {
     category = await guild.channels.create({
-      name: "ORYX TICKETS",
+      name: "ONYX TICKETS",
       type: ChannelType.GuildCategory,
     });
   }
@@ -407,7 +407,7 @@ async function createTicket(interaction, type) {
   const existing = guild.channels.cache.find(
     (channel) =>
       channel.type === ChannelType.GuildText &&
-      channel.topic?.startsWith(`oryx-ticket:${user.id}:`)
+      channel.topic?.startsWith(`ONYX-ticket:${user.id}:`)
   );
 
   if (existing) {
@@ -437,7 +437,7 @@ async function createTicket(interaction, type) {
     name: channelName,
     type: ChannelType.GuildText,
     parent: category.id,
-    topic: `oryx-ticket:${user.id}:${type}`,
+    topic: `ONYX-ticket:${user.id}:${type}`,
     permissionOverwrites: ticketPermissionOverwrites(guild, user),
   });
 
@@ -477,8 +477,8 @@ async function createTicket(interaction, type) {
       "**What is a partnership?**",
       "A partnership is an ad exchange between two Discord communities: your ad is posted in our partnership channel, and you post our ad in your server.",
       "",
-      "**About ORYX HUB**",
-      "ORYX HUB is a Duel Script / All Gear community with daily updates, an active community and a 24/7 ticket support.",
+      "**About ONYX HUB**",
+      "ONYX HUB is a Duel Script / All Gear community with daily updates, an active community and a 24/7 ticket support.",
       "",
       "Everything is done here, in this ticket, and it only takes a minute.",
     ].join("\n");
@@ -501,7 +501,7 @@ async function createTicket(interaction, type) {
     .setColor(COLORS.main)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: "ORYX HUB • Ticket System" })
+    .setFooter({ text: "ONYX HUB • Ticket System" })
     .setTimestamp();
 
   await ticketChannel.send({
@@ -528,7 +528,7 @@ async function createTicket(interaction, type) {
 
       const dmEmbed = new EmbedBuilder()
         .setColor(COLORS.main)
-        .setTitle("🎫 New ORYX HUB Ticket")
+        .setTitle("🎫 New ONYX HUB Ticket")
         .setThumbnail(user.displayAvatarURL())
         .setDescription("A new ticket has been opened.")
         .addFields(
@@ -563,7 +563,7 @@ async function createTicket(interaction, type) {
             value: `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
           }
         )
-        .setFooter({ text: "ORYX HUB • Ticket Notification" })
+        .setFooter({ text: "ONYX HUB • Ticket Notification" })
         .setTimestamp();
 
       await owner.send({ embeds: [dmEmbed] }).catch(() => {});
@@ -666,7 +666,7 @@ SHOP
 - Shop: ${SHOP_URL}
 - Payments and delivery of products go through the shop above.
 
-DISCORD SERVER (Onyx Hub / ORYX HUB, invite: discord.gg/onyxhb)
+DISCORD SERVER (Onyx Hub / ONYX HUB, invite: discord.gg/onyxhb)
 - Help is given through private tickets, opened with the buttons of the ticket panel: Purchase (buying and order questions), Support (help and questions about the script), Partnership (partnership requests).
 - A ticket is private: only the customer and the team (Owner and Staff roles) can see it. Each person can have one open ticket at a time.
 - A staff member can "claim" a ticket (it shows who is handling it). The customer or staff can close it with the Close Ticket button; the channel is then deleted after a few seconds.
@@ -733,7 +733,7 @@ COMMON ISSUES
 - Anything else, bugs, or an executor problem: ask for the executor name, what they pressed, a screenshot, and tell them they can ask for a staff member any time.
 `.trim();
 
-const AI_SYSTEM_PROMPT = `You are the support assistant of ORYX HUB, answering inside a private Discord ticket.
+const AI_SYSTEM_PROMPT = `You are the support assistant of ONYX HUB, answering inside a private Discord ticket.
 
 How to behave:
 - Do not start your reply with an emoji. Reply in the same language as the customer (French or English mostly). Be short, friendly and concrete (max ~120 words, no long lists).
@@ -1054,7 +1054,7 @@ client.on(Events.MessageCreate, async (message) => {
       message.author.bot ||
       !message.guild ||
       channel.type !== ChannelType.GuildText ||
-      !channel.topic?.startsWith("oryx-ticket:")
+      !channel.topic?.startsWith("ONYX-ticket:")
     ) {
       return;
     }
@@ -1125,11 +1125,11 @@ const PARTNERSHIP_CHANNEL_ID =
   process.env.PARTNERSHIP_CHANNEL_ID || "1556371939277152306";
 
 /* Our own ad, sent to the partner. The OUR_AD variable (use \n for line breaks) overrides it. */
-const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・ORYX HUB
+const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・ONYX HUB
 
-**ORYX HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
+**ONYX HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
 
-### ⚡・WHY ORYX HUB?
+### ⚡・WHY ONYX HUB?
 
 > 🏆 ・**The BEST Duel Script / All Gear**
 > <:update:1360465468393001110> ・**Daily updates** & improvements
@@ -1149,14 +1149,14 @@ Need help or have a question? Our **AI assistant is available to help you 24/7**
 ### 💡・COMMUNITY FIRST
 
 We are **completely open to suggestions**.
-Have an idea, feature request, or improvement? Let us know — your feedback helps us make **ORYX HUB** even better.
+Have an idea, feature request, or improvement? Let us know — your feedback helps us make **ONYX HUB** even better.
 
 ### 🎫・24/7 SUPPORT
 
 Our **ticket system is open 24/7**.
 Need help with your Key, Script, or have a question? **Open a ticket anytime and our staff or our AI will assist you as soon as possible.**
 
-> **ORYX HUB**
+> **ONYX HUB**
 > *The best. Updated daily. Built with the community. 🟢*
 
 discord.gg/onyxhb
@@ -1364,7 +1364,7 @@ client.on(Events.MessageCreate, async (message) => {
       message.author.bot ||
       !message.guild ||
       channel.type !== ChannelType.GuildText ||
-      !channel.topic?.startsWith("oryx-ticket:")
+      !channel.topic?.startsWith("ONYX-ticket:")
     ) {
       return;
     }
@@ -1676,7 +1676,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "help") {
       return await privateReply(message, { embeds: [new EmbedBuilder()
         .setColor(COLORS.main)
-        .setTitle("ORYX HUB | Commands")
+        .setTitle("ONYX HUB | Commands")
         .setDescription([
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
@@ -1721,7 +1721,7 @@ client.on(Events.MessageCreate, async (message) => {
       if (parts.length < 2) return await safeReply(message, "❌ Usage: `!announce Title | message`");
       const title = parts.shift().trim();
       const text = parts.join("|").trim();
-      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ONYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
       await message.channel.send({embeds:[embed]});
       return await safeReply(message, {content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
     }
@@ -1861,7 +1861,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
 
         return interaction.reply({
-          content: "✅ ORYX HUB ticket panel created!",
+          content: "✅ ONYX HUB ticket panel created!",
           ephemeral: true,
         });
       }
@@ -1873,7 +1873,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (command === "help") {
         const embed = new EmbedBuilder()
           .setColor(COLORS.main)
-          .setTitle("🛠️ ORYX HUB • Help")
+          .setTitle("🛠️ ONYX HUB • Help")
           .setDescription("Here are the available bot commands.")
           .addFields(
             {
@@ -1916,7 +1916,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/announce` — Send an announcement.",
             }
           )
-          .setFooter({ text: "ORYX HUB • Multifunction Bot" })
+          .setFooter({ text: "ONYX HUB • Multifunction Bot" })
           .setTimestamp();
 
         return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -2386,10 +2386,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("ONYX-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an ONYX HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2456,10 +2456,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("ONYX-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an ONYX HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2524,10 +2524,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("ONYX-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an ONYX HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2567,7 +2567,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       setTimeout(async () => {
         await channel
-          .delete("ORYX HUB ticket closed")
+          .delete("ONYX HUB ticket closed")
           .catch((error) =>
             console.error("Could not delete ticket:", error)
           );
@@ -2601,11 +2601,11 @@ async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("tickets")
-      .setDescription("Post the ORYX HUB ticket panel."),
+      .setDescription("Post the ONYX HUB ticket panel."),
 
     new SlashCommandBuilder()
       .setName("help")
-      .setDescription("Show all ORYX HUB bot commands."),
+      .setDescription("Show all ONYX HUB bot commands."),
 
     new SlashCommandBuilder()
       .setName("serverinfo")
