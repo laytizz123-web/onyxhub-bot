@@ -179,7 +179,7 @@ async function setChannelLock(channel, locked, moderator) {
     CreatePrivateThreads: value,
   });
 
-  const isTicket = channel.topic?.startsWith("oryx-ticket:");
+  const isTicket = channel.topic?.startsWith("onyx-ticket:");
 
   await channel.permissionOverwrites.edit(
     channel.guild.roles.everyone,
@@ -291,10 +291,10 @@ async function nukeChannel(channel, moderator) {
 function ticketPanelEmbed() {
   return new EmbedBuilder()
     .setColor(COLORS.main)
-    .setTitle("🌐 Welcome to ORYX HUB!")
+    .setTitle("🌐 Welcome to onyx HUB!")
     .setDescription(
       [
-        "Welcome to **ORYX HUB**, your all-in-one hub for support, purchases, partnerships, and more!",
+        "Welcome to **onyx HUB**, your all-in-one hub for support, purchases, partnerships, and more!",
         "",
         "🎫 **Ticket System**",
         "",
@@ -306,17 +306,17 @@ function ticketPanelEmbed() {
         "Our AI-powered support system helps answer questions and provide assistance faster, making your experience smoother and easier.",
         "",
         "🤝 **Automatic Partnerships**",
-        "ORYX HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
+        "onyx HUB features an automated partnership system designed to simplify partnership requests and make collaboration easier.",
         "",
         "🌐 **Official Website**",
         SHOP_URL,
         "",
         "⏰ **Support available 24/7 through our ticket system.**",
         "",
-        "Thank you for being part of **ORYX HUB**! 💜",
+        "Thank you for being part of **onyx HUB**! 💜",
       ].join("\n")
     )
-    .setFooter({ text: "ORYX HUB • Ticket System" })
+    .setFooter({ text: "onyx HUB • Ticket System" })
     .setTimestamp();
 }
 
@@ -379,18 +379,18 @@ async function getTicketCategory(guild) {
   if (configured?.type === ChannelType.GuildCategory) return configured;
 
   console.warn(
-    `Ticket category ${TICKET_CATEGORY_ID} not found, falling back to "ORYX TICKETS".`
+    `Ticket category ${TICKET_CATEGORY_ID} not found, falling back to "onyx TICKETS".`
   );
 
   let category = guild.channels.cache.find(
     (channel) =>
       channel.type === ChannelType.GuildCategory &&
-      channel.name === "ORYX TICKETS"
+      channel.name === "onyx TICKETS"
   );
 
   if (!category) {
     category = await guild.channels.create({
-      name: "ORYX TICKETS",
+      name: "onyx TICKETS",
       type: ChannelType.GuildCategory,
     });
   }
@@ -407,7 +407,7 @@ async function createTicket(interaction, type) {
   const existing = guild.channels.cache.find(
     (channel) =>
       channel.type === ChannelType.GuildText &&
-      channel.topic?.startsWith(`oryx-ticket:${user.id}:`)
+      channel.topic?.startsWith(`onyx-ticket:${user.id}:`)
   );
 
   if (existing) {
@@ -437,7 +437,7 @@ async function createTicket(interaction, type) {
     name: channelName,
     type: ChannelType.GuildText,
     parent: category.id,
-    topic: `oryx-ticket:${user.id}:${type}`,
+    topic: `onyx-ticket:${user.id}:${type}`,
     permissionOverwrites: ticketPermissionOverwrites(guild, user),
   });
 
@@ -477,8 +477,8 @@ async function createTicket(interaction, type) {
       "**What is a partnership?**",
       "A partnership is an ad exchange between two Discord communities: your ad is posted in our partnership channel, and you post our ad in your server.",
       "",
-      "**About ORYX HUB**",
-      "ORYX HUB is a Duel Script / All Gear community with daily updates, an active community and a 24/7 ticket support.",
+      "**About onyx HUB**",
+      "onyx HUB is a Duel Script / All Gear community with daily updates, an active community and a 24/7 ticket support.",
       "",
       "Everything is done here, in this ticket, and it only takes a minute.",
     ].join("\n");
@@ -501,7 +501,7 @@ async function createTicket(interaction, type) {
     .setColor(COLORS.main)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: "ORYX HUB • Ticket System" })
+    .setFooter({ text: "onyx HUB • Ticket System" })
     .setTimestamp();
 
   await ticketChannel.send({
@@ -528,7 +528,7 @@ async function createTicket(interaction, type) {
 
       const dmEmbed = new EmbedBuilder()
         .setColor(COLORS.main)
-        .setTitle("🎫 New ORYX HUB Ticket")
+        .setTitle("🎫 New onyx HUB Ticket")
         .setThumbnail(user.displayAvatarURL())
         .setDescription("A new ticket has been opened.")
         .addFields(
@@ -563,7 +563,7 @@ async function createTicket(interaction, type) {
             value: `[Open Ticket](https://discord.com/channels/${guild.id}/${ticketChannel.id})`,
           }
         )
-        .setFooter({ text: "ORYX HUB • Ticket Notification" })
+        .setFooter({ text: "onyx HUB • Ticket Notification" })
         .setTimestamp();
 
       await owner.send({ embeds: [dmEmbed] }).catch(() => {});
@@ -666,74 +666,83 @@ SHOP
 - Shop: ${SHOP_URL}
 - Payments and delivery of products go through the shop above.
 
-DISCORD SERVER (Onyx Hub / ORYX HUB, invite: discord.gg/onyxhb)
+DISCORD SERVER (Onyx Hub / onyx HUB, invite: discord.gg/onyxhb)
 - Help is given through private tickets, opened with the buttons of the ticket panel: Purchase (buying and order questions), Support (help and questions about the script), Partnership (partnership requests).
 - A ticket is private: only the customer and the team (Owner and Staff roles) can see it. Each person can have one open ticket at a time.
 - A staff member can "claim" a ticket (it shows who is handling it). The customer or staff can close it with the Close Ticket button; the channel is then deleted after a few seconds.
 - This assistant answers first and stops as soon as a staff member writes in the ticket or claims it.
 - The shop link is the way to buy the product. If asked about channels, rules, roles, giveaways or anything about the server that is not written here, say you are not sure instead of guessing.
 
-PRODUCT: "Onyx HUB" (discord.gg/onyxhb), a Roblox script for the game "Steal a Brainrot", made by Vxmp.
+PRODUCT: "Onyx HUB" (discord.gg/onyxhb), a Roblox script for the game "Steal a Brainrot", made by Vxmp. The menu title reads "Onyx hub .gg/onyxhb".
 It runs from a script executor on PC and on mobile. It uses file functions of the executor to save your settings
-(file OnyxHUBAllgear.json in the executor workspace folder). If something does not work, first ask which executor
-the customer uses and whether it supports file functions; staff decides if the executor is supported.
+(file OnyxHUBAllgear.json in the executor workspace folder, saved automatically every few seconds). If something does not work,
+first ask which executor the customer uses and whether it supports file functions, custom assets and proximity prompt functions; staff decides if the executor is supported.
+
+START AND INTRO
+- On launch a short intro plays (ONYXHUB, .gg/onyxhb, "made by Vxmp") with a sound; tap anywhere to skip it.
+- The intro colour is chosen in the Themes tab > Intro color: Auto (follows the theme), Rainbow, a palette of colours, or a custom hex code like #28DC78. It applies the next time the script is launched.
 
 OPENING THE MENU
-- A small gem-shaped button (draggable) opens the menu; the "-" button in the menu header closes it.
-- PC key to open/close: RightShift (can be changed in the Keybinds tab).
-- A chat bubble button is always visible at the top right.
-- Tabs: Home, Player, ESP, Spam, Settings, Themes, Keybinds. A short intro splash plays at start (tap to skip).
+- A small draggable black-gem "O" button opens the menu; the "-" button in the menu header closes it back into that button. The menu itself is draggable by its title bar (unless Lock GUI is on).
+- PC key to open/close: RightShift (can be changed in the Keybinds tab, "Open / Close UI").
+- A chat bubble button is always visible at the top right (it sends the /onyxhb command in chat).
+- Tabs on the left: Home, Player, ESP, Spam, Settings, Themes, Keybinds.
+- Home tab: presents the script and the Discord (discord.gg/onyxhb) with a Copy button. If it says "Not supported", the executor has no clipboard function: copy the link by hand.
 
 PLAYER TAB
-- Anti Gummy Bear, Anti Paintball Gun, Anti Boogie Bomb: on by default.
-- Anti Ragdoll: off by default; stops the ragdoll state quickly.
-- Anti Trap: frees you when a trap holds you (anchored, walkspeed 0, trap weld, "TRAPPED" label).
-  "Trap: escape" uses an escape gear (choose Wave Rider or Cupid Wings in "Escape gear"; the player needs that gear in the inventory).
-  "Escape time" is how long the gear stays in the hands. "Trap Logger (debug)" only records what happens while trapped, for support.
+- ANTI: Anti Gummy Bear, Anti Paintball Gun, Anti Boogie Bomb (on by default), Anti Ragdoll (off by default; stops the ragdoll state quickly), Anti Trap (on by default).
+  Anti Trap frees you when a trap holds you (you cannot move, the "TRAPPED" text appears above you) and uses an escape gear to get out: choose "Escape gear" = Wave Rider or Cupid Wings. The player must own that gear in the inventory, otherwise it cannot free them.
 - Speed On: speed boost. Three modes, each with its own "norm" speed and "steal" speed (used while carrying a brainrot) and its own key:
   Normal (defaults 59 / 30, key T), Lagger (18 / 24, key Q), Custom (33 / 33, key C). Click a card or use the key to switch mode. Numbers can be edited (1 to 200).
-- Potion Speed (default 45, ON/OFF switch): speed used while stealing under the Giant Potion.
-- Infinite Jump (Hold): hold jump to keep going up. "Inf Jump Mode": hold or manual.
-- Destroy Turret: one press, brings enemy turrets that are still being set up in front of you and hits them with the bat. It needs a Bat in the inventory
-  ("No bat!" is shown otherwise), skips turrets that are already armed, and stops if you take damage. Key H.
-- Drop Mode (Stand or Jump) and Drop Now (key X). Insta Reset Now (key Z). TP Down (key F).
-- Auto Steal: switch on/off; Version V1, V2, V3 (V1 is the default); Steal Radius (default 60 studs). The steal bar shows READY / STEALING / WAITING / GRABBED and the percent.
-  Auto steal only works on bases that are not yours and within the radius.
+- Potion Speed (default 45, ON/OFF switch): the speed used while carrying a brainrot after the Giant Potion (when you are giant or the brainrot is carried far from your hands).
+- Infinite Jump (Hold): hold jump to keep going up. INF JUMP MODE: hold or manual.
+- Destroy Turret: one press, brings enemy turrets that are still being set up in front of you and hits them with the bat. It needs a Bat in the inventory ("No bat!" is shown otherwise), skips turrets that are already armed ("armed skipped"), and stops if you take damage ("Stopped: taking damage"). Key H.
+- Drop Mode (Stand or Jump, default Jump) and Drop Now (key X). Insta Reset Now (key Z). TP Down (key F).
+- AUTO STEAL: switch on/off; Version V1, V2, V3 (V1 is the default); Steal Radius (default 60 studs). Auto steal only works on bases that are not yours and within the radius.
+- The Player tab also lists the keybinds (Drop, TP Down, Insta Reset, Destroy Turret, Auto Steal, Boogie, Body Swap, Black Hole, Carpet Speed).
 
-TP WINDOW (title "ONYXHUB TP", draggable, can be minimised with the "-"/"+" button)
-- Save Base and Save Pet: stand on the spot you want and press the button. The "B" and "P" dots in the header turn green when saved.
-- KEY button: choose the key for the teleport (default X). The big TP button does the same on mobile.
+STEAL BAR (round gauge, draggable, size in Settings)
+- Shows the percent in the middle and a status: OFF (auto steal off), READY, STEALING, WAITING, GRABBED. Below it shows the radius, FPS and ping.
+
+TP WINDOW (title "ONYXHUB TP", draggable, can be minimised with the "-"/"+" button, hidden with "Show Panel TP" in Settings)
+- Save Base and Save Pet: stand on the spot you want and press the button. The "B" and "P" dots turn green when saved.
+- TP KEY button: choose the key for the teleport (default X). The big TP button does the same on mobile. While a point is saved, that key belongs to the TP (so it does not trigger Drop, which also uses X by default).
 - With only one point saved, it flies to it and drops you; with both, it goes to the base then to the pet point.
-- Auto Potion ON/OFF: uses the Giant/Mega Potion automatically just before a steal finishes, only when you are standing at a brainrot and not already carrying one.
-- The window can be hidden with "Show Panel TP" in Settings and resized with "TP Window Size".
+- Insta TP: teleports you straight onto the most valuable brainrot of the enemy bases and switches auto steal on. Its key is the "INSTA [Z]" chip next to it (default Z; Insta Reset also uses Z by default, so change one of them if they clash). Pressing Save Base next to an enemy base and Save Pet in front of a brainrot teaches it the spots you prefer. The button shows the result a moment later (Held 3s, Pulled back, Died, Respawned) or "No brainrot" / "No character".
+- Auto Potion ON/OFF: uses the Giant/Mega Potion automatically just before a steal finishes, only when you are standing at a brainrot and not already carrying one (it gives you back the tool you were holding, and does not use a second potion when you are already giant).
+- The window size is changed with "TP Window Size" in Settings.
 
 ESP TAB: Player ESP, Tracker / Tracer, Anti Lag (lowers graphics to gain FPS).
-SPAM TAB: Spam Laser Cape, Spam Paintball Gun (they aim at the closest player).
+SPAM TAB: Spam Laser Cape, Spam Paintball Gun (they aim at the closest player). Web Slinger, Paintball Gun, Laser Cape, Boogie Bomb and Body Swap Potion always aim at the closest player.
 
 SETTINGS TAB
 - Mobile Buttons (on-screen buttons), Lock Mobile Buttons, Lock GUI (stops dragging windows), Mode Buttons (NORMAL / LAGGER / CUSTOM buttons), Show Panel TP.
 - Sizes: TP Window Size, Steal Bar Size, Buttons Size, Menu Size.
 - Reset Mobile Positions, Reset All Settings (back to defaults), Save Now.
-- Settings are saved automatically every few seconds.
 
 MOBILE BUTTONS: DROP, INSTA RESET, TP DOWN, DESTROY TURRET, AUTO STEAL, BODY SWAP, BOOGIE, BLACK HOLE, CARPET ON/OFF, plus NORMAL/LAGGER/CUSTOM.
 They can be dragged anywhere (unless locked) and resized in Settings. Body Swap / Boogie / Black Hole equip the item and use it on the closest player ("NO ITEM" means the item is not in the inventory, "NO TARGET" means nobody is near).
-CARPET SPEED: when on, running with the Flying Carpet in hand uses the Carpet Speed value (default 130, editable in Keybinds). Turning it on switches the normal speed boost off, and turning it off brings it back.
+CARPET SPEED: when on (button CARPET ON or its key), the carpet goes in your hands and running with it uses the Carpet Speed value (default 130, editable in Keybinds). Turning it on switches the normal speed boost off, and turning it off brings it back. In Keybinds you can also choose which carpet to use ("Carpet": Auto or a specific one). It auto-equips the carpet when you start running with empty hands (never while carrying a brainrot).
 
-KEYBINDS TAB (PC): Drop, TP Down, Insta Reset, Destroy Turret, Auto Steal (toggle, no key by default), Open/Close UI, Boogie, Body Swap, Black Hole, Carpet Speed.
+KEYBINDS TAB (PC): Drop, TP Down, Insta Reset, Destroy Turret, Auto Steal (toggle, no key by default), Open/Close UI, Boogie, Body Swap, Black Hole, Carpet Speed (toggle), Carpet Speed value, Carpet choice.
 Click a key box, press the new key. Backspace or Delete clears it, Escape cancels.
 
-THEMES TAB: "Gon Freecs theme" (green, default) and "Killua Zoldyck theme" (blue and white).
+THEMES TAB: "Gon Freecs theme" (green, default) and "Killua Zoldyck theme" (blue and white), plus the Intro color picker.
+
+ABOVE YOUR HEAD you see ".gg/onyxhb" and your speed ("Speed: target (real)").
 
 COMMON ISSUES
 - Menu not showing: wait for the intro to end, press RightShift, or click the small gem button; check the Show/Lock settings; re-execute the script once only.
 - Speed not working: Speed On must be enabled, a mode must be selected, and the speed number must not be too low. Carpet Speed on turns the speed boost off.
 - Auto Steal not grabbing: it must be on, the radius large enough, and the target must be another player's base. Try another version (V1/V2/V3).
+- TP key does nothing or Drop fires instead: a point must be saved first; X is shared by TP and Drop, change one key if needed.
+- Insta TP / Insta Reset both trigger together: both use Z by default, change one key.
+- Anti Trap does not free you: the player needs the chosen Escape gear (Wave Rider or Cupid Wings) in the inventory.
 - Buttons moved or lost: Settings > Reset Mobile Positions. Everything wrong: Settings > Reset All Settings.
 - Anything else, bugs, or an executor problem: ask for the executor name, what they pressed, a screenshot, and tell them they can ask for a staff member any time.
 `.trim();
 
-const AI_SYSTEM_PROMPT = `You are the support assistant of ORYX HUB, answering inside a private Discord ticket.
+const AI_SYSTEM_PROMPT = `You are the support assistant of onyx HUB, answering inside a private Discord ticket.
 
 How to behave:
 - Do not start your reply with an emoji. Reply in the same language as the customer (French or English mostly). Be short, friendly and concrete (max ~120 words, no long lists).
@@ -1054,7 +1063,7 @@ client.on(Events.MessageCreate, async (message) => {
       message.author.bot ||
       !message.guild ||
       channel.type !== ChannelType.GuildText ||
-      !channel.topic?.startsWith("oryx-ticket:")
+      !channel.topic?.startsWith("onyx-ticket:")
     ) {
       return;
     }
@@ -1125,11 +1134,11 @@ const PARTNERSHIP_CHANNEL_ID =
   process.env.PARTNERSHIP_CHANNEL_ID || "1556371939277152306";
 
 /* Our own ad, sent to the partner. The OUR_AD variable (use \n for line breaks) overrides it. */
-const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・ORYX HUB
+const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・onyx HUB
 
-**ORYX HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
+**onyx HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
 
-### ⚡・WHY ORYX HUB?
+### ⚡・WHY onyx HUB?
 
 > 🏆 ・**The BEST Duel Script / All Gear**
 > <:update:1360465468393001110> ・**Daily updates** & improvements
@@ -1149,14 +1158,14 @@ Need help or have a question? Our **AI assistant is available to help you 24/7**
 ### 💡・COMMUNITY FIRST
 
 We are **completely open to suggestions**.
-Have an idea, feature request, or improvement? Let us know — your feedback helps us make **ORYX HUB** even better.
+Have an idea, feature request, or improvement? Let us know — your feedback helps us make **onyx HUB** even better.
 
 ### 🎫・24/7 SUPPORT
 
 Our **ticket system is open 24/7**.
 Need help with your Key, Script, or have a question? **Open a ticket anytime and our staff or our AI will assist you as soon as possible.**
 
-> **ORYX HUB**
+> **onyx HUB**
 > *The best. Updated daily. Built with the community. 🟢*
 
 discord.gg/onyxhb
@@ -1364,7 +1373,7 @@ client.on(Events.MessageCreate, async (message) => {
       message.author.bot ||
       !message.guild ||
       channel.type !== ChannelType.GuildText ||
-      !channel.topic?.startsWith("oryx-ticket:")
+      !channel.topic?.startsWith("onyx-ticket:")
     ) {
       return;
     }
@@ -1676,11 +1685,11 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "help") {
       return await privateReply(message, { embeds: [new EmbedBuilder()
         .setColor(COLORS.main)
-        .setTitle("ORYX HUB | Commands")
+        .setTitle("onyx HUB | Commands")
         .setDescription([
           "**Tickets:** `!tickets`",
           "**Information:** `!serverinfo`, `!userinfo @user`",
-          "**Moderation:** `!warn @user reason`, `!timeout @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
+          "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
@@ -1721,7 +1730,7 @@ client.on(Events.MessageCreate, async (message) => {
       if (parts.length < 2) return await safeReply(message, "❌ Usage: `!announce Title | message`");
       const title = parts.shift().trim();
       const text = parts.join("|").trim();
-      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`ORYX HUB • Announcement by ${message.author.tag}`}).setTimestamp();
+      const embed = new EmbedBuilder().setColor(COLORS.main).setTitle(title).setDescription(text).setFooter({text:`onyx HUB • Announcement by ${message.author.tag}`}).setTimestamp();
       await message.channel.send({embeds:[embed]});
       return await safeReply(message, {content:"✅ Announcement sent.",allowedMentions:{parse:[]}});
     }
@@ -1779,7 +1788,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === "to") {
       const parsed = parseDuration(args[1]);
       const duration = parsed ?? DEFAULT_TIMEOUT_MS;
-      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!timeout @user [30m/1h/1d] [reason]`");
+      if (duration < 1000 || duration > MAX_TIMEOUT_MS) return await safeReply(message, "❌ Duration must be between 1s and 28d. Usage: `!to @user [30m/1h/1d] [reason]`");
       const reason = args.slice(parsed === null ? 1 : 2).join(" ") || "No reason provided.";
       const failedTimeout =
         moderationBlock(target, "timeout") ||
@@ -1861,7 +1870,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
 
         return interaction.reply({
-          content: "✅ ORYX HUB ticket panel created!",
+          content: "✅ onyx HUB ticket panel created!",
           ephemeral: true,
         });
       }
@@ -1873,7 +1882,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (command === "help") {
         const embed = new EmbedBuilder()
           .setColor(COLORS.main)
-          .setTitle("🛠️ ORYX HUB • Help")
+          .setTitle("🛠️ onyx HUB • Help")
           .setDescription("Here are the available bot commands.")
           .addFields(
             {
@@ -1916,7 +1925,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/announce` — Send an announcement.",
             }
           )
-          .setFooter({ text: "ORYX HUB • Multifunction Bot" })
+          .setFooter({ text: "onyx HUB • Multifunction Bot" })
           .setTimestamp();
 
         return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -2386,10 +2395,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("onyx-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an onyx HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2456,10 +2465,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("onyx-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an onyx HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2524,10 +2533,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (
         !channel ||
         channel.type !== ChannelType.GuildText ||
-        !channel.topic?.startsWith("oryx-ticket:")
+        !channel.topic?.startsWith("onyx-ticket:")
       ) {
         return interaction.reply({
-          content: "❌ This is not an ORYX HUB ticket.",
+          content: "❌ This is not an onyx HUB ticket.",
           ephemeral: true,
         });
       }
@@ -2567,7 +2576,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       setTimeout(async () => {
         await channel
-          .delete("ORYX HUB ticket closed")
+          .delete("onyx HUB ticket closed")
           .catch((error) =>
             console.error("Could not delete ticket:", error)
           );
@@ -2601,11 +2610,11 @@ async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("tickets")
-      .setDescription("Post the ORYX HUB ticket panel."),
+      .setDescription("Post the onyx HUB ticket panel."),
 
     new SlashCommandBuilder()
       .setName("help")
-      .setDescription("Show all ORYX HUB bot commands."),
+      .setDescription("Show all onyx HUB bot commands."),
 
     new SlashCommandBuilder()
       .setName("serverinfo")
