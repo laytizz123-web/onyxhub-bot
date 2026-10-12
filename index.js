@@ -1553,7 +1553,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -1687,7 +1687,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -1701,6 +1701,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
+          "**Tickets:** `!instr` (post-purchase instructions)",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
           "",
@@ -1783,6 +1784,28 @@ client.on(Events.MessageCreate, async (message) => {
         content: `${message.author} ${NUKE_WARNING}`,
         components: [nukeConfirmButtons()],
         allowedMentions: { users: [message.author.id] },
+      });
+    }
+
+    if (command === "instr") {
+      // The customer is the ticket owner; outside a ticket, the first mentioned member is used.
+      const topic = message.channel.topic || "";
+      const ticketOwnerId = topic.startsWith("onyx-ticket:") ? topic.split(":")[1] : null;
+      const customerId = ticketOwnerId || message.mentions.users.first()?.id || null;
+
+      await message.delete().catch(() => {});
+      return await message.channel.send({
+        content: [
+          "🎉 **THANK YOU FOR YOUR PURCHASE!** 🛒",
+          "",
+          "✅ After your purchase, please follow these steps:",
+          "",
+          "⭐ **1. VOUCH** — Go to <#1556325051677155381> and leave a review to confirm your purchase.",
+          "",
+          "🎭 **2. GET YOUR ROLE** — Click on **Get Role** in <#1555933728293781526> channel to receive your role and unlock access to the server.",
+          ...(customerId ? ["", `<@${customerId}>`] : []),
+        ].join("\n"),
+        allowedMentions: { users: customerId ? [customerId] : [] },
       });
     }
 
