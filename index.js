@@ -1134,18 +1134,18 @@ const PARTNERSHIP_CHANNEL_ID =
   process.env.PARTNERSHIP_CHANNEL_ID || "1556371939277152306";
 
 /* Our own ad, sent to the partner. The OUR_AD variable (use \n for line breaks) overrides it. */
-const DEFAULT_OUR_AD = `# <a:GreenCheck:1543572464288931910> ・onyx HUB
+const DEFAULT_OUR_AD = `# 🟢 ・ONYX HUB
 
-**onyx HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
+**ONYX HUB is the BEST Duel Script / All Gear community**, featuring **daily updates**, constant improvements, and a team that truly listens to its community.
 
-### ⚡・WHY onyx HUB?
+### ⚡・WHY ONYX HUB?
 
 > 🏆 ・**The BEST Duel Script / All Gear**
-> <:update:1360465468393001110> ・**Daily updates** & improvements
+> 🆙 ・**Daily updates** & improvements
 > 💡 ・**Completely open to suggestions**
-> <a:Moderator:1524824578055082238> ・Constantly adding new features
-> 📰 ・Active community & frequent announcements
-> <:Friends:1401940276687405147> ・Friendly and active community
+> 🛠️ ・Constantly adding new features
+> 📰 ・Active community & frequent news
+> 🤝 ・Friendly and active community
 
 ### 🤖・AI ASSISTANCE IN TICKETS
 
@@ -1155,20 +1155,30 @@ Need help or have a question? Our **AI assistant is available to help you 24/7**
 > ⚡ ・Fast answers to your questions
 > 💡 ・Help with common issues & information
 
+### 🤝・AUTOMATIC PARTNERSHIPS
+
+ONYX HUB features an **automated partnership system** to make partnering with other communities easier and faster!
+
+> 🔄 ・**Automatic partnership system**
+> ⚡ ・Quick and easy partnership process
+> 🌐 ・Connect with other communities
+> 📈 ・Grow your server and expand your reach
+
 ### 💡・COMMUNITY FIRST
 
 We are **completely open to suggestions**.
-Have an idea, feature request, or improvement? Let us know — your feedback helps us make **onyx HUB** even better.
+Have an idea, feature request, or improvement? Let us know — your feedback helps us make **ONYX HUB** even better.
 
 ### 🎫・24/7 SUPPORT
 
 Our **ticket system is open 24/7**.
 Need help with your Key, Script, or have a question? **Open a ticket anytime and our staff or our AI will assist you as soon as possible.**
 
-> **onyx HUB**
+> **ONYX HUB**
 > *The best. Updated daily. Built with the community. 🟢*
 
-discord.gg/onyxhb
+🔗 discord.gg/onyxhb
+
 ||@everyone||`;
 
 const OUR_AD = process.env.OUR_AD
