@@ -1285,7 +1285,7 @@ async function answerPartnershipAd(channel, user, isYes) {
 
   state.step = "done";
 
-  // Their ad goes to our partnership channel (no mention can ping anyone).
+  // Their ad goes to our partnership channel. @everyone / @here in it really ping (roles and members never do).
   let posted = true;
 
   try {
@@ -1294,7 +1294,7 @@ async function answerPartnershipAd(channel, user, isYes) {
     await target.send({
       content: state.adText ? state.adText.slice(0, 2000) : undefined,
       files: state.attachments?.length ? state.attachments : undefined,
-      allowedMentions: { parse: [] },
+      allowedMentions: { parse: ["everyone"] },
     });
   } catch (error) {
     posted = false;
