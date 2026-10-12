@@ -64,7 +64,7 @@ const partnershipTickets = new Map();
 
 function isStaff(interaction) {
   return (
-    interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ||
+    (interaction.memberPermissions || interaction.member?.permissions)?.has(PermissionFlagsBits.ManageChannels) ||
     interaction.member?.roles?.cache?.has(STAFF_ROLE_ID) ||
     interaction.member?.roles?.cache?.has(OWNER_ROLE_ID)
   );
@@ -72,7 +72,7 @@ function isStaff(interaction) {
 
 function isOwner(interaction) {
   return (
-    interaction.user.id === process.env.OWNER_ID ||
+    (interaction.user || interaction.author)?.id === process.env.OWNER_ID ||
     interaction.member?.roles?.cache?.has(OWNER_ROLE_ID)
   );
 }
@@ -1553,7 +1553,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -1597,6 +1597,53 @@ client.on(Events.MessageCreate, async (message) => {
     console.error("Commands-only channel error:", error?.message || error);
   }
 });
+
+/* =====================================================
+   TICKET COMMANDS (!claim / !unclaim / !close)
+===================================================== */
+
+function isTicketChannel(channel) {
+  return (
+    channel?.type === ChannelType.GuildText &&
+    Boolean(channel.topic?.startsWith("onyx-ticket:"))
+  );
+}
+
+function ticketButtons(claimed) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(claimed ? "ticket_unclaim" : "ticket_claim")
+      .setLabel(claimed ? "Unclaim Ticket" : "Claim Ticket")
+      .setEmoji(claimed ? "🔓" : "🎫")
+      .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("ticket_close")
+      .setLabel("Close Ticket")
+      .setEmoji("🔒")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+/* A !claim / !unclaim has no button click, so the welcome message's buttons are updated by hand. */
+async function refreshTicketButtons(channel, claimed) {
+  const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+
+  if (!messages) return;
+
+  const welcome = [...messages.values()].reverse().find(
+    (m) =>
+      m.author.id === client.user.id &&
+      m.components?.some((row) =>
+        row.components?.some(
+          (c) => c.customId === "ticket_claim" || c.customId === "ticket_unclaim"
+        )
+      )
+  );
+
+  if (welcome) {
+    await welcome.edit({ components: [ticketButtons(claimed)] }).catch(() => {});
+  }
+}
 
 /*
   Timeout / kick / ban: the bot always TRIES the action. Only the cases that can never work are refused up
@@ -1687,7 +1734,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -1701,7 +1748,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
-          "**Tickets:** `!instr` (post-purchase instructions)",
+          "**Tickets:** `!claim`, `!unclaim`, `!close`, `!instr` (post-purchase instructions)",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
           "",
@@ -1806,6 +1853,92 @@ client.on(Events.MessageCreate, async (message) => {
           ...(customerId ? ["", `<@${customerId}>`] : []),
         ].join("\n"),
         allowedMentions: { users: customerId ? [customerId] : [] },
+      });
+    }
+
+    if (command === "claim" || command === "unclaim" || command === "close") {
+      const channel = message.channel;
+
+      if (!isTicketChannel(channel)) {
+        return await privateReply(message, "❌ This command only works inside a ticket.");
+      }
+
+      const ticketOwnerId = channel.topic.split(":")[1];
+
+      if (command === "close") {
+        if (!isStaff(message) && message.author.id !== ticketOwnerId) {
+          return await privateReply(message, "❌ Only the ticket owner or staff can close this ticket.");
+        }
+
+        claimedTickets.delete(channel.id);
+        partnershipTickets.delete(channel.id);
+
+        await message.delete().catch(() => {});
+        await channel.send("🔒 Ticket closed. This channel will be deleted in 5 seconds.");
+
+        await sendLog(
+          message.guild,
+          new EmbedBuilder()
+            .setColor(COLORS.error)
+            .setTitle("🔒 Ticket Closed")
+            .addFields(
+              { name: "Channel", value: `#${channel.name}` },
+              { name: "Closed By", value: `${message.author}` }
+            )
+            .setTimestamp()
+        );
+
+        setTimeout(() => {
+          channel
+            .delete("onyx HUB ticket closed")
+            .catch((error) => console.error("Could not delete ticket:", error));
+        }, 5000);
+
+        return;
+      }
+
+      const claimedBy = claimedTickets.get(channel.id);
+
+      if (command === "claim") {
+        if (claimedBy) {
+          return await privateReply(message, `❌ This ticket is already claimed by <@${claimedBy}>.`);
+        }
+
+        claimedTickets.set(channel.id, message.author.id);
+        await message.delete().catch(() => {});
+        await refreshTicketButtons(channel, true);
+
+        return await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(COLORS.success)
+              .setDescription(`🎫 This ticket has been claimed by ${message.author}.`),
+          ],
+        });
+      }
+
+      // !unclaim
+      if (!claimedBy) {
+        return await privateReply(message, "❌ This ticket is not currently claimed.");
+      }
+
+      if (claimedBy !== message.author.id && !isOwner(message)) {
+        return await privateReply(
+          message,
+          "❌ Only the staff member who claimed this ticket or the Owner can unclaim it."
+        );
+      }
+
+      claimedTickets.delete(channel.id);
+      await message.delete().catch(() => {});
+      await refreshTicketButtons(channel, false);
+
+      return await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.main)
+            .setDescription(`🔓 ${message.author} has unclaimed this ticket.`),
+        ],
       });
     }
 
