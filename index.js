@@ -1843,14 +1843,16 @@ client.on(Events.MessageCreate, async (message) => {
       await message.delete().catch(() => {});
       return await message.channel.send({
         content: [
+          ...(customerId ? [`<@${customerId}>`, ""] : []),
           "🎉 **THANK YOU FOR YOUR PURCHASE!** 🛒",
           "",
           "✅ After your purchase, please follow these steps:",
           "",
-          "⭐ **1. VOUCH** — Go to <#1556325051677155381> and leave a review to confirm your purchase.",
+          "🎭 **1. GET YOUR ROLE** — Click on **Get Role** in <#1555933728293781526> channel to receive your role and unlock access to the server.",
           "",
-          "🎭 **2. GET YOUR ROLE** — Click on **Get Role** in <#1555933728293781526> channel to receive your role and unlock access to the server.",
-          ...(customerId ? ["", `<@${customerId}>`] : []),
+          "⭐ **2. VOUCH** — Go to <#1556325051677155381> and leave a review to confirm your purchase.",
+          "",
+          "🙏 Thank you for supporting **ONYX HUB**! 💚",
         ].join("\n"),
         allowedMentions: { users: customerId ? [customerId] : [] },
       });
