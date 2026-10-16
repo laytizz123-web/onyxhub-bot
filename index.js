@@ -1852,6 +1852,8 @@ client.on(Events.MessageCreate, async (message) => {
           "",
           "⭐ **2. VOUCH** — Go to <#1556325051677155381> and leave a review to confirm your purchase.",
           "",
+          "🏷️ **3. SET THE SERVER TAG** — Make sure to set the **ONYX HUB** server tag on your Discord profile to show your support for the server!",
+          "",
           "🙏 Thank you for supporting **ONYX HUB**! 💚",
         ].join("\n"),
         allowedMentions: { users: customerId ? [customerId] : [] },
