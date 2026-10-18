@@ -1553,7 +1553,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close", "addticket",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -1645,6 +1645,50 @@ async function refreshTicketButtons(channel, claimed) {
   }
 }
 
+/* Gives a member access to the ticket (used by !addticket and /addticket). Returns an error text or null. */
+async function addUserToTicket(channel, user, adder) {
+  if (!isTicketChannel(channel)) return "❌ This command only works inside a ticket.";
+  if (user.bot) return "❌ You can't add a bot to a ticket.";
+
+  const alreadyIn =
+    channel.topic.split(":")[1] === user.id ||
+    channel.permissionOverwrites.cache.get(user.id)?.allow.has(PermissionFlagsBits.ViewChannel);
+
+  if (alreadyIn) return `❌ ${user} is already in this ticket.`;
+
+  await channel.permissionOverwrites.edit(
+    user.id,
+    {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+      AttachFiles: true,
+      EmbedLinks: true,
+    },
+    { reason: `Added to the ticket by ${adder.tag}` }
+  );
+
+  await channel.send({
+    content: `✅ ${user} has been added to this ticket by ${adder}.`,
+    allowedMentions: { users: [user.id] },
+  });
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.info)
+      .setTitle("➕ Member added to a ticket")
+      .addFields(
+        { name: "Ticket", value: `${channel}`, inline: true },
+        { name: "Member", value: `${user} (\`${user.id}\`)`, inline: true },
+        { name: "Added by", value: `${adder}`, inline: true }
+      )
+      .setTimestamp()
+  );
+
+  return null;
+}
+
 /*
   Timeout / kick / ban: the bot always TRIES the action. Only the cases that can never work are refused up
   front (owner, bot itself, timing out an administrator). If Discord refuses (error 50013), the answer shows
@@ -1734,7 +1778,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "addticket"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -1748,7 +1792,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
-          "**Tickets:** `!claim`, `!unclaim`, `!close`, `!instr` (post-purchase instructions)",
+          "**Tickets:** `!claim`, `!unclaim`, `!close`, `!addticket @user`, `!instr` (post-purchase instructions)",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
           "",
@@ -1946,6 +1990,23 @@ client.on(Events.MessageCreate, async (message) => {
       });
     }
 
+    if (command === "addticket") {
+      const user = message.mentions.users.first();
+
+      if (!user) return await privateReply(message, "❌ Usage: `!addticket @user`");
+
+      const error = await addUserToTicket(message.channel, user, message.author);
+
+      await message.delete().catch(() => {});
+
+      if (error) {
+        const notice = await message.channel.send({ content: error, allowedMentions: { parse: [] } });
+        setTimeout(() => notice.delete().catch(() => {}), 8000);
+      }
+
+      return;
+    }
+
     const target = message.mentions.members.first();
     if (["warn","to","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
 
@@ -2069,6 +2130,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 "`/kick` — Kick a member.\n" +
                 "`/ban` — Ban a member.\n" +
                 "`/clear` — Delete messages.",
+            },
+            {
+              name: "🎫 Ticket staff",
+              value: "`/addticket` — Add a member to the current ticket.",
             },
             {
               name: "🔒 Channels",
@@ -2405,6 +2470,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
       /* -----------------------------------------------
          /lock /unlock /nuke
       ----------------------------------------------- */
+
+      if (command === "addticket") {
+        if (!isStaff(interaction)) {
+          return interaction.reply({
+            content: "❌ Only staff can use this command.",
+            ephemeral: true,
+          });
+        }
+
+        const error = await addUserToTicket(
+          interaction.channel,
+          interaction.options.getUser("user", true),
+          interaction.user
+        );
+
+        return interaction.reply({
+          content: error || "✅ Member added to the ticket.",
+          ephemeral: true,
+        });
+      }
 
       if (command === "antilink") {
         if (!isStaff(interaction)) {
@@ -2934,6 +3019,16 @@ async function registerCommands() {
       )
       .addSubcommand((sub) =>
         sub.setName("list").setDescription("Show the channels with a filter.")
+      ),
+
+    new SlashCommandBuilder()
+      .setName("addticket")
+      .setDescription("Add a member to the current ticket.")
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("Member to add to this ticket.")
+          .setRequired(true)
       ),
 
     new SlashCommandBuilder()
