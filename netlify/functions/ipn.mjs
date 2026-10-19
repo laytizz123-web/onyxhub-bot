@@ -1,7 +1,7 @@
 import { PLANS, claimKey, json, orders } from "./lib.mjs";
 
-/* Le contenu reçu n'est jamais cru : il sert seulement à retrouver la commande.
-   Le paiement est vérifié en le redemandant à Plisio avec la clé secrète. */
+/* The received body is never trusted: it only identifies the order.
+   The payment is verified by asking Plisio for it with the secret key. */
 async function readOrderNumber(req) {
   const text = await req.text();
   try { return String(JSON.parse(text).order_number || ""); } catch {}
@@ -24,7 +24,7 @@ export default async (req) => {
   const order = cur.data;
   if (order.key) return json({ ok: true });
   if (!PLANS[order.plan]) return json({ error: "Unknown plan" }, 400);
-  // Reprise possible si un traitement précédent est resté bloqué plus d'une minute.
+  // Allow a retry if a previous run has been stuck for over a minute.
   if (order.status === "processing" && Date.now() - order.processingAt < 60_000) return json({ ok: true });
 
   const op = await plisioOperation(order.txnId);
@@ -36,7 +36,7 @@ export default async (req) => {
     Number(op.source_amount) >= order.price - 0.01;
   if (!paid) return json({ ok: true });
 
-  // Un seul appel gagne ce passage : les doublons de callback sont ignorés.
+  // Only one call wins this step: duplicate callbacks are ignored.
   const lock = await store.setJSON(orderId, { ...order, status: "processing", processingAt: Date.now() }, { onlyIfMatch: cur.etag });
   if (!lock.modified) return json({ ok: true });
 

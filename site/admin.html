@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Admin – Onyx Hub</title>
 <style>
@@ -11,8 +11,8 @@ textarea{min-height:90px;margin:8px 0;font-family:ui-monospace,monospace;font-si
 button{background:var(--accent);color:#04120a;font-weight:700;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font:inherit;font-weight:700}
 p{color:var(--mute);margin:4px 0 0}
 </style></head><body><div class="w">
-<h1>Admin – stock de keys</h1>
-<div class="card"><input id="pw" type="password" placeholder="Mot de passe admin"><button id="go" style="margin-top:10px">Se connecter</button></div>
+<h1>Admin – key stock</h1>
+<div class="card"><input id="pw" type="password" placeholder="Admin password"><button id="go" style="margin-top:10px">Log in</button></div>
 <div id="plans"></div>
 <script>
 let pw = "";
@@ -24,7 +24,7 @@ function render(d) {
   const root = document.getElementById("plans"); root.innerHTML = "";
   for (const [id, name] of Object.entries(d.plans)) {
     const c = document.createElement("div"); c.className = "card";
-    c.innerHTML = `<b>${name}</b><p>Keys en stock : <b>${d.counts[id]}</b></p><textarea placeholder="Une key par ligne"></textarea><button>Ajouter ces keys</button>`;
+    c.innerHTML = `<b>${name}</b><p>Keys in stock: <b>${d.counts[id]}</b></p><textarea placeholder="One key per line"></textarea><button>Add these keys</button>`;
     c.querySelector("button").onclick = async () => {
       const keys = c.querySelector("textarea").value.split("\n");
       try { render(await call({ plan: id, keys })); } catch (e) { alert(e.message); }

@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ta commande – Onyx Hub</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your order – Onyx Hub</title>
 <style>
 :root{--bg:#07080a;--card:#101216;--line:#1d2127;--text:#e8ebef;--mute:#8b94a1;--accent:#28dc78}
 *{box-sizing:border-box;margin:0}body{background:var(--bg);color:var(--text);font:16px/1.6 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px}
@@ -9,24 +9,24 @@ h1{margin-bottom:10px}p{color:var(--mute)}
 .key{background:#0a0c0f;border:1px solid var(--accent);border-radius:10px;padding:14px;margin:18px 0;font:600 16px ui-monospace,monospace;word-break:break-all;color:var(--accent)}
 button,a.b{background:var(--accent);color:#04120a;font-weight:700;padding:11px 22px;border:0;border-radius:10px;cursor:pointer;font:inherit;font-weight:700;text-decoration:none;display:inline-block}
 </style></head><body>
-<div class="box" id="box"><h1>Vérification…</h1></div>
+<div class="box" id="box"><h1>Checking…</h1></div>
 <script>
 const q = new URLSearchParams(location.search), box = document.getElementById("box");
 const show = (h) => box.innerHTML = h;
 async function poll() {
   const r = await fetch(`/.netlify/functions/get-order?id=${encodeURIComponent(q.get("id"))}&t=${encodeURIComponent(q.get("t"))}`);
-  if (!r.ok) return show("<h1>Commande introuvable</h1><p>Vérifie le lien ou ouvre un ticket Purchase sur Discord.</p>");
+  if (!r.ok) return show("<h1>Order not found</h1><p>Check the link or open a Purchase ticket on Discord.</p>");
   const o = await r.json();
   if (o.status === "delivered") {
-    show(`<h1>✅ Merci !</h1><p>Voici ta key :</p><div class="key" id="k"></div>
-      <button id="c">Copier</button>
-      <p style="margin-top:18px;font-size:14px">Garde cette page en favori : elle te permet de retrouver ta key. Besoin d'aide ? <a style="color:var(--accent)" href="https://discord.gg/onyxhb">Discord</a></p>`);
+    show(`<h1>✅ Thank you!</h1><p>Here is your key:</p><div class="key" id="k"></div>
+      <button id="c">Copy</button>
+      <p style="margin-top:18px;font-size:14px">Bookmark this page: it lets you find your key again. Need help? <a style="color:var(--accent)" href="https://discord.gg/onyxhb">Discord</a></p>`);
     document.getElementById("k").textContent = o.key;
-    document.getElementById("c").onclick = (e) => { navigator.clipboard.writeText(o.key); e.target.textContent = "Copié !"; };
+    document.getElementById("c").onclick = (e) => { navigator.clipboard.writeText(o.key); e.target.textContent = "Copied!"; };
   } else if (o.status === "paid_no_stock") {
-    show("<h1>Paiement reçu</h1><p>Plus de key disponible à l'instant. Ouvre un ticket Purchase sur Discord avec ce lien, on te livre au plus vite.</p>");
+    show("<h1>Payment received</h1><p>No key is available right now. Open a Purchase ticket on Discord with this link and we will deliver it as soon as possible.</p>");
   } else {
-    show("<h1>⏳ En attente du paiement</h1><p>Cette page se met à jour toute seule dès que la transaction crypto est confirmée (quelques minutes).</p>");
+    show("<h1>⏳ Waiting for payment</h1><p>This page updates by itself as soon as the crypto transaction is confirmed (a few minutes).</p>");
     setTimeout(poll, 5000);
   }
 }

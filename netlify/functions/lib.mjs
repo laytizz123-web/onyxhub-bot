@@ -1,8 +1,8 @@
 import { getStore } from "@netlify/blobs";
 
-/* PRIX ET OFFRES : à modifier ici (en EUR). Ce sont des valeurs d'exemple. */
+/* PRICES AND OFFERS: edit here (in EUR). These are example values. */
 export const PLANS = {
-  lifetime: { name: "Lifetime", price: 25, perks: ["Accès à vie", "Support prioritaire", "Mises à jour incluses"] }
+  lifetime: { name: "Lifetime", price: 25, perks: ["Lifetime access", "Priority support", "Updates included"] }
 };
 
 export const stock = () => getStore({ name: "stock", consistency: "strong" });
@@ -31,7 +31,7 @@ export async function addKeys(plan, keys) {
   throw new Error("Stock busy, retry");
 }
 
-/* Retire une key du stock sans jamais la donner deux fois (écriture conditionnelle). */
+/* Takes a key out of the stock without ever giving it twice (conditional write). */
 export async function claimKey(plan) {
   for (let i = 0; i < 10; i++) {
     const cur = await stock().getWithMetadata(plan, { type: "json" });
