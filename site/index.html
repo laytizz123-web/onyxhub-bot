@@ -16,7 +16,7 @@ nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0
 .btn{display:inline-block;background:var(--accent);color:#04120a;font-weight:700;padding:12px 24px;border-radius:10px;transition:.15s}
 .btn:hover{background:var(--accent-d);transform:translateY(-1px)}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
-.btn.ghost:hover{border-color:var(--accent);background:transparent}
+.btn{border:0;cursor:pointer;font:inherit;font-weight:700}.btn:disabled{opacity:.6;cursor:not-allowed}.btn.ghost:hover{border-color:var(--accent);background:transparent}
 .hero{text-align:center;padding:70px 0 50px}
 .hero h1{font-size:clamp(34px,7vw,60px);line-height:1.1;margin-bottom:16px}
 .hero h1 span{color:var(--accent)}
@@ -46,7 +46,7 @@ footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
 
   <section class="hero">
     <h1>Le script <span>Onyx Hub</span><br>pour Steal a Brainrot</h1>
-    <p>Menu complet PC et mobile : speed, ESP, auto steal, TP, keybinds personnalisables. Ta key est livrée instantanément après paiement.</p>
+    <p>Menu complet PC et mobile : speed, ESP, auto steal, TP, keybinds personnalisables. Ta key est livrée automatiquement après paiement.</p>
     <div class="btns">
       <a class="btn" href="#plans">Acheter une key</a>
       <a class="btn ghost" href="https://discord.gg/onyxhb" target="_blank" rel="noopener">Rejoindre le Discord</a>
@@ -68,12 +68,12 @@ footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
   <section id="plans">
     <h2>Choisis ta key</h2>
     <div class="grid" id="plan-grid"></div>
-    <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Paiement sécurisé et livraison automatique via SellAuth.</p>
+    <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Paiement en crypto (BTC, LTC, USDT…) · livraison automatique de la key après confirmation.</p>
   </section>
 
   <section>
     <h2>FAQ</h2>
-    <details><summary>Comment je reçois ma key ?</summary><p>Directement après le paiement, sur la page de commande et par e-mail.</p></details>
+    <details><summary>Comment je reçois ma key ?</summary><p>Dès que le paiement crypto est confirmé, elle s'affiche sur la page de commande. Garde cette page en favori : c'est là qu'on la retrouve.</p></details>
     <details><summary>Sur quels appareils ça marche ?</summary><p>PC et mobile, avec un executor qui supporte les fonctions de fichiers, custom assets et proximity prompts.</p></details>
     <details><summary>Un problème avec ma commande ?</summary><p>Ouvre un ticket « Purchase » sur notre Discord, le staff te répond rapidement.</p></details>
   </section>
@@ -82,22 +82,35 @@ footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
 </div>
 
 <script>
-/* À MODIFIER : tes vrais produits et prix.
-   url = lien direct du produit sur SellAuth (ou la boutique entière). */
-const SHOP_URL = "https://onyxhub7.mysellauth.com/";
-const PLANS = [
-  { name: "Semaine",  price: "X €", url: SHOP_URL, perks: ["Accès complet au script", "Support Discord"] },
-  { name: "Mois",     price: "X €", url: SHOP_URL, perks: ["Accès complet au script", "Support Discord", "Mises à jour incluses"], best: true },
-  { name: "Lifetime", price: "X €", url: SHOP_URL, perks: ["Accès à vie", "Support prioritaire", "Mises à jour incluses"] }
-];
-document.getElementById("plan-grid").innerHTML = PLANS.map(p => `
-  <div class="card plan${p.best ? " best" : ""}">
-    ${p.best ? '<span class="tag">POPULAIRE</span>' : ""}
-    <h3>${p.name}</h3>
-    <div class="price">${p.price}</div>
-    <ul>${p.perks.map(x => `<li>${x}</li>`).join("")}</ul>
-    <a class="btn" href="${p.url}" target="_blank" rel="noopener">Acheter</a>
-  </div>`).join("");
+const grid = document.getElementById("plan-grid");
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function buy(plan, btn) {
+  btn.disabled = true; btn.textContent = "Redirection…";
+  try {
+    const r = await fetch("/.netlify/functions/create-order", { method: "POST", body: JSON.stringify({ plan }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Erreur");
+    location.href = d.url;
+  } catch (e) {
+    alert(e.message); btn.disabled = false; btn.textContent = "Acheter";
+  }
+}
+
+fetch("/.netlify/functions/plans").then((r) => r.json()).then((plans) => {
+  grid.innerHTML = plans.map((p) => `
+    <div class="card plan${p.best ? " best" : ""}">
+      ${p.best ? '<span class="tag">POPULAIRE</span>' : ""}
+      <h3>${esc(p.name)}</h3>
+      <div class="price">${esc(p.price)} €</div>
+      <ul>${p.perks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      ${p.inStock
+        ? `<button class="btn" data-plan="${esc(p.id)}">Acheter</button>`
+        : `<button class="btn ghost" disabled>Rupture de stock</button>`}
+    </div>`).join("");
+  grid.querySelectorAll("button[data-plan]").forEach((b) => b.onclick = () => buy(b.dataset.plan, b));
+}).catch(() => { grid.innerHTML = '<p style="text-align:center;color:var(--mute)">Impossible de charger les offres.</p>'; });
 </script>
+
 </body>
 </html>
