@@ -12,25 +12,24 @@ export default async (req) => {
   const token = randomBytes(16).toString("hex");
   const origin = new URL(req.url).origin;
 
-  const res = await fetch("https://api.nowpayments.io/v1/invoice", {
-    method: "POST",
-    headers: { "x-api-key": process.env.NOWPAYMENTS_API_KEY, "content-type": "application/json" },
-    body: JSON.stringify({
-      price_amount: p.price,
-      price_currency: "eur",
-      order_id: id,
-      order_description: `Onyx Hub - ${p.name}`,
-      ipn_callback_url: `${origin}/.netlify/functions/ipn`,
-      success_url: `${origin}/order.html?id=${id}&t=${token}`,
-      cancel_url: `${origin}/#plans`
-    })
+  const params = new URLSearchParams({
+    api_key: process.env.PLISIO_API_KEY || "",
+    source_currency: "EUR",
+    source_amount: String(p.price),
+    order_number: id,
+    order_name: `Onyx Hub - ${p.name}`,
+    callback_url: `${origin}/.netlify/functions/ipn?json=true`,
+    success_callback_url: `${origin}/order.html?id=${id}&t=${token}`,
+    fail_callback_url: `${origin}/#plans`
   });
-  const invoice = await res.json().catch(() => ({}));
-  if (!res.ok || !invoice.invoice_url) {
-    console.error("NOWPayments error", res.status, invoice);
+  const res = await fetch(`https://api.plisio.net/api/v1/invoices/new?${params}`);
+  const body = await res.json().catch(() => ({}));
+  const invoice = body?.data;
+  if (!res.ok || body?.status !== "success" || !invoice?.invoice_url || !invoice?.txn_id) {
+    console.error("Plisio error", res.status, JSON.stringify(body));
     return json({ error: "Paiement indisponible, réessaie plus tard." }, 502);
   }
 
-  await orders().setJSON(id, { plan, price: p.price, token, status: "pending", created: Date.now() });
+  await orders().setJSON(id, { plan, price: p.price, token, txnId: invoice.txn_id, status: "pending", created: Date.now() });
   return json({ url: invoice.invoice_url });
 };

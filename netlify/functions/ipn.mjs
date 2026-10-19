@@ -1,44 +1,47 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { PLANS, claimKey, json, orders } from "./lib.mjs";
 
-const sortKeys = (o) =>
-  o && typeof o === "object" && !Array.isArray(o)
-    ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])]))
-    : o;
+/* Le contenu reçu n'est jamais cru : il sert seulement à retrouver la commande.
+   Le paiement est vérifié en le redemandant à Plisio avec la clé secrète. */
+async function readOrderNumber(req) {
+  const text = await req.text();
+  try { return String(JSON.parse(text).order_number || ""); } catch {}
+  return String(new URLSearchParams(text).get("order_number") || "");
+}
 
-function validSignature(body, sig) {
-  if (!sig || !process.env.NOWPAYMENTS_IPN_SECRET) return false;
-  const expected = createHmac("sha512", process.env.NOWPAYMENTS_IPN_SECRET)
-    .update(JSON.stringify(sortKeys(body)))
-    .digest("hex");
-  const a = Buffer.from(expected), b = Buffer.from(sig);
-  return a.length === b.length && timingSafeEqual(a, b);
+async function plisioOperation(txnId) {
+  const res = await fetch(`https://api.plisio.net/api/v1/operations/${encodeURIComponent(txnId)}?api_key=${encodeURIComponent(process.env.PLISIO_API_KEY || "")}`);
+  const body = await res.json().catch(() => ({}));
+  return res.ok && body?.status === "success" ? body.data : null;
 }
 
 export default async (req) => {
-  const body = await req.json().catch(() => null);
-  if (!body || !validSignature(body, req.headers.get("x-nowpayments-sig"))) {
-    return json({ error: "Bad signature" }, 401);
-  }
-  if (body.payment_status !== "finished") return json({ ok: true });
+  const orderId = await readOrderNumber(req);
+  if (!orderId) return json({ error: "Missing order" }, 400);
 
   const store = orders();
-  const cur = await store.getWithMetadata(String(body.order_id), { type: "json" });
+  const cur = await store.getWithMetadata(orderId, { type: "json" });
   if (!cur) return json({ error: "Unknown order" }, 404);
   const order = cur.data;
   if (order.key) return json({ ok: true });
-  if (Number(body.price_amount) !== order.price || !PLANS[order.plan]) return json({ error: "Amount mismatch" }, 400);
+  if (!PLANS[order.plan]) return json({ error: "Unknown plan" }, 400);
   // Reprise possible si un traitement précédent est resté bloqué plus d'une minute.
   if (order.status === "processing" && Date.now() - order.processingAt < 60_000) return json({ ok: true });
 
-  // Un seul appel gagne ce passage : les doublons d'IPN sont ignorés.
-  const lock = await store.setJSON(String(body.order_id), { ...order, status: "processing", processingAt: Date.now() }, { onlyIfMatch: cur.etag });
+  const op = await plisioOperation(order.txnId);
+  if (!op) return json({ error: "Cannot verify payment" }, 502);
+  const paid =
+    op.status === "completed" &&
+    String(op.order_number) === orderId &&
+    String(op.source_currency).toUpperCase() === "EUR" &&
+    Number(op.source_amount) >= order.price - 0.01;
+  if (!paid) return json({ ok: true });
+
+  // Un seul appel gagne ce passage : les doublons de callback sont ignorés.
+  const lock = await store.setJSON(orderId, { ...order, status: "processing", processingAt: Date.now() }, { onlyIfMatch: cur.etag });
   if (!lock.modified) return json({ ok: true });
 
   const key = await claimKey(order.plan);
-  await store.setJSON(String(body.order_id), key
-    ? { ...order, status: "delivered", key }
-    : { ...order, status: "paid_no_stock" });
-  if (!key) console.error("PAID BUT NO STOCK, order", body.order_id);
+  await store.setJSON(orderId, key ? { ...order, status: "delivered", key } : { ...order, status: "paid_no_stock" });
+  if (!key) console.error("PAID BUT NO STOCK, order", orderId);
   return json({ ok: true });
 };
