@@ -2,8 +2,6 @@ import { getStore } from "@netlify/blobs";
 
 /* PRIX ET OFFRES : à modifier ici (en EUR). Ce sont des valeurs d'exemple. */
 export const PLANS = {
-  week:     { name: "Semaine",  price: 5,  perks: ["Accès complet au script", "Support Discord"] },
-  month:    { name: "Mois",     price: 12, perks: ["Accès complet au script", "Support Discord", "Mises à jour incluses"], best: true },
   lifetime: { name: "Lifetime", price: 25, perks: ["Accès à vie", "Support prioritaire", "Mises à jour incluses"] }
 };
 
