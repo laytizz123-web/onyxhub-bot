@@ -5,8 +5,8 @@ export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const { plan } = await req.json().catch(() => ({}));
   const p = PLANS[plan];
-  if (!p) return json({ error: "Offre inconnue" }, 400);
-  if ((await stockCount(plan)) < 1) return json({ error: "Rupture de stock pour cette offre." }, 409);
+  if (!p) return json({ error: "Unknown offer" }, 400);
+  if ((await stockCount(plan)) < 1) return json({ error: "This offer is out of stock." }, 409);
 
   const id = randomBytes(8).toString("hex");
   const token = randomBytes(16).toString("hex");
@@ -27,7 +27,7 @@ export default async (req) => {
   const invoice = body?.data;
   if (!res.ok || body?.status !== "success" || !invoice?.invoice_url || !invoice?.txn_id) {
     console.error("Plisio error", res.status, JSON.stringify(body));
-    return json({ error: "Paiement indisponible, réessaie plus tard." }, 502);
+    return json({ error: "Payment unavailable, please try again later." }, 502);
   }
 
   await orders().setJSON(id, { plan, price: p.price, token, txnId: invoice.txn_id, status: "pending", created: Date.now() });

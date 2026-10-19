@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Onyx Hub – Acheter une key</title>
-<meta name="description" content="Achète ta key Onyx Hub, le script pour Steal a Brainrot. Livraison instantanée.">
+<title>Onyx Hub – Buy a key</title>
+<meta name="description" content="Buy your Onyx Hub key, the script for Steal a Brainrot. Instant delivery.">
 <style>
 :root{--bg:#07080a;--card:#101216;--line:#1d2127;--text:#e8ebef;--mute:#8b94a1;--accent:#28dc78;--accent-d:#1aa85a}
 *{box-sizing:border-box;margin:0}
@@ -45,40 +45,40 @@ footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
   </nav>
 
   <section class="hero">
-    <h1>Le script <span>Onyx Hub</span><br>pour Steal a Brainrot</h1>
-    <p>Menu complet PC et mobile : speed, ESP, auto steal, TP, keybinds personnalisables. Ta key est livrée automatiquement après paiement.</p>
+    <h1>The <span>Onyx Hub</span> script<br>for Steal a Brainrot</h1>
+    <p>Full PC and mobile menu: speed, ESP, auto steal, TP, custom keybinds. Your key is delivered automatically after payment.</p>
     <div class="btns">
-      <a class="btn" href="#plans">Acheter une key</a>
-      <a class="btn ghost" href="https://discord.gg/onyxhb" target="_blank" rel="noopener">Rejoindre le Discord</a>
+      <a class="btn" href="#plans">Buy a key</a>
+      <a class="btn ghost" href="https://discord.gg/onyxhb" target="_blank" rel="noopener">Join the Discord</a>
     </div>
   </section>
 
   <section>
-    <h2>Fonctionnalités</h2>
+    <h2>Features</h2>
     <div class="grid">
-      <div class="card"><h3>⚡ Speed</h3><p>3 modes de vitesse réglables, avec une vitesse spéciale quand tu portes un brainrot.</p></div>
-      <div class="card"><h3>👁 ESP</h3><p>Repère facilement les joueurs et les brainrots.</p></div>
-      <div class="card"><h3>🤖 Auto Steal</h3><p>Insta TP, drop, reset instantané et destruction de turrets en une touche.</p></div>
-      <div class="card"><h3>🎨 Thèmes</h3><p>Interface personnalisable, intro colorée, keybinds modifiables.</p></div>
-      <div class="card"><h3>📱 PC & Mobile</h3><p>Fonctionne sur PC et mobile avec un executor compatible.</p></div>
-      <div class="card"><h3>🎫 Support</h3><p>Aide rapide via tickets sur notre serveur Discord.</p></div>
+      <div class="card"><h3>⚡ Speed</h3><p>3 adjustable speed modes, with a separate speed while you carry a brainrot.</p></div>
+      <div class="card"><h3>👁 ESP</h3><p>Easily spot players and brainrots.</p></div>
+      <div class="card"><h3>🤖 Auto Steal</h3><p>Insta TP, drop, instant reset and turret destroy with one key.</p></div>
+      <div class="card"><h3>🎨 Themes</h3><p>Customizable interface, colored intro, rebindable keybinds.</p></div>
+      <div class="card"><h3>📱 PC & Mobile</h3><p>Works on PC and mobile with a compatible executor.</p></div>
+      <div class="card"><h3>🎫 Support</h3><p>Fast help through tickets on our Discord server.</p></div>
     </div>
   </section>
 
   <section id="plans">
-    <h2>Prends ta key</h2>
+    <h2>Get your key</h2>
     <div class="grid" id="plan-grid"></div>
-    <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Paiement en crypto (LTC, BTC, USDT…) · livraison automatique de la key après confirmation.</p>
+    <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Pay with crypto (LTC, BTC, USDT…) · your key is delivered automatically once the payment is confirmed.</p>
   </section>
 
   <section>
     <h2>FAQ</h2>
-    <details><summary>Comment je reçois ma key ?</summary><p>Dès que le paiement crypto est confirmé, elle s'affiche sur la page de commande. Garde cette page en favori : c'est là qu'on la retrouve.</p></details>
-    <details><summary>Sur quels appareils ça marche ?</summary><p>PC et mobile, avec un executor qui supporte les fonctions de fichiers, custom assets et proximity prompts.</p></details>
-    <details><summary>Un problème avec ma commande ?</summary><p>Ouvre un ticket « Purchase » sur notre Discord, le staff te répond rapidement.</p></details>
+    <details><summary>How do I get my key?</summary><p>As soon as the crypto payment is confirmed, it appears on your order page. Bookmark that page: it is where you can find your key again.</p></details>
+    <details><summary>Which devices does it work on?</summary><p>PC and mobile, with an executor that supports file functions, custom assets and proximity prompts.</p></details>
+    <details><summary>Problem with my order?</summary><p>Open a "Purchase" ticket on our Discord and the staff will help you quickly.</p></details>
   </section>
 
-  <footer>© Onyx Hub · <a href="https://discord.gg/onyxhb" target="_blank" rel="noopener">discord.gg/onyxhb</a><br>Non affilié à Roblox Corporation.</footer>
+  <footer>© Onyx Hub · <a href="https://discord.gg/onyxhb" target="_blank" rel="noopener">discord.gg/onyxhb</a><br>Not affiliated with Roblox Corporation.</footer>
 </div>
 
 <script>
@@ -86,14 +86,14 @@ const grid = document.getElementById("plan-grid");
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 async function buy(plan, btn) {
-  btn.disabled = true; btn.textContent = "Redirection…";
+  btn.disabled = true; btn.textContent = "Redirecting…";
   try {
     const r = await fetch("/.netlify/functions/create-order", { method: "POST", body: JSON.stringify({ plan }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "Erreur");
+    if (!r.ok) throw new Error(d.error || "Error");
     location.href = d.url;
   } catch (e) {
-    alert(e.message); btn.disabled = false; btn.textContent = "Acheter";
+    alert(e.message); btn.disabled = false; btn.textContent = "Buy";
   }
 }
 
@@ -101,16 +101,16 @@ fetch("/.netlify/functions/plans").then((r) => r.json()).then((plans) => {
   grid.classList.toggle("single", plans.length === 1);
   grid.innerHTML = plans.map((p) => `
     <div class="card plan${p.best ? " best" : ""}">
-      ${p.best ? '<span class="tag">POPULAIRE</span>' : ""}
+      ${p.best ? '<span class="tag">POPULAR</span>' : ""}
       <h3>${esc(p.name)}</h3>
-      <div class="price">${esc(p.price)} €</div>
+      <div class="price">€${esc(p.price)}</div>
       <ul>${p.perks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
       ${p.inStock
-        ? `<button class="btn" data-plan="${esc(p.id)}">Acheter</button>`
-        : `<button class="btn ghost" disabled>Rupture de stock</button>`}
+        ? `<button class="btn" data-plan="${esc(p.id)}">Buy</button>`
+        : `<button class="btn ghost" disabled>Out of stock</button>`}
     </div>`).join("");
   grid.querySelectorAll("button[data-plan]").forEach((b) => b.onclick = () => buy(b.dataset.plan, b));
-}).catch(() => { grid.innerHTML = '<p style="text-align:center;color:var(--mute)">Impossible de charger les offres.</p>'; });
+}).catch(() => { grid.innerHTML = '<p style="text-align:center;color:var(--mute)">Could not load the offers.</p>'; });
 </script>
 
 </body>

@@ -8,11 +8,11 @@ function isAdmin(req) {
 }
 
 export default async (req) => {
-  if (!isAdmin(req)) return json({ error: "Mot de passe incorrect" }, 401);
+  if (!isAdmin(req)) return json({ error: "Wrong password" }, 401);
   if (req.method === "POST") {
     const { plan, keys } = await req.json().catch(() => ({}));
     const clean = (keys || []).map((k) => String(k).trim()).filter(Boolean);
-    if (!PLANS[plan] || !clean.length) return json({ error: "Données invalides" }, 400);
+    if (!PLANS[plan] || !clean.length) return json({ error: "Invalid data" }, 400);
     await addKeys(plan, clean);
   }
   const counts = {};
