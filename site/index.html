@@ -26,7 +26,7 @@ h2{text-align:center;font-size:28px;margin:60px 0 28px}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
 .card h3{margin-bottom:6px}.card p{color:var(--mute);font-size:14px}
-.plan{text-align:center;display:flex;flex-direction:column;gap:14px}
+.grid.single{max-width:340px;margin:0 auto}.plan{text-align:center;display:flex;flex-direction:column;gap:14px}
 .plan.best{border-color:var(--accent);box-shadow:0 0 30px #28dc7822}
 .plan .price{font-size:38px;font-weight:800}
 .plan ul{list-style:none;padding:0;color:var(--mute);font-size:14px}
@@ -66,7 +66,7 @@ footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
   </section>
 
   <section id="plans">
-    <h2>Choisis ta key</h2>
+    <h2>Prends ta key</h2>
     <div class="grid" id="plan-grid"></div>
     <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Paiement en crypto (LTC, BTC, USDT…) · livraison automatique de la key après confirmation.</p>
   </section>
@@ -98,6 +98,7 @@ async function buy(plan, btn) {
 }
 
 fetch("/.netlify/functions/plans").then((r) => r.json()).then((plans) => {
+  grid.classList.toggle("single", plans.length === 1);
   grid.innerHTML = plans.map((p) => `
     <div class="card plan${p.best ? " best" : ""}">
       ${p.best ? '<span class="tag">POPULAIRE</span>' : ""}
