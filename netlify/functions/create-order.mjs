@@ -15,6 +15,7 @@ export default async (req) => {
   const params = new URLSearchParams({
     api_key: process.env.PLISIO_API_KEY || "",
     source_currency: "USD",
+    currency: "LTC",
     source_amount: String(p.price),
     order_number: id,
     order_name: `Onyx Hub - ${p.name}`,
