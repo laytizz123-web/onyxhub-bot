@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { PLANS, addKeys, json, stockCount } from "./lib.mjs";
+import { PLANS, addKeys, json, replaceKeys, stockCount } from "./lib.mjs";
 
 function isAdmin(req) {
   const given = Buffer.from(req.headers.get("x-admin-token") || "");
@@ -10,10 +10,11 @@ function isAdmin(req) {
 export default async (req) => {
   if (!isAdmin(req)) return json({ error: "Wrong password" }, 401);
   if (req.method === "POST") {
-    const { plan, keys } = await req.json().catch(() => ({}));
+    const { plan, keys, replace } = await req.json().catch(() => ({}));
     const clean = (keys || []).map((k) => String(k).trim()).filter(Boolean);
     if (!PLANS[plan] || !clean.length) return json({ error: "Invalid data" }, 400);
-    await addKeys(plan, clean);
+    if (replace) await replaceKeys(plan, clean);
+    else await addKeys(plan, clean);
   }
   const counts = {};
   for (const id of Object.keys(PLANS)) counts[id] = await stockCount(id);

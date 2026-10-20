@@ -31,6 +31,18 @@ export async function addKeys(plan, keys) {
   throw new Error("Stock busy, retry");
 }
 
+/* Replaces the whole stock of a plan with the given keys. */
+export async function replaceKeys(plan, keys) {
+  for (let i = 0; i < 10; i++) {
+    const cur = await stock().getWithMetadata(plan, { type: "json" });
+    const res = cur
+      ? await stock().setJSON(plan, keys, { onlyIfMatch: cur.etag })
+      : await stock().setJSON(plan, keys, { onlyIfNew: true });
+    if (res.modified) return keys.length;
+  }
+  throw new Error("Stock busy, retry");
+}
+
 /* Takes a key out of the stock without ever giving it twice (conditional write). */
 export async function claimKey(plan) {
   for (let i = 0; i < 10; i++) {

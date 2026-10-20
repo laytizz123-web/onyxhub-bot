@@ -9,7 +9,7 @@
 input,textarea{width:100%;background:#0a0c0f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px;font:inherit}
 textarea{min-height:90px;margin:8px 0;font-family:ui-monospace,monospace;font-size:14px}
 button{background:var(--accent);color:#04120a;font-weight:700;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font:inherit;font-weight:700}
-p{color:var(--mute);margin:4px 0 0}
+p{color:var(--mute);margin:4px 0 0}button.rep{background:#e5484d;color:#fff}
 </style></head><body><div class="w">
 <h1>Admin – key stock</h1>
 <div class="card"><input id="pw" type="password" placeholder="Admin password"><button id="go" style="margin-top:10px">Log in</button></div>
@@ -24,11 +24,15 @@ function render(d) {
   const root = document.getElementById("plans"); root.innerHTML = "";
   for (const [id, name] of Object.entries(d.plans)) {
     const c = document.createElement("div"); c.className = "card";
-    c.innerHTML = `<b>${name}</b><p>Keys in stock: <b>${d.counts[id]}</b></p><textarea placeholder="One key per line"></textarea><button>Add these keys</button>`;
-    c.querySelector("button").onclick = async () => {
-      const keys = c.querySelector("textarea").value.split("\n");
-      try { render(await call({ plan: id, keys })); } catch (e) { alert(e.message); }
+    c.innerHTML = `<b>${name}</b><p>Keys in stock: <b>${d.counts[id]}</b></p><textarea placeholder="One key per line"></textarea><button class="add">Add these keys</button> <button class="rep">Replace all stock</button>`;
+    const send = async (replace) => {
+      const keys = c.querySelector("textarea").value.split("\n").filter((k) => k.trim());
+      if (!keys.length) return alert("Paste at least one key first.");
+      if (replace && !confirm(`Delete the ${d.counts[id]} keys in stock and replace them with these ${keys.length} keys?`)) return;
+      try { render(await call({ plan: id, keys, replace })); } catch (e) { alert(e.message); }
     };
+    c.querySelector(".add").onclick = () => send(false);
+    c.querySelector(".rep").onclick = () => send(true);
     root.appendChild(c);
   }
 }
