@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 
 /* PRICES AND OFFERS: edit here (in EUR). These are example values. */
 export const PLANS = {
-  lifetime: { name: "Lifetime", price: 25, perks: ["Lifetime access", "Priority support", "Updates included"] }
+  lifetime: { name: "Lifetime", price: 1.20, perks: ["Lifetime access", "Priority support", "Updates included"] }
 };
 
 export const stock = () => getStore({ name: "stock", consistency: "strong" });
