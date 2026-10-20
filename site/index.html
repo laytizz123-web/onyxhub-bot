@@ -103,7 +103,7 @@ fetch("/.netlify/functions/plans").then((r) => r.json()).then((plans) => {
     <div class="card plan${p.best ? " best" : ""}">
       ${p.best ? '<span class="tag">POPULAR</span>' : ""}
       <h3>${esc(p.name)}</h3>
-      <div class="price">€${esc(p.price)}</div>
+      <div class="price">$${esc(Number(p.price).toFixed(2))}</div>
       <ul>${p.perks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
       ${p.inStock
         ? `<button class="btn" data-plan="${esc(p.id)}">Buy</button>`

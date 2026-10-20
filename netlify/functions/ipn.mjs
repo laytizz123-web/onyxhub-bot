@@ -32,7 +32,7 @@ export default async (req) => {
   const paid =
     op.status === "completed" &&
     String(op.order_number) === orderId &&
-    String(op.source_currency).toUpperCase() === "EUR" &&
+    String(op.source_currency).toUpperCase() === "USD" &&
     Number(op.source_amount) >= order.price - 0.01;
   if (!paid) return json({ ok: true });
 
