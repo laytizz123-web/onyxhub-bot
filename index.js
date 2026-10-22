@@ -1185,9 +1185,86 @@ const OUR_AD = process.env.OUR_AD
   ? process.env.OUR_AD.replace(/\\n/g, "\n")
   : DEFAULT_OUR_AD;
 
+/* Minimum size of a partner server (override with MIN_PARTNER_MEMBERS). */
+const MIN_PARTNER_MEMBERS = Number(process.env.MIN_PARTNER_MEMBERS) || 200;
+
+const INVITE_LINK =
+  /(?:discord(?:app)?\.com\/invite|discord\.gg|dsc\.gg|discord\.me)\/([A-Za-z0-9-]+)/gi;
+
+/*
+  Looks for the partner's server invite in their ad and reads the member count from it.
+  Invites to our own server are ignored. Returns { status, members?, name? } where status is
+  "ok", "small", "noinvite" (no invite in the text), "invalid" (invite expired / unknown) or "error".
+*/
+async function checkPartnerServer(text, ownGuildId) {
+  const codes = [...new Set([...text.matchAll(INVITE_LINK)].map((m) => m[1]))].slice(0, 5);
+
+  if (!codes.length) return { status: "noinvite" };
+
+  let sawInvalid = false;
+  let sawError = false;
+
+  for (const code of codes) {
+    try {
+      const invite = await client.fetchInvite(code);
+
+      if (invite.guild?.id === ownGuildId) continue;
+
+      const members = invite.memberCount;
+
+      if (typeof members !== "number") {
+        sawError = true;
+        continue;
+      }
+
+      return {
+        status: members >= MIN_PARTNER_MEMBERS ? "ok" : "small",
+        members,
+        name: invite.guild?.name || "your server",
+      };
+    } catch (error) {
+      if (error?.code === 10006) sawInvalid = true;
+      else {
+        sawError = true;
+        console.error("Could not check the partner invite:", error?.message || error);
+      }
+    }
+  }
+
+  if (sawError) return { status: "error" };
+  return { status: sawInvalid ? "invalid" : "noinvite" };
+}
+
+async function closePartnershipTicket(channel, reason) {
+  claimedTickets.delete(channel.id);
+  partnershipTickets.delete(channel.id);
+
+  await channel.send(`${reason}\n🔒 This ticket will be closed in 5 seconds.`);
+
+  await sendLog(
+    channel.guild,
+    new EmbedBuilder()
+      .setColor(COLORS.error)
+      .setTitle("🔒 Partnership ticket closed")
+      .addFields(
+        { name: "Channel", value: `#${channel.name}` },
+        { name: "Reason", value: reason.slice(0, 900) }
+      )
+      .setTimestamp()
+  );
+
+  setTimeout(() => {
+    channel
+      .delete("Partnership refused: server too small")
+      .catch((error) => console.error("Could not delete ticket:", error));
+  }, 5000);
+}
+
 /* The instructions are sent as a plain text message right after the ticket presentation. */
 const PARTNERSHIP_INSTRUCTIONS = [
   "**How it works**",
+  `📌 **Requirements:** your server needs at least **${MIN_PARTNER_MEMBERS} members**, and your ad must contain a valid invite link to it (discord.gg/...).`,
+  "",
   "1️⃣ Send your server ad in this ticket.",
   "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
   "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
@@ -1360,6 +1437,28 @@ async function handlePartnershipMessage(message) {
   const attachments = [...message.attachments.values()].map((file) => file.url);
 
   if (!text && !attachments.length) return;
+
+  // The partner server must be big enough: checked from the invite link written in the ad.
+  const check = await checkPartnerServer(text, channel.guild.id);
+
+  if (check.status === "small") {
+    await closePartnershipTicket(
+      channel,
+      `❌ **${check.name}** has **${check.members}** members. A server needs at least **${MIN_PARTNER_MEMBERS} members** to partner with us.`
+    );
+    return;
+  }
+
+  if (check.status !== "ok") {
+    await channel.send(
+      check.status === "invalid"
+        ? "❌ The invite link in your ad is invalid or expired. Please send your ad again with a **permanent** invite link."
+        : check.status === "error"
+          ? "⚠️ I could not check your server right now. Please send your ad again in a moment."
+          : `❌ Your ad must contain your server invite link (discord.gg/...) so I can check that it has at least **${MIN_PARTNER_MEMBERS} members**. Please send your ad again with the link.`
+    );
+    return;
+  }
 
   await removeQuestionButtons(channel, state);
 
