@@ -1203,7 +1203,9 @@ async function checkPartnerServer(text, ownGuildId) {
 
   let sawInvalid = false;
   let sawError = false;
+  let smallest = null;
 
+  // Every invite of the ad is checked (not only the first one): the smallest server decides.
   for (const code of codes) {
     try {
       const invite = await client.fetchInvite(code);
@@ -1217,11 +1219,9 @@ async function checkPartnerServer(text, ownGuildId) {
         continue;
       }
 
-      return {
-        status: members >= MIN_PARTNER_MEMBERS ? "ok" : "small",
-        members,
-        name: invite.guild?.name || "your server",
-      };
+      if (!smallest || members < smallest.members) {
+        smallest = { members, name: invite.guild?.name || "your server" };
+      }
     } catch (error) {
       if (error?.code === 10006) sawInvalid = true;
       else {
@@ -1231,8 +1231,16 @@ async function checkPartnerServer(text, ownGuildId) {
     }
   }
 
+  if (smallest && smallest.members < MIN_PARTNER_MEMBERS) {
+    return { status: "small", members: smallest.members, name: smallest.name };
+  }
+
+  // A broken invite next to a good one is not accepted: the ad must be fully checkable.
   if (sawError) return { status: "error" };
-  return { status: sawInvalid ? "invalid" : "noinvite" };
+  if (sawInvalid) return { status: "invalid" };
+  if (smallest) return { status: "ok", members: smallest.members, name: smallest.name };
+
+  return { status: "noinvite" };
 }
 
 async function closePartnershipTicket(channel, reason) {
