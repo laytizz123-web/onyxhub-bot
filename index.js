@@ -599,10 +599,10 @@ client.once(Events.ClientReady, (bot) => {
   console.log(`📊 Serving ${bot.guilds.cache.size} server(s).`);
   console.log(
     AI_ENABLED
-      ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}).`
+      ? `🤖 AI ticket assistant ON (model: ${AI_MODEL}, ${new URL(AI_BASE_URL).host}).`
       : process.env.AI_ENABLED === "false"
         ? "🤖 AI ticket assistant OFF (AI_ENABLED=false)."
-        : "🤖 AI ticket assistant OFF: GROQ_API_KEY is missing in the environment variables."
+        : "🤖 AI ticket assistant OFF: GROQ_API_KEY (or AI_API_KEY) is missing in the environment variables."
   );
 });
 
@@ -645,14 +645,18 @@ client.on(Events.GuildMemberAdd, async (member) => {
 const OpenAI = require("openai");
 
 const AI_MODEL = process.env.AI_MODEL || "openai/gpt-oss-120b";
-const AI_ENABLED =
-  Boolean(process.env.GROQ_API_KEY) &&
-  process.env.AI_ENABLED !== "false";
+/*
+  Groq by default. To use another OpenAI-compatible provider (for example when the host's network is
+  blocked by Groq), set AI_API_KEY + AI_BASE_URL + AI_MODEL (and AI_FALLBACK_MODELS, empty if none).
+*/
+const AI_API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY;
+const AI_BASE_URL = process.env.AI_BASE_URL || "https://api.groq.com/openai/v1";
+const AI_ENABLED = Boolean(AI_API_KEY) && process.env.AI_ENABLED !== "false";
 
 const groq = AI_ENABLED
   ? new OpenAI({
-      apiKey: process.env.GROQ_API_KEY,
-      baseURL: "https://api.groq.com/openai/v1",
+      apiKey: AI_API_KEY,
+      baseURL: AI_BASE_URL,
     })
   : null;
 
@@ -1018,7 +1022,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!AI_ENABLED) {
     return await safeReply(message, 
-      "❌ AI is off: `GROQ_API_KEY` is missing in the environment variables (or `AI_ENABLED=false`)."
+      "❌ AI is off: `GROQ_API_KEY` (or `AI_API_KEY`) is missing in the environment variables (or `AI_ENABLED=false`)."
     );
   }
 
