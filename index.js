@@ -3194,6 +3194,22 @@ client.on(Events.Error, (error) => {
    START
 ===================================================== */
 
+/*
+  Some hosts (Render "Web Service", ...) need the app to listen on the PORT they give it, and put it to sleep
+  when nobody visits it. This tiny page answers "OK" so the host sees a running web app; pinging it every
+  few minutes (UptimeRobot...) keeps a free web service awake. Nothing is started when PORT is not set.
+*/
+if (process.env.PORT) {
+  require("http")
+    .createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("onyx HUB bot is running");
+    })
+    .listen(Number(process.env.PORT), () =>
+      console.log(`🌐 Keep-alive page listening on port ${process.env.PORT}.`)
+    );
+}
+
 async function startBot() {
   try {
     await registerCommands();
