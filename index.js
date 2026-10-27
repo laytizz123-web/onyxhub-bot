@@ -515,8 +515,20 @@ async function createTicket(interaction, type) {
   });
 
   if (type === "partnership") {
+    partnershipTickets.set(ticketChannel.id, {
+      step: "proof",
+      proofUrls: [],
+      adText: "",
+      attachments: [],
+      questionId: null,
+    });
+
     await ticketChannel.send(PARTNERSHIP_INSTRUCTIONS);
-    await ticketChannel.send("Send your ad.");
+    await ticketChannel.send("**Step 1 — Post our ad in your server:**");
+    await ticketChannel.send({ content: OUR_AD, allowedMentions: { parse: [] } });
+    await ticketChannel.send(
+      "**Step 2 — Once it is posted, send a screenshot here as proof** (attach the image). Then you can send your own ad."
+    );
   }
 
   /* Original owner DM notification, kept and translated. */
@@ -1128,9 +1140,10 @@ client.on(Events.MessageCreate, async (message) => {
 ===================================================== */
 
 /*
-  1. The ticket opens with "Send your ad."
-  2. The customer sends a message -> "Is it your ad?" (Yes / No buttons, or typing yes / no).
-  3. Yes -> their ad is posted in the partnership channel and our ad is sent in the ticket.
+  1. The ticket opens with our ad: the partner posts it in their server, then sends a screenshot as proof.
+  2. Then they send their own ad (it must contain an invite to a server with enough members).
+  3. The bot asks "Is it your ad?" (Yes / No buttons, or typing yes / no).
+  4. Yes -> their ad is posted in the partnership channel and the ticket is locked.
      No  -> "Send your ad." again.
 */
 
@@ -1277,10 +1290,11 @@ const PARTNERSHIP_INSTRUCTIONS = [
   "**How it works**",
   `📌 **Requirements:** your server needs at least **${MIN_PARTNER_MEMBERS} members**, and your ad must contain a valid invite link to it (discord.gg/...).`,
   "",
-  "1️⃣ Send your server ad in this ticket.",
-  "2️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
-  "3️⃣ If you say **Yes**, your ad is posted in our partnership channel and I send you our ad.",
-  "4️⃣ Post our ad in your server. The ticket is then locked.",
+  "1️⃣ I send you our ad: post it in your server.",
+  "2️⃣ Send a **screenshot as proof** that our ad is posted. You can only send your ad after that.",
+  "3️⃣ Send your server ad in this ticket.",
+  "4️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
+  "5️⃣ If you say **Yes**, your ad is posted in our partnership channel. The ticket is then locked.",
 ].join("\n");
 
 const YES_ANSWER = /^\s*(yes|y|yeah|yep|yup|oui|ouais|ye)\s*[.!]*\s*$/i;
@@ -1396,12 +1410,8 @@ async function answerPartnershipAd(channel, user, isYes) {
       allowedMentions: { roles: [STAFF_ROLE_ID] },
     });
   } else {
-    await channel.send(
-      "Your ad has been posted in our partnership channel. Here is our ad, please post it in your server:"
-    );
+    await channel.send("✅ Your ad has been posted in our partnership channel. Thank you for the partnership!");
   }
-
-  await channel.send({ content: OUR_AD, allowedMentions: { parse: [] } });
 
   await sendLog(
     channel.guild,
@@ -1432,13 +1442,48 @@ async function handlePartnershipMessage(message) {
   let state = partnershipTickets.get(channel.id);
 
   if (!state) {
-    state = { step: "ad", adText: "", attachments: [], questionId: null };
+    state = { step: "proof", proofUrls: [], adText: "", attachments: [], questionId: null };
     partnershipTickets.set(channel.id, state);
   }
 
   if (state.step === "done") return;
 
   const text = message.content.trim();
+
+  // Step 2: the proof that our ad is posted in their server (a screenshot) comes before their own ad.
+  if (state.step === "proof") {
+    const images = [...message.attachments.values()].filter(
+      (file) =>
+        file.contentType?.startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp)$/i.test(file.name || "")
+    );
+
+    if (!images.length) {
+      await channel.send(
+        "❌ I need a **screenshot** (an attached image) showing our ad posted in your server before you can send yours. If you did not post it yet, scroll up: our ad is above."
+      );
+      return;
+    }
+
+    state.proofUrls = images.map((file) => file.url);
+    state.step = "ad";
+
+    await sendLog(
+      channel.guild,
+      new EmbedBuilder()
+        .setColor(COLORS.info)
+        .setTitle("📸 Partnership proof received")
+        .addFields(
+          { name: "User", value: `${message.author} (\`${message.author.id}\`)`, inline: true },
+          { name: "Ticket", value: `${channel}`, inline: true }
+        )
+        .setImage(state.proofUrls[0])
+        .setTimestamp()
+    );
+
+    await channel.send("✅ Thanks for the proof! **Step 3 — Now send your ad.**");
+    return;
+  }
 
   if (state.step === "confirm") {
     if (YES_ANSWER.test(text)) return answerPartnershipAd(channel, message.author, true);
