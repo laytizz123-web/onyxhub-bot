@@ -527,7 +527,7 @@ async function createTicket(interaction, type) {
     await ticketChannel.send("**Step 1 — Post our ad in your server:**");
     await ticketChannel.send({ content: OUR_AD, allowedMentions: { parse: [] } });
     await ticketChannel.send(
-      "**Step 2 — Once it is posted, send a screenshot here as proof** (attach the image). Then you can send your own ad."
+      "**Step 2 — Once it is posted, send a screenshot here as proof** (attach the image). A staff member checks it, then you can send your own ad."
     );
   }
 
@@ -1140,7 +1140,8 @@ client.on(Events.MessageCreate, async (message) => {
 ===================================================== */
 
 /*
-  1. The ticket opens with our ad: the partner posts it in their server, then sends a screenshot as proof.
+  1. The ticket opens with our ad: the partner posts it in their server, then sends a screenshot as proof
+     (a staff member approves or rejects it with the buttons).
   2. Then they send their own ad (it must contain an invite to a server with enough members).
   3. The bot asks "Is it your ad?" (Yes / No buttons, or typing yes / no).
   4. Yes -> their ad is posted in the partnership channel and the ticket is locked.
@@ -1291,7 +1292,7 @@ const PARTNERSHIP_INSTRUCTIONS = [
   `📌 **Requirements:** your server needs at least **${MIN_PARTNER_MEMBERS} members**, and your ad must contain a valid invite link to it (discord.gg/...).`,
   "",
   "1️⃣ I send you our ad: post it in your server.",
-  "2️⃣ Send a **screenshot as proof** that our ad is posted. You can only send your ad after that.",
+  "2️⃣ Send a **screenshot as proof** that our ad is posted. A staff member checks it, then you can send your ad.",
   "3️⃣ Send your server ad in this ticket.",
   "4️⃣ I will ask you **\"Is it your ad?\"**, answer **Yes** or **No**.",
   "5️⃣ If you say **Yes**, your ad is posted in our partnership channel. The ticket is then locked.",
@@ -1430,6 +1431,60 @@ async function answerPartnershipAd(channel, user, isYes) {
   if (posted) await lockPartnershipTicket(channel, user);
 }
 
+function proofReviewButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("proof_approve")
+      .setLabel("Approve proof")
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("proof_reject")
+      .setLabel("Reject proof")
+      .setEmoji("❌")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+/* Staff clicked Approve / Reject on a partnership proof. */
+async function handleProofDecision(interaction, approve) {
+  const channel = interaction.channel;
+  const [, , type] = (channel?.topic || "").split(":");
+
+  if (type !== "partnership") {
+    return interaction.reply({ content: "❌ This is not a partnership ticket.", ephemeral: true });
+  }
+
+  if (!isStaff(interaction)) {
+    return interaction.reply({ content: "❌ Only staff can check a proof.", ephemeral: true });
+  }
+
+  let state = partnershipTickets.get(channel.id);
+
+  // The bot restarted since the proof was sent: the decision still works.
+  if (!state) {
+    state = { step: "review", proofUrls: [], adText: "", attachments: [], questionId: null };
+    partnershipTickets.set(channel.id, state);
+  }
+
+  if (state.step !== "review") {
+    return interaction.reply({ content: "❌ This proof was already checked.", ephemeral: true });
+  }
+
+  await interaction.update({ components: [] });
+
+  if (approve) {
+    state.step = "ad";
+    await channel.send(`✅ Proof approved by ${interaction.user}! **Step 3 — Now send your ad.**`);
+  } else {
+    state.step = "proof";
+    state.proofUrls = [];
+    await channel.send(
+      `❌ Proof rejected by ${interaction.user}: it does not show our ad posted in your server. Please send a new screenshot.`
+    );
+  }
+}
+
 async function handlePartnershipMessage(message) {
   const channel = message.channel;
   const [, ownerId, type] = channel.topic.split(":");
@@ -1466,7 +1521,7 @@ async function handlePartnershipMessage(message) {
     }
 
     state.proofUrls = images.map((file) => file.url);
-    state.step = "ad";
+    state.step = "review";
 
     await sendLog(
       channel.guild,
@@ -1481,9 +1536,18 @@ async function handlePartnershipMessage(message) {
         .setTimestamp()
     );
 
-    await channel.send("✅ Thanks for the proof! **Step 3 — Now send your ad.**");
+    await channel.send({
+      content: `<@&${STAFF_ROLE_ID}> ${message.author} sent a proof: please check that the screenshot really shows our ad posted in their server.`,
+      components: [proofReviewButtons()],
+      allowedMentions: { roles: [STAFF_ROLE_ID], users: [] },
+    });
+
+    await channel.send("⏳ Proof received. A staff member is checking it, please wait.");
     return;
   }
+
+  // A staff member is still checking the proof.
+  if (state.step === "review") return;
 
   if (state.step === "confirm") {
     if (YES_ANSWER.test(text)) return answerPartnershipAd(channel, message.author, true);
@@ -2735,6 +2799,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await nukeChannel(interaction.channel, interaction.user);
       return;
+    }
+
+    if (interaction.customId === "proof_approve" || interaction.customId === "proof_reject") {
+      return handleProofDecision(interaction, interaction.customId === "proof_approve");
     }
 
     /* -----------------------------------------------
