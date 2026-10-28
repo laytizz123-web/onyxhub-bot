@@ -3373,12 +3373,38 @@ if (process.env.PORT) {
     );
 }
 
+/* Connection diagnostics: these lines tell why the bot went offline. */
+client.on(Events.ShardDisconnect, (event, shardId) =>
+  console.warn(`⚠️ Discord connection closed (shard ${shardId}, code ${event?.code}).`)
+);
+client.on(Events.ShardReconnecting, (shardId) =>
+  console.log(`🔄 Reconnecting to Discord (shard ${shardId})...`)
+);
+client.on(Events.ShardResume, (shardId) =>
+  console.log(`✅ Discord connection resumed (shard ${shardId}).`)
+);
+client.on(Events.ShardError, (error, shardId) =>
+  console.error(`⚠️ Discord connection error (shard ${shardId}):`, error?.message || error)
+);
+client.on(Events.Invalidated, () => {
+  console.error("❌ Discord session invalidated: restarting the bot.");
+  process.exit(1);
+});
+
 async function startBot() {
+  // Registering the slash commands must never stop the bot from logging in.
   try {
     await registerCommands();
+  } catch (error) {
+    console.error("⚠️ Could not register the slash commands (the bot still starts):", error?.message || error);
+  }
+
+  try {
     await client.login(process.env.DISCORD_TOKEN);
   } catch (error) {
-    console.error("❌ Failed to start bot:", error);
+    // The keep-alive page would keep the service "Live" with an offline bot: exit so the host restarts it.
+    console.error("❌ Could not log in to Discord:", error?.message || error);
+    process.exit(1);
   }
 }
 
