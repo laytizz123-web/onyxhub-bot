@@ -39,6 +39,17 @@ const OWNER_ROLE_ID = "1555941354096427040";
 const STAFF_ROLE_ID = "1557110463907766432";
 const MEMBER_ROLE_ID = "1556375804894515331";
 
+/* Roles that can use the bot's staff commands (everything isStaff allows), besides Owner and Staff. */
+const EXTRA_COMMAND_ROLE_IDS = ["1565085489793597540"];
+
+function hasCommandRole(member) {
+  return Boolean(
+    member?.roles?.cache?.has(STAFF_ROLE_ID) ||
+      member?.roles?.cache?.has(OWNER_ROLE_ID) ||
+      EXTRA_COMMAND_ROLE_IDS.some((id) => member?.roles?.cache?.has(id))
+  );
+}
+
 const TICKET_CATEGORY_ID =
   process.env.TICKET_CATEGORY_ID || "1557165471185371177";
 
@@ -65,8 +76,7 @@ const partnershipTickets = new Map();
 function isStaff(interaction) {
   return (
     (interaction.memberPermissions || interaction.member?.permissions)?.has(PermissionFlagsBits.ManageChannels) ||
-    interaction.member?.roles?.cache?.has(STAFF_ROLE_ID) ||
-    interaction.member?.roles?.cache?.has(OWNER_ROLE_ID)
+    hasCommandRole(interaction.member)
   );
 }
 
@@ -1025,8 +1035,7 @@ client.on(Events.MessageCreate, async (message) => {
   const member = message.member;
   const allowed =
     member?.permissions?.has(PermissionFlagsBits.ManageChannels) ||
-    member?.roles?.cache?.has(STAFF_ROLE_ID) ||
-    member?.roles?.cache?.has(OWNER_ROLE_ID);
+    hasCommandRole(member);
 
   if (!allowed) return;
 
