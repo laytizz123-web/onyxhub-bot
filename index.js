@@ -1261,30 +1261,19 @@ async function checkPartnerServer(text, ownGuildId) {
   return { status: "noinvite" };
 }
 
-async function closePartnershipTicket(channel, reason) {
-  claimedTickets.delete(channel.id);
-  partnershipTickets.delete(channel.id);
-
-  await channel.send(`${reason}\n🔒 This ticket will be closed in 5 seconds.`);
-
-  await sendLog(
-    channel.guild,
-    new EmbedBuilder()
-      .setColor(COLORS.error)
-      .setTitle("🔒 Partnership ticket closed")
-      .addFields(
-        { name: "Channel", value: `#${channel.name}` },
-        { name: "Reason", value: reason.slice(0, 900) }
-      )
-      .setTimestamp()
-  );
-
-  setTimeout(() => {
-    channel
-      .delete("Partnership refused: server too small")
-      .catch((error) => console.error("Could not delete ticket:", error));
-  }, 5000);
-}
+/* Sent when the partner server is too small. Staff can still accept the partnership with !aprv. */
+const PARTNERSHIP_REQUIREMENTS_MESSAGE = [
+  "💚 **Partnership Requirements**",
+  "",
+  `To qualify for a partnership with **ONYX HUB**, your server must have at least **${MIN_PARTNER_MEMBERS} members**.`,
+  "",
+  `❌ If your server has fewer than ${MIN_PARTNER_MEMBERS} members, you don't meet our standard partnership requirements, and we won't be able to accept a regular partnership request.`,
+  "",
+  "💎 **Paid Partnership Available**",
+  `If your server has fewer than ${MIN_PARTNER_MEMBERS} members but you're still interested in partnering with us, you can opt for a **paid partnership**.`,
+  "",
+  "Thank you for your interest in **ONYX HUB**! 💚",
+].join("\n");
 
 /* The instructions are sent as a plain text message right after the ticket presentation. */
 const PARTNERSHIP_INSTRUCTIONS = [
@@ -1559,13 +1548,13 @@ async function handlePartnershipMessage(message) {
 
   if (!text && !attachments.length) return;
 
-  // The partner server must be big enough: checked from the invite link written in the ad.
-  const check = await checkPartnerServer(text, channel.guild.id);
+  // The partner server must be big enough: checked from the invite link written in the ad
+  // (skipped when a staff member approved the partnership with !aprv).
+  const check = state.approved ? { status: "ok" } : await checkPartnerServer(text, channel.guild.id);
 
   if (check.status === "small") {
-    await closePartnershipTicket(
-      channel,
-      `❌ **${check.name}** has **${check.members}** members. A server needs at least **${MIN_PARTNER_MEMBERS} members** to partner with us.`
+    await channel.send(
+      `📊 **${check.name}** has **${check.members}** members.\n\n${PARTNERSHIP_REQUIREMENTS_MESSAGE}`
     );
     return;
   }
@@ -1773,7 +1762,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close", "addticket",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close", "addticket", "aprv",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -1998,7 +1987,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "addticket"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "addticket", "aprv"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -2012,7 +2001,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
-          "**Tickets:** `!claim`, `!unclaim`, `!close`, `!addticket @user`, `!instr` (post-purchase instructions)",
+          "**Tickets:** `!claim`, `!unclaim`, `!close`, `!addticket @user`, `!aprv` (approve a partnership), `!instr` (post-purchase instructions)",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
           "",
@@ -2220,6 +2209,37 @@ client.on(Events.MessageCreate, async (message) => {
         setTimeout(() => notice.delete().catch(() => {}), 8000);
       }
 
+      return;
+    }
+
+    if (command === "aprv") {
+      const channel = message.channel;
+
+      if (!isTicketChannel(channel) || channel.topic.split(":")[2] !== "partnership") {
+        return await privateReply(message, "❌ This command only works inside a partnership ticket.");
+      }
+
+      let state = partnershipTickets.get(channel.id);
+
+      if (!state) {
+        state = { step: "proof", proofUrls: [], adText: "", attachments: [], questionId: null };
+        partnershipTickets.set(channel.id, state);
+      }
+
+      if (state.step === "done") {
+        return await privateReply(message, "❌ This partnership is already completed.");
+      }
+
+      await removeQuestionButtons(channel, state);
+
+      // Staff approval: no proof and no size check needed, straight to step 3.
+      state.approved = true;
+      state.step = "ad";
+      state.adText = "";
+      state.attachments = [];
+
+      await message.delete().catch(() => {});
+      await channel.send(`✅ Partnership approved by ${message.author}! **Step 3 — Now send your ad.**`);
       return;
     }
 
