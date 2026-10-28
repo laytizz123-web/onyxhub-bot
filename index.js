@@ -1608,10 +1608,11 @@ client.on(Events.MessageCreate, async (message) => {
 ===================================================== */
 
 /*
-  Configured channel by channel (not the whole server) with /antilink or !antilink:
+  The filter applies EVERYWHERE except in tickets (ANTILINK_DEFAULT sets the default mode, "links" if not set).
+  A channel can be changed with /antilink or !antilink:
     links   -> every link is deleted (Discord invites included)
     discord -> only Discord invites are deleted
-    off     -> nothing is filtered
+    off     -> nothing is filtered in that channel
   Staff, Owner and Administrators are never filtered. The bot needs "Manage Messages" in those channels.
   The settings are saved in antilink.json (in DATA_DIR if set). On Railway the file is erased by every
   redeploy unless a Volume is mounted: set DATA_DIR to its path. You can also seed channels with the
@@ -1641,6 +1642,10 @@ function loadAntiLink() {
 }
 
 const antiLink = loadAntiLink();
+
+const ANTILINK_DEFAULT = ["links", "discord", "off"].includes(process.env.ANTILINK_DEFAULT)
+  ? process.env.ANTILINK_DEFAULT
+  : "links";
 
 function setAntiLink(channelId, mode) {
   antiLink[channelId] = mode;
@@ -1672,7 +1677,19 @@ function violatesAntiLink(mode, content) {
 async function checkAntiLink(message) {
   if (!message.guild || !message.author || message.author.bot || !message.content) return;
 
-  const mode = antiLink[message.channel.id] || antiLink[message.channel.parentId];
+  // Tickets are never filtered (the ticket itself, or a thread inside it).
+  const base = message.channel.isThread?.() ? message.channel.parent : message.channel;
+
+  if (
+    base?.topic?.startsWith("onyx-ticket:") ||
+    base?.parentId === TICKET_CATEGORY_ID ||
+    message.channel.parentId === TICKET_CATEGORY_ID
+  ) {
+    return;
+  }
+
+  const mode =
+    antiLink[message.channel.id] || antiLink[message.channel.parentId] || ANTILINK_DEFAULT;
 
   if (!mode || mode === "off") return;
   if (!violatesAntiLink(mode, message.content)) return;
@@ -1732,14 +1749,18 @@ client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
 
 function antiLinkListEmbed(guild) {
   const lines = Object.entries(antiLink)
-    .filter(([id, mode]) => mode !== "off" && guild.channels.cache.has(id))
+    .filter(([id]) => guild.channels.cache.has(id))
     .map(([id, mode]) => `<#${id}> — ${ANTILINK_MODES[mode]}`);
 
   return new EmbedBuilder()
     .setColor(COLORS.main)
-    .setTitle("🛡️ Anti-link channels")
+    .setTitle("🛡️ Anti-link")
     .setDescription(
-      lines.length ? lines.join("\n") : "No channel has a filter yet."
+      [
+        `**Everywhere except tickets:** ${ANTILINK_MODES[ANTILINK_DEFAULT]}`,
+        "",
+        lines.length ? `**Channels with their own setting:**\n${lines.join("\n")}` : "No channel has its own setting.",
+      ].join("\n")
     );
 }
 
