@@ -1774,6 +1774,319 @@ function antiLinkListEmbed(guild) {
 }
 
 /* =====================================================
+   GIVEAWAYS
+===================================================== */
+
+/*
+  Entering = reacting with 🎉 under the giveaway message (no button, no database). Everything needed to end
+  a giveaway is written in its embed (prize, winners, host, end time), so !gend / !greroll work even if the
+  list of running giveaways (giveaways.json, in DATA_DIR if set) was lost by a redeploy. A check runs every
+  15 seconds and ends the giveaways that are due. The bot needs: View Channel, Send Messages, Embed Links,
+  Add Reactions and Read Message History in the giveaway channel.
+*/
+
+const GIVEAWAY_EMOJI = "🎉";
+const GIVEAWAY_FILE = path.join(process.env.DATA_DIR || __dirname, "giveaways.json");
+const MIN_GIVEAWAY_MS = 10 * 1000;
+const MAX_GIVEAWAY_MS = 60 * 24 * 60 * 60 * 1000;
+
+function loadGiveaways() {
+  try {
+    const data = JSON.parse(fs.readFileSync(GIVEAWAY_FILE, "utf8"));
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+let activeGiveaways = loadGiveaways();
+
+function saveGiveaways() {
+  try {
+    fs.writeFileSync(GIVEAWAY_FILE, JSON.stringify(activeGiveaways, null, 2));
+  } catch (error) {
+    console.error("Could not save giveaways.json:", error?.message || error);
+  }
+}
+
+function removeGiveaway(messageId) {
+  activeGiveaways = activeGiveaways.filter((g) => g.messageId !== messageId);
+  saveGiveaways();
+}
+
+function giveawayEmbed({ prize, winners, hostId, endAt, ended = false, winnerIds = [] }) {
+  const stamp = Math.floor(endAt / 1000);
+  const lines = ended
+    ? [
+        `Ended <t:${stamp}:R>`,
+        `Hosted by: <@${hostId}>`,
+        winnerIds.length
+          ? `Winner${winnerIds.length > 1 ? "s" : ""}: ${winnerIds.map((id) => `<@${id}>`).join(", ")}`
+          : "Winners: nobody (no valid entries)",
+      ]
+    : [
+        `React with ${GIVEAWAY_EMOJI} to enter!`,
+        "",
+        `Ends: <t:${stamp}:R> (<t:${stamp}:F>)`,
+        `Hosted by: <@${hostId}>`,
+      ];
+
+  return new EmbedBuilder()
+    .setColor(ended ? COLORS.warning : COLORS.main)
+    .setTitle(`${GIVEAWAY_EMOJI} ${String(prize).slice(0, 200)}`)
+    .setDescription(lines.join("\n"))
+    .setFooter({ text: `🎉 Giveaway${ended ? " ended" : ""} • Winners: ${winners}` })
+    .setTimestamp(new Date(endAt));
+}
+
+/* Reads a giveaway message back (null if the message is not one of our giveaways). */
+function parseGiveawayMessage(message) {
+  const embed = message.embeds?.[0];
+  const footer = embed?.footer?.text || "";
+
+  if (message.author?.id !== client.user.id || !footer.includes("Giveaway")) return null;
+
+  return {
+    prize: (embed.title || "").replace(/^🎉\s*/, ""),
+    winners: Number(/Winners: (\d+)/.exec(footer)?.[1]) || 1,
+    hostId: /Hosted by: <@(\d+)>/.exec(embed.description || "")?.[1] || null,
+    endAt: embed.timestamp ? new Date(embed.timestamp).getTime() : Date.now(),
+    ended: footer.includes("ended"),
+  };
+}
+
+async function giveawayEntrants(message) {
+  const reaction = message.reactions.cache.get(GIVEAWAY_EMOJI);
+
+  if (!reaction) return [];
+
+  const ids = [];
+  let after;
+
+  for (let page = 0; page < 30; page++) {
+    const users = await reaction.users.fetch({ limit: 100, after });
+
+    if (!users.size) break;
+
+    for (const user of users.values()) {
+      if (!user.bot) ids.push(user.id);
+    }
+
+    after = users.last().id;
+
+    if (users.size < 100) break;
+  }
+
+  return ids;
+}
+
+/* Random winners among the entrants who are still in the server. */
+async function pickGiveawayWinners(guild, ids, count) {
+  const pool = [...ids];
+
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  const winners = [];
+
+  for (const id of pool) {
+    if (winners.length >= count) break;
+
+    const member = await guild.members.fetch(id).catch(() => null);
+
+    if (member) winners.push(id);
+  }
+
+  return winners;
+}
+
+/* Ends a giveaway (or rerolls it) and announces the winners. */
+async function finishGiveaway(message, { reroll = false, count = null } = {}) {
+  const info = parseGiveawayMessage(message);
+
+  if (!info) throw new Error("This message is not one of my giveaways.");
+  if (!reroll && info.ended) throw new Error("This giveaway already ended (use reroll to pick again).");
+  if (reroll && !info.ended) throw new Error("This giveaway is still running (end it first).");
+
+  const entrants = await giveawayEntrants(message);
+  const winners = await pickGiveawayWinners(message.guild, entrants, count || info.winners);
+
+  if (!reroll) {
+    await message.edit({
+      embeds: [giveawayEmbed({ ...info, endAt: Date.now(), ended: true, winnerIds: winners })],
+    });
+  }
+
+  if (!winners.length) {
+    await message.channel.send({
+      content: `😢 Nobody valid entered the giveaway for **${info.prize}**.\n${message.url}`,
+      allowedMentions: { parse: [] },
+    });
+  } else {
+    await message.channel.send({
+      content: `${reroll ? `🔁 New winner${winners.length > 1 ? "s" : ""}` : "🎉 Congratulations"}: ${winners
+        .map((id) => `<@${id}>`)
+        .join(", ")}! You won **${info.prize}**!\n${message.url}`,
+      allowedMentions: { users: winners },
+    });
+  }
+
+  return { winners, entrants: entrants.length, prize: info.prize };
+}
+
+async function startGiveaway({ channel, hostId, prize, durationMs, winners }) {
+  const endAt = Date.now() + durationMs;
+
+  const message = await channel.send({
+    embeds: [giveawayEmbed({ prize, winners, hostId, endAt })],
+    allowedMentions: { parse: [] },
+  });
+
+  try {
+    await message.react(GIVEAWAY_EMOJI);
+  } catch (error) {
+    await message.delete().catch(() => {});
+    throw error;
+  }
+
+  activeGiveaways.push({
+    messageId: message.id,
+    channelId: channel.id,
+    guildId: channel.guild.id,
+    endAt,
+    prize: String(prize).slice(0, 200),
+    winners,
+    hostId,
+  });
+  saveGiveaways();
+
+  return message;
+}
+
+/* Finds a giveaway message from an id or a message link. */
+async function findGiveawayMessage(guild, fallbackChannel, text) {
+  const value = (text || "").trim();
+  const link = /channels\/\d+\/(\d+)\/(\d+)/.exec(value);
+  const id = link ? link[2] : /^\d{15,25}$/.exec(value)?.[0];
+
+  if (!id) return null;
+
+  const channelId =
+    (link && link[1]) ||
+    activeGiveaways.find((g) => g.messageId === id)?.channelId ||
+    fallbackChannel.id;
+
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+
+  return channel?.isTextBased() ? channel.messages.fetch(id).catch(() => null) : null;
+}
+
+/* One entry point for the slash command and the ! commands: returns the text to show to the staff member. */
+async function runGiveawayAction(action, { guild, channel, userId, prize, durationText, winners, target, count }) {
+  try {
+    if (action === "start") {
+      const durationMs = parseDuration(durationText);
+
+      if (durationMs === null || durationMs < MIN_GIVEAWAY_MS || durationMs > MAX_GIVEAWAY_MS) {
+        return "❌ Invalid duration. Use something like `30m`, `2h`, `1d` or `1w` (10 seconds to 60 days).";
+      }
+
+      const count = Number(winners) || 1;
+
+      if (!Number.isInteger(count) || count < 1 || count > 20) {
+        return "❌ The number of winners must be between 1 and 20.";
+      }
+
+      if (!prize?.trim()) return "❌ Tell me what the prize is.";
+
+      const message = await startGiveaway({ channel, hostId: userId, prize: prize.trim(), durationMs, winners: count });
+
+      return `✅ Giveaway started in ${channel}: ${message.url} (ends in ${formatDuration(durationMs)}).`;
+    }
+
+    if (action === "list") {
+      const running = activeGiveaways.filter((g) => g.guildId === guild.id);
+
+      if (!running.length) return "No giveaway is running.";
+
+      return running
+        .map(
+          (g) =>
+            `🎁 **${g.prize}** — <#${g.channelId}> — ends <t:${Math.floor(g.endAt / 1000)}:R> — ${g.winners} winner(s) — https://discord.com/channels/${g.guildId}/${g.channelId}/${g.messageId}`
+        )
+        .join("\n")
+        .slice(0, 1900);
+    }
+
+    // end / reroll
+    const message = await findGiveawayMessage(guild, channel, target);
+
+    if (!message) {
+      return "❌ I could not find that message. Give the message id (or its link) of the giveaway.";
+    }
+
+    const result = await finishGiveaway(message, {
+      reroll: action === "reroll",
+      count: action === "reroll" ? Number(count) || null : null,
+    });
+
+    if (action === "end") removeGiveaway(message.id);
+
+    return result.winners.length
+      ? `✅ Done: ${result.winners.length} winner(s) picked among ${result.entrants} entrant(s).`
+      : "✅ Done: nobody valid had entered.";
+  } catch (error) {
+    if (error?.code === 50013 || error?.code === 50001) {
+      return "❌ I am missing permissions in that channel: I need View Channel, Send Messages, Embed Links, Add Reactions and Read Message History.";
+    }
+
+    if (error?.message && !error.code) return `❌ ${error.message}`;
+
+    console.error("Giveaway error:", error);
+    return "❌ Something went wrong with the giveaway. Check the bot console.";
+  }
+}
+
+const endingGiveaways = new Set();
+
+async function checkGiveaways() {
+  const now = Date.now();
+
+  for (const giveaway of [...activeGiveaways]) {
+    if (giveaway.endAt > now || endingGiveaways.has(giveaway.messageId)) continue;
+
+    endingGiveaways.add(giveaway.messageId);
+
+    try {
+      const channel = await client.channels.fetch(giveaway.channelId);
+      const message = await channel.messages.fetch(giveaway.messageId);
+      const info = parseGiveawayMessage(message);
+
+      if (info && !info.ended) await finishGiveaway(message);
+
+      removeGiveaway(giveaway.messageId);
+    } catch (error) {
+      giveaway.fails = (giveaway.fails || 0) + 1;
+
+      // Message or channel deleted, or too many failed attempts: forget this giveaway.
+      if (error?.code === 10008 || error?.code === 10003 || giveaway.fails >= 20) {
+        removeGiveaway(giveaway.messageId);
+      } else {
+        console.error("Could not end a giveaway (will retry):", error?.message || error);
+      }
+    } finally {
+      endingGiveaways.delete(giveaway.messageId);
+    }
+  }
+}
+
+client.once(Events.ClientReady, () => {
+  setInterval(() => checkGiveaways().catch((e) => console.error("Giveaway check error:", e?.message || e)), 15000);
+});
+
+/* =====================================================
    COMMANDS-ONLY CHANNELS
 ===================================================== */
 
@@ -1792,7 +2105,7 @@ const COMMANDS_ONLY_CHANNELS = (
 
 const PREFIX_COMMAND_NAMES = new Set([
   "help", "serverinfo", "userinfo", "tickets", "announce", "clear", "warn",
-  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close", "addticket", "aprv",
+  "to", "kick", "ban", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "close", "addticket", "aprv", "gstart", "gend", "greroll", "glist",
 ]);
 
 client.on(Events.MessageCreate, async (message) => {
@@ -2017,7 +2330,7 @@ client.on(Events.MessageCreate, async (message) => {
     const command = (args.shift() || "").toLowerCase();
     if (!command) return;
 
-    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "addticket", "aprv"];
+    const staffOnly = ["announce", "clear", "warn", "to", "kick", "ban", "tickets", "lock", "unlock", "nuke", "antilink", "instr", "claim", "unclaim", "addticket", "aprv", "gstart", "gend", "greroll", "glist"];
     if (staffOnly.includes(command) && !isStaff(message)) {
       return await privateReply(message, "❌ Only staff can use this command.");
     }
@@ -2031,6 +2344,7 @@ client.on(Events.MessageCreate, async (message) => {
           "**Information:** `!serverinfo`, `!userinfo @user`",
           "**Moderation:** `!warn @user reason`, `!to @user [30m/1h/1d] [reason]`, `!kick @user reason`, `!ban @user reason`, `!clear amount`",
           "**Channels:** `!lock`, `!unlock`, `!nuke`",
+          "**Giveaways:** `!gstart 1h 1 Prize`, `!gend messageId`, `!greroll messageId`, `!glist`",
           "**Tickets:** `!claim`, `!unclaim`, `!close`, `!addticket @user`, `!aprv` (approve a partnership), `!instr` (post-purchase instructions)",
           "**Anti-link:** `!antilink #channel links|discord|off`, `!antilink list`",
           "**Staff:** `!announce Title | message`",
@@ -2273,6 +2587,43 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
+    if (["gstart", "gend", "greroll", "glist"].includes(command)) {
+      let reply;
+
+      if (command === "gstart") {
+        // !gstart <duration> <winners> <prize...>
+        const [durationText, winnersText, ...prizeWords] = args;
+
+        if (!durationText || !/^\d+$/.test(winnersText || "") || !prizeWords.length) {
+          return await privateReply(message, "❌ Usage: `!gstart <duration> <winners> <prize>`, for example `!gstart 1h 1 Nitro`.");
+        }
+
+        reply = await runGiveawayAction("start", {
+          guild: message.guild,
+          channel: message.channel,
+          userId: message.author.id,
+          prize: prizeWords.join(" "),
+          durationText,
+          winners: Number(winnersText),
+        });
+      } else if (command === "glist") {
+        reply = await runGiveawayAction("list", { guild: message.guild, channel: message.channel });
+      } else {
+        if (!args[0]) return await privateReply(message, `❌ Usage: \`!${command} <message id or link>\``);
+
+        reply = await runGiveawayAction(command === "gend" ? "end" : "reroll", {
+          guild: message.guild,
+          channel: message.channel,
+          userId: message.author.id,
+          target: args[0],
+          count: args[1],
+        });
+      }
+
+      await message.delete().catch(() => {});
+      return await privateReply(message, reply);
+    }
+
     const target = message.mentions.members.first();
     if (["warn","to","kick","ban"].includes(command) && !target) return await safeReply(message, "❌ Usage: !" + command + " @user ...");
 
@@ -2400,6 +2751,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
             {
               name: "🎫 Ticket staff",
               value: "`/addticket` — Add a member to the current ticket.",
+            },
+            {
+              name: "🎉 Giveaways",
+              value:
+                "`/giveaway start` — Start a giveaway.\n" +
+                "`/giveaway end` — End a giveaway now.\n" +
+                "`/giveaway reroll` — Pick new winners.\n" +
+                "`/giveaway list` — Show running giveaways.",
             },
             {
               name: "🔒 Channels",
@@ -2736,6 +3095,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
       /* -----------------------------------------------
          /lock /unlock /nuke
       ----------------------------------------------- */
+
+      if (command === "giveaway") {
+        if (!isStaff(interaction)) {
+          return interaction.reply({
+            content: "❌ Only staff can use this command.",
+            ephemeral: true,
+          });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        const sub = interaction.options.getSubcommand();
+        const options = interaction.options;
+
+        const content = await runGiveawayAction(sub, {
+          guild: interaction.guild,
+          channel: options.getChannel("channel") || interaction.channel,
+          userId: interaction.user.id,
+          prize: options.getString("prize"),
+          durationText: options.getString("duration"),
+          winners: options.getInteger("winners") || 1,
+          target: options.getString("message"),
+          count: options.getInteger("count"),
+        });
+
+        return interaction.editReply({ content });
+      }
 
       if (command === "addticket") {
         if (!isStaff(interaction)) {
@@ -3300,6 +3686,48 @@ async function registerCommands() {
           .setDescription("Member to add to this ticket.")
           .setRequired(true)
       ),
+
+    new SlashCommandBuilder()
+      .setName("giveaway")
+      .setDescription("Manage giveaways.")
+      .addSubcommand((sub) =>
+        sub
+          .setName("start")
+          .setDescription("Start a giveaway.")
+          .addStringOption((o) => o.setName("prize").setDescription("What is won.").setRequired(true))
+          .addStringOption((o) =>
+            o.setName("duration").setDescription("30m, 2h, 1d, 1w...").setRequired(true)
+          )
+          .addIntegerOption((o) =>
+            o.setName("winners").setDescription("Number of winners (default 1).").setMinValue(1).setMaxValue(20)
+          )
+          .addChannelOption((o) =>
+            o
+              .setName("channel")
+              .setDescription("Where to post it (default: this channel).")
+              .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+          )
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName("end")
+          .setDescription("End a giveaway now and pick the winners.")
+          .addStringOption((o) =>
+            o.setName("message").setDescription("Message id or link of the giveaway.").setRequired(true)
+          )
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName("reroll")
+          .setDescription("Pick new winners for an ended giveaway.")
+          .addStringOption((o) =>
+            o.setName("message").setDescription("Message id or link of the giveaway.").setRequired(true)
+          )
+          .addIntegerOption((o) =>
+            o.setName("count").setDescription("How many new winners (default: same as before).").setMinValue(1).setMaxValue(20)
+          )
+      )
+      .addSubcommand((sub) => sub.setName("list").setDescription("Show the running giveaways.")),
 
     new SlashCommandBuilder()
       .setName("nuke")
