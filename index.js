@@ -588,7 +588,22 @@ async function createTicket(interaction, type) {
         .setFooter({ text: "onyx HUB • Ticket Notification" })
         .setTimestamp();
 
-      await owner.send({ embeds: [dmEmbed] }).catch(() => {});
+      await owner.send({ embeds: [dmEmbed] }).catch(async (error) => {
+        // 50007 = the user's DMs are closed (privacy settings) or the bot is blocked.
+        console.error(`Could not DM the owner (OWNER_ID ${ownerId}): code ${error?.code} - ${error?.message}`);
+
+        await sendLog(
+          guild,
+          new EmbedBuilder()
+            .setColor(COLORS.warning)
+            .setTitle("⚠️ Could not DM the owner about a new ticket")
+            .setDescription(
+              `Discord refused the message (code ${error?.code ?? "?"}). Check that the \`OWNER_ID\` variable is your user id and that "Direct messages" is allowed in this server's privacy settings.`
+            )
+            .addFields({ name: "Ticket", value: `${ticketChannel}` })
+            .setTimestamp()
+        );
+      });
     }
   } catch (error) {
     console.error("Could not send ticket DM:", error);
