@@ -1,5 +1,5 @@
 {
-  "name": "ltc-middleman-bot",
+  "name": "vxmp-mm",
   "version": "1.0.0",
   "description": "Discord ticket bot: Litecoin middleman (escrow)",
   "main": "index.js",

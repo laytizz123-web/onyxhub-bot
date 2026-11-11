@@ -1,10 +1,10 @@
-# LTC Middleman Bot
+# VXMP MM (LTC Middleman Bot)
 
 Bot Discord indépendant : un ticket "middleman" où le bot garde les LTC le temps d'un échange.
 
 ## Installation (Windows)
 
-1. Installe Node.js 18+ puis ouvre l'invite de commandes **dans ce dossier** (`cd middleman-bot`).
+1. Installe Node.js 18+ puis ouvre l'invite de commandes **dans ce dossier** (`cd vxmp-mm`).
 2. `npm install`
 3. `npm run new-seed` : copie la ligne `MM_SEED=...` et sauvegarde les 12 mots **hors ligne**.
 4. Copie `.env.example` en `.env` et remplis-le (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `MM_SEED`).
