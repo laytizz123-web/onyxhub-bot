@@ -456,7 +456,7 @@ const middleman = (() => {
       case "partner": return "**Add the person you trade with.**\nClick the button below and send their @mention or user ID.";
       case "roles": return "**Pick your roles.**\n📤 The *sender* pays the LTC.   📥 The *receiver* gets it when the deal is done.";
       case "amount": return `**${sender}: set the amount.**\nType it in LTC (\`0.25\`) or in money (\`5$\`, \`5€\`).`;
-      case "amount_confirm": return `**${receiver}: check the amount and confirm it.**\nOnce confirmed, the LTC figure is locked, even if the price moves.`;
+      case "amount_confirm": return `**${receiver}: accept or decline the amount.**\nUse the buttons on the **amount card** below. Once confirmed, the LTC figure is locked.`;
       case "awaiting_payment": return `**${sender}: send the exact amount below** from a wallet you control.\nThe bot spots the payment by itself, nothing to click.`;
       case "confirming": return "**Payment spotted!**\nThe network is confirming it, this card updates by itself.";
       case "funded": return `**Funds secured.**\n📥 ${receiver}: deliver what was agreed.\n📤 ${sender}: click **Release** only once you really received it.`;
@@ -517,8 +517,7 @@ const middleman = (() => {
     if (s === "partner") main.push(button("partner", "Add the other person", ButtonStyle.Primary, "➕"));
     if (s === "roles") main.push(button("role:sender", "I send the LTC", ButtonStyle.Primary, "📤"), button("role:receiver", "I receive the LTC", ButtonStyle.Success, "📥"));
     if (s === "amount") main.push(button("amount", "Set the amount", ButtonStyle.Primary, "💰"));
-    if (s === "amount_confirm") main.push(button("confirm_amount", "Confirm the amount", ButtonStyle.Success, "✅"), button("amount", "Change amount", ButtonStyle.Secondary, "✏️"));
-    if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
+      if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
     if (s === "released") main.push(button("payout", "Enter my LTC address", ButtonStyle.Success, "🏦"));
     if (["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(s)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
     if (["awaiting_payment", "confirming", "funded", "released"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
@@ -556,15 +555,65 @@ const middleman = (() => {
   }
 
   /* A short coloured card (with pings) posted under the main deal card. */
-  async function notify(deal, { title, body, color = COLORS.info, ping = [], thumbnail }) {
+  async function notify(deal, { title, body, color = COLORS.info, ping = [], thumbnail, components }) {
     const channel = await getChannel(deal);
     if (!channel) return;
     const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(body).setTimestamp();
     if (thumbnail) embed.setThumbnail(thumbnail);
     const mentions = ping.filter(Boolean).map((id) => (/^\d{15,25}$/.test(String(id)) ? mention(id) : id));
     await channel
-      .send({ content: mentions.join(" ") || undefined, embeds: [embed], allowedMentions: { parse: ["users", "roles"] } })
+      .send({ content: mentions.join(" ") || undefined, embeds: [embed], components, allowedMentions: { parse: ["users", "roles"] } })
       .catch(() => {});
+  }
+
+  /* ---------- the amount card: it carries its own Confirm / Decline buttons ---------- */
+
+  const AMOUNT_CARD = {
+    pending: { title: "💰  Amount to confirm", color: COLORS.wait },
+    confirmed: { title: "✅  Amount confirmed", color: COLORS.ok },
+    declined: { title: "❌  Amount declined", color: COLORS.grey },
+    superseded: { title: "↪️  Amount replaced", color: COLORS.grey },
+  };
+
+  function amountCard(deal, status = "pending", by = null) {
+    const info = AMOUNT_CARD[status];
+    const lines = [
+      `${mention(deal.senderId)} set the amount to`,
+      `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``,
+      deal.quote ? quoteText(deal.quote) : "",
+      "",
+    ];
+    if (status === "pending") lines.push(`📥 ${mention(deal.receiverId)} do you accept this amount?`, "🔒 Once you confirm, the LTC figure is locked.");
+    if (status === "confirmed") lines.push(`Confirmed by ${mention(by)}. The amount is locked.`);
+    if (status === "declined") lines.push(`Declined by ${mention(by)}.`);
+    if (status === "superseded") lines.push("A new amount was proposed, or the deal was cancelled.");
+    return new EmbedBuilder().setColor(info.color).setTitle(info.title).setDescription(lines.join("\n")).setTimestamp();
+  }
+
+  const amountButtons = () => [
+    new ActionRowBuilder().addComponents(
+      button("confirm_amount", "Confirm", ButtonStyle.Success, "✅"),
+      button("decline_amount", "Decline", ButtonStyle.Danger, "❌")
+    ),
+  ];
+
+  async function postAmountCard(deal) {
+    const channel = await getChannel(deal);
+    if (!channel) return;
+    const message = await channel
+      .send({ content: mention(deal.receiverId), embeds: [amountCard(deal)], components: amountButtons(), allowedMentions: { users: [deal.receiverId] } })
+      .catch(() => null);
+    deal.amountMsgId = message?.id || "";
+    saveStore();
+  }
+
+  /* Closes the pending amount card (buttons removed) when it is replaced or the deal is cancelled. */
+  async function closeAmountCard(deal, status) {
+    if (!deal.amountMsgId) return;
+    const channel = await getChannel(deal);
+    const message = await channel?.messages.fetch(deal.amountMsgId).catch(() => null);
+    await message?.edit({ embeds: [amountCard(deal, status)], components: [] }).catch(() => {});
+    deal.amountMsgId = "";
   }
 
   async function logLine(text) {
@@ -780,7 +829,13 @@ const middleman = (() => {
         }
         deal.state = "awaiting_payment";
         saveStore();
-        await interaction.update(render(deal));
+        if (interaction.message?.id === deal.messageId) {
+          await interaction.update(render(deal)); // old cards still carry the button on the main message
+        } else {
+          deal.amountMsgId = "";
+          await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
+          await refreshMain(deal);
+        }
         return notify(deal, {
           title: "💳  Payment instructions",
           body: `📤 ${mention(deal.senderId)} send exactly\n\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`to this address\n\`\`\`${deal.address}\`\`\`🔒 The amount is **locked** now, it will not change even if the price moves.\nThe bot announces it here as soon as it sees the transaction.`,
@@ -798,6 +853,26 @@ const middleman = (() => {
           flags: ephemeral,
           content: "⚠️ Release the funds **only if you received what was agreed**. This cannot be undone.",
           components: [new ActionRowBuilder().addComponents(button("release_yes", "Yes, I received it", ButtonStyle.Success), button("release_no", "No", ButtonStyle.Secondary))],
+        });
+      }
+
+      case "decline_amount": {
+        if (deal.state !== "amount_confirm") return reply(interaction, "❌ Nothing to decline right now.");
+        if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver can decline the amount.");
+        const declined = { ...deal };
+        deal.state = "amount";
+        deal.amountSat = 0;
+        deal.quote = null;
+        deal.amountMsgId = "";
+        saveStore();
+        await interaction.update({ embeds: [amountCard(declined, "declined", user.id)], components: [] });
+        await refreshMain(deal);
+        return notify(deal, {
+          title: "🔁  New amount needed",
+          body: `${mention(user.id)} declined the amount.\n\n📤 ${mention(deal.senderId)} propose another one with the button below.`,
+          color: COLORS.wait,
+          ping: [deal.senderId],
+          components: [new ActionRowBuilder().addComponents(button("amount", "Set a new amount", ButtonStyle.Primary, "💰"))],
         });
       }
 
@@ -874,6 +949,7 @@ const middleman = (() => {
       case "cancel": {
         if (needParticipant()) return;
         if (!["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(deal.state)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
+        await closeAmountCard(deal, "superseded");
         deal.state = "cancelled";
         saveStore();
         await interaction.update(render(deal));
@@ -939,17 +1015,13 @@ const middleman = (() => {
       if (result.sat < cfg.minSat) {
         return interaction.followUp({ content: `❌ That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.`, flags: ephemeral });
       }
+      await closeAmountCard(deal, "superseded"); // a previous, still pending card is replaced
       deal.amountSat = result.sat;
       deal.quote = result.quote;
       deal.state = "amount_confirm";
       saveStore();
       await refreshMain(deal);
-      return notify(deal, {
-        title: "💰  Amount set",
-        body: `${mention(deal.senderId)} set the amount to\n\`\`\`${satToLtc(result.sat)} LTC\`\`\`${result.quote ? `${quoteText(result.quote)}\n\n` : "\n"}📥 ${mention(deal.receiverId)} confirm it with the button above.\n⚠️ **Not final yet.** The sender can still change it. Once you confirm, the LTC figure is locked.`,
-        color: COLORS.info,
-        ping: [deal.receiverId],
-      });
+      return postAmountCard(deal);
     }
 
     // payout / refund: both send the whole balance of the deal address
