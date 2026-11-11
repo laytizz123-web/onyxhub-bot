@@ -98,8 +98,27 @@ const middleman = (() => {
     return (sat / SAT_PER_LTC).toFixed(8).replace(/0+$/, "").replace(/\.$/, ".0");
   }
 
+  /* MM_SEED may have been pasted on several lines in the .env: join the lines that follow it. */
+  function readSeed() {
+    const fromEnv = process.env.MM_SEED || "";
+    try {
+      const lines = fs.readFileSync(path.join(process.cwd(), ".env"), "utf8").replace(/^\uFEFF/, "").split(/\r?\n/);
+      const i = lines.findIndex((l) => /^\s*MM_SEED\s*=/.test(l));
+      if (i < 0) return fromEnv;
+      let text = lines[i].replace(/^\s*MM_SEED\s*=/, "");
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j];
+        if (!line.trim() || /^\s*#/.test(line) || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line)) break;
+        text += " " + line;
+      }
+      return text;
+    } catch {
+      return fromEnv;
+    }
+  }
+
   const cfg = {
-    seed: (process.env.MM_SEED || "").replace(/["'`]/g, " ").replace(/\s+/g, " ").trim().toLowerCase(),
+    seed: readSeed().replace(/["'`]/g, " ").replace(/\s+/g, " ").trim().toLowerCase(),
     apiUrl: (process.env.LTC_API_URL || "https://litecoinspace.org/api").replace(/\/+$/, ""),
     explorerTx: process.env.LTC_EXPLORER_TX_URL || "https://litecoinspace.org/tx/",
     confirmations: Math.max(1, Number(process.env.MM_CONFIRMATIONS) || 2),
