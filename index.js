@@ -56,6 +56,52 @@ const TICKET_CATEGORY_ID =
 const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || "";
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || "";
 
+/* =====================================================
+   AUTO MESSAGES
+   The bot (logged in with its own DISCORD_TOKEN) posts a message by itself
+   on a fixed schedule, with no human pressing send.
+
+   Setup (.env):
+     AUTO_MESSAGE_CHANNEL_ID=123456789012345678        (channel(s) to post in, comma-separated)
+     AUTO_MESSAGE_INTERVAL_MINUTES=60                   (how often, in minutes)
+     AUTO_MESSAGE_TEXT="First message|Second message"   (one or several, "|"-separated; picked in turn)
+   Leave AUTO_MESSAGE_CHANNEL_ID empty (default) to disable the feature entirely.
+===================================================== */
+const AUTO_MESSAGE_CHANNEL_IDS = (process.env.AUTO_MESSAGE_CHANNEL_ID || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+const AUTO_MESSAGE_INTERVAL_MS =
+  Math.max(1, Number(process.env.AUTO_MESSAGE_INTERVAL_MINUTES) || 60) * 60 * 1000;
+const AUTO_MESSAGES = (process.env.AUTO_MESSAGE_TEXT || "")
+  .split("|")
+  .map((text) => text.trim())
+  .filter(Boolean);
+let autoMessageIndex = 0;
+
+async function sendAutoMessage() {
+  if (!AUTO_MESSAGES.length) return;
+  const text = AUTO_MESSAGES[autoMessageIndex % AUTO_MESSAGES.length];
+  autoMessageIndex++;
+
+  for (const channelId of AUTO_MESSAGE_CHANNEL_IDS) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (channel?.isTextBased()) await channel.send(text);
+    } catch (error) {
+      console.error(`⚠️ Auto message failed for channel ${channelId}:`, error?.message || error);
+    }
+  }
+}
+
+function startAutoMessages() {
+  if (!AUTO_MESSAGE_CHANNEL_IDS.length || !AUTO_MESSAGES.length) return;
+  console.log(
+    `🤖 Auto messages enabled: ${AUTO_MESSAGES.length} message(s) every ${AUTO_MESSAGE_INTERVAL_MS / 60000} min in ${AUTO_MESSAGE_CHANNEL_IDS.length} channel(s).`
+  );
+  setInterval(() => sendAutoMessage().catch((e) => console.error("Auto message error:", e?.message || e)), AUTO_MESSAGE_INTERVAL_MS);
+}
+
 const COLORS = {
   main: 0x7c3aed,
   success: 0x22c55e,
@@ -2084,6 +2130,7 @@ async function checkGiveaways() {
 
 client.once(Events.ClientReady, () => {
   setInterval(() => checkGiveaways().catch((e) => console.error("Giveaway check error:", e?.message || e)), 15000);
+  startAutoMessages();
 });
 
 /* =====================================================
