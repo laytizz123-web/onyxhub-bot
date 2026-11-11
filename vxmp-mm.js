@@ -23,8 +23,8 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
   ---------------------------------------
   Node 18+ / discord.js v14 / bitcoinjs-lib v6.
 
-  Flow (everything happens inside a ticket opened with the button of a panel; the person first picks French or English
-  and the whole ticket then stays in that language):
+  Flow (everything happens inside a ticket opened with the button of a panel; the person first picks French or English,
+  then the range of the amount of the deal (0-25, 25-50...), and the whole ticket stays in that language):
     1. The person who opened the ticket adds the person he trades with (@mention or ID)
     2. Each person picks a role: LTC sender or LTC receiver
     3. The sender enters the amount, the receiver confirms it
@@ -46,6 +46,10 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
     MM_PAYPAL_CURRENCY=USD                 USD or EUR (the currency of your PayPal account)
     MM_PAYPAL_MIN=1                        smallest PayPal deal, in that currency
     MM_PAYPAL_NOTE=text                    extra line shown to the payer (for example "Send as Friends & Family")
+    MM_TIERS=0-25,25-50,50-100,100-250,250-500,500-1000,1000-2500,2500+
+                                           amount ranges offered before a ticket opens (min-max, or min+ for "and more").
+                                           The amount typed in the ticket must fit the range. "off" removes this step
+    MM_TIER_CURRENCY=USD                   USD or EUR, the currency of those ranges
     MM_CATEGORY_ID=...                     category where the deal channels are created (optional)
     LTC_API_URL=https://litecoinspace.org/api    Esplora-compatible API (default)
     LTC_EXPLORER_TX_URL=https://litecoinspace.org/tx/
@@ -124,6 +128,23 @@ const middleman = (() => {
     }
   }
 
+  /* "0-25,25-50,500+"  ->  [{ min, max, slug }]   (max is null for "and more"). "off" gives no ranges at all. */
+  function parseTiers(text) {
+    const raw = String(text ?? "0-25,25-50,50-100,100-250,250-500,500-1000,1000-2500,2500+").trim();
+    if (/^(off|none|no|false)$/i.test(raw)) return [];
+    const out = [];
+    for (const part of raw.split(",")) {
+      const m = part.trim().match(/^(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?)|(\+))$/);
+      if (!m) continue;
+      const min = Number(m[1]);
+      const max = m[3] ? null : Number(m[2]);
+      if (max !== null && max <= min) continue;
+      out.push({ min, max, slug: (m[3] ? `${m[1]}plus` : `${m[1]}-${m[2]}`).replace(/\./g, "_") });
+    }
+    if (!out.length && text !== undefined) return parseTiers(undefined); // nothing valid: back to the defaults
+    return out.slice(0, 25);
+  }
+
   const cfg = {
     seed: readSeed().replace(/["'`]/g, " ").replace(/\s+/g, " ").trim().toLowerCase(),
     apiUrl: (process.env.LTC_API_URL || "https://litecoinspace.org/api").replace(/\/+$/, ""),
@@ -138,6 +159,8 @@ const middleman = (() => {
     paypalCurrency: String(process.env.MM_PAYPAL_CURRENCY || "USD").trim().toUpperCase() === "EUR" ? "EUR" : "USD",
     paypalMinCents: Math.round((Number(process.env.MM_PAYPAL_MIN) || 1) * 100),
     paypalNote: (process.env.MM_PAYPAL_NOTE || "").trim(),
+    tiers: parseTiers(process.env.MM_TIERS),
+    tierCurrency: String(process.env.MM_TIER_CURRENCY || "USD").trim().toUpperCase() === "EUR" ? "EUR" : "USD",
   };
 
   const DATA_FILE = path.join(process.env.DATA_DIR || __dirname, "middleman.json");
@@ -626,7 +649,8 @@ const middleman = (() => {
         .addFields(
           { name: `📤  ${words(deal).sender}`, value: deal.senderId ? mention(deal.senderId) : T("*waiting…*", "*en attente…*"), inline: true },
           { name: `📥  ${words(deal).receiver}`, value: deal.receiverId ? mention(deal.receiverId) : T("*waiting…*", "*en attente…*"), inline: true },
-          { name: T("💰  Amount", "💰  Montant"), value: amountLine, inline: true }
+          { name: T("💰  Amount", "💰  Montant"), value: amountLine, inline: true },
+          ...(deal.tier ? [{ name: T("🎚️  Range", "🎚️  Tranche"), value: deal.tier.label, inline: true }] : [])
         )
     );
 
@@ -1016,6 +1040,8 @@ const middleman = (() => {
       const parsed = parseFiatCents(text, deal);
       if (parsed.error) return { error: parsed.error };
       if (parsed.cents < cfg.paypalMinCents) return { error: T(`Minimum deal: ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`, `Deal minimum : ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`) };
+      const tierError = await checkTier(deal, { cents: parsed.cents });
+      if (tierError) return { error: tierError };
       await closeAmountCard(deal, "superseded");
       deal.amountCents = parsed.cents;
       deal.currency = cfg.paypalCurrency;
@@ -1031,6 +1057,8 @@ const middleman = (() => {
     if (result.sat < cfg.minSat) {
       return { error: T(`That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.`, `Ça ne fait que ${satToLtc(result.sat)} LTC. Deal minimum : ${satToLtc(cfg.minSat)} LTC.`) };
     }
+    const tierError = await checkTier(deal, { sat: result.sat, quote: result.quote });
+    if (tierError) return { error: tierError };
     await closeAmountCard(deal, "superseded"); // a previous, still pending card is replaced
     deal.amountSat = result.sat;
     deal.quote = result.quote;
@@ -1049,6 +1077,62 @@ const middleman = (() => {
 
   const staffPing = () => (options.staffRoleId ? `<@&${options.staffRoleId}>` : "Staff");
   const reply = (interaction, content) => interaction.reply({ content, flags: ephemeral });
+
+  /* ---------- amount ranges ("tiers"): the person picks one before the ticket opens ---------- */
+
+  const tierLabel = (t) => `${CUR[cfg.tierCurrency]}${t.min}${t.max === null ? "+" : ` – ${CUR[cfg.tierCurrency]}${t.max}`}`;
+
+  const tierOf = (index) => {
+    const t = cfg.tiers[index];
+    return t ? { min: t.min, max: t.max, slug: t.slug, currency: cfg.tierCurrency, label: tierLabel(t) } : undefined;
+  };
+
+  /* The choices of the menu, in the language of the person. */
+  function tierOptions(lang) {
+    const fr = lang === "fr";
+    const sym = CUR[cfg.tierCurrency];
+    return cfg.tiers.map((t, i) => ({
+      value: String(i),
+      label: tierLabel(t),
+      slug: t.slug,
+      description:
+        t.max === null
+          ? (fr ? `Deals au-dessus de ${sym}${t.min}` : `Deals above ${sym}${t.min}`)
+          : t.min === 0
+            ? (fr ? `Deals jusqu'à ${sym}${t.max}` : `Deals up to ${sym}${t.max}`)
+            : (fr ? `Deals de ${sym}${t.min} à ${sym}${t.max}` : `Deals from ${sym}${t.min} to ${sym}${t.max}`),
+    }));
+  }
+
+  /* The typed amount in the currency of the ranges, or null when it cannot be told (no price available). */
+  async function tierValue(deal, input) {
+    const to = cfg.tierCurrency;
+    const prices = () => getLtcPrice().catch(() => null);
+    const convert = async (amount, from) => {
+      if (from === to) return amount;
+      const p = await prices();
+      return p ? amount * (from === "USD" ? p.eur / p.usd : p.usd / p.eur) : null;
+    };
+    if (isPaypal(deal)) return convert(input.cents / 100, cfg.paypalCurrency);
+    if (input.quote && !input.quote.indicative) return convert(input.quote.fiat, input.quote.currency); // typed in dollars or euros
+    const p = await prices();                                                                        // typed in LTC
+    return p ? (input.sat / SAT_PER_LTC) * (to === "EUR" ? p.eur : p.usd) : null;
+  }
+
+  /* An error text when the amount does not fit the range chosen for the ticket, otherwise null. */
+  async function checkTier(deal, input) {
+    const tier = deal.tier;
+    if (!tier) return null;
+    const value = await tierValue(deal, input);
+    if (value == null) return null; // cannot compare without a price: do not block
+    if (value >= tier.min - 0.005 && (tier.max === null || value <= tier.max + 0.005)) return null;
+    const shown = `${CUR[tier.currency]}${value.toFixed(2)}`;
+    return tr(
+      deal,
+      `This ticket is for deals of ${tier.label}. Your amount is about ${shown}. Open a ticket in the right range, or type another amount.`,
+      `Ce ticket est pour les deals de ${tier.label}. Ton montant fait environ ${shown}. Ouvre un ticket dans la bonne tranche, ou écris un autre montant.`
+    );
+  }
 
   /* ---------- PayPal accounts, managed from Discord with /paypal ---------- */
 
@@ -1332,7 +1416,7 @@ const middleman = (() => {
   /* ---------- interactions ---------- */
 
   /* Called by index.js right after a "middleman" ticket channel was created. */
-  async function openDeal(channel, user, method = "ltc", lang = "en") {
+  async function openDeal(channel, user, method = "ltc", lang = "en", tierIndex = -1) {
     const L = { lang: lang === "fr" ? "fr" : "en" };
     if (!enabled) {
       await channel.send(tr(L, "❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.", "❌ Le middleman n'est pas encore configuré (MM_SEED manque). Le staff est prévenu dans ce ticket."));
@@ -1355,6 +1439,7 @@ const middleman = (() => {
       userA: user.id,
       userB: null,
       lang: L.lang,
+      tier: tierOf(tierIndex),
       method: method === "paypal" ? "paypal" : "ltc",
       amountCents: 0,
       currency: "",
@@ -1380,7 +1465,7 @@ const middleman = (() => {
     deal.messageId = message.id;
     saveStore();
 
-    await logLine(`🆕 Middleman deal #${n} opened by <@${deal.userA}> (<#${channel.id}>).`);
+    await logLine(`🆕 Middleman deal #${n} opened by <@${deal.userA}> (<#${channel.id}>)${deal.tier ? `, range ${deal.tier.label}` : ""}.`);
     return true;
   }
 
@@ -2058,7 +2143,7 @@ const middleman = (() => {
     console.log('Back it up: run "notepad .env", write the 12 words on paper, close it. Anyone with them controls the funds.\n');
   }
 
-  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus };
+  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions };
 })();
 
 /* =====================================================
@@ -2079,6 +2164,7 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } = require("discord.js");
 
 if (process.argv[2] === "new-seed") {
@@ -2200,12 +2286,53 @@ async function askLanguage(interaction) {
   });
 }
 
-/* Step 2: the language is chosen, create the ticket, entirely in that language. */
-async function openTicket(interaction) {
-  const [, rawMethod, rawLang] = String(interaction.customId).split(":"); // ticket_lang:<method>:<fr|en>
-  const method = rawMethod === "paypal" ? "paypal" : "ltc";
-  const lang = rawLang === "fr" ? "fr" : "en";
+const parseTicketId = (customId) => {
+  const [, rawMethod, rawLang] = String(customId).split(":"); // <prefix>:<method>:<fr|en>
+  return { method: rawMethod === "paypal" ? "paypal" : "ltc", lang: rawLang === "fr" ? "fr" : "en" };
+};
+
+/* Step 2: the language is chosen. Ask the amount range of the deal with a menu (nothing to ask when there are no ranges). */
+async function askTier(interaction) {
+  const { method, lang } = parseTicketId(interaction.customId);
   const T = (en, fr) => byLang(lang, en, fr);
+  if (method === "paypal") {
+    const status = middleman.paypalStatus(); // PayPal may have become unavailable since the panel button was clicked
+    if (!status.configured) return interaction.update({ content: T("❌ PayPal tickets are not available right now.", "❌ Les tickets PayPal ne sont pas disponibles pour le moment."), components: [] });
+    if (!status.available) {
+      return interaction.update({
+        content: T("❌ No PayPal account is available right now (everyone is absent). Please try again later.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Réessaie plus tard."),
+        components: [],
+      });
+    }
+  }
+  const options = middleman.tierOptions(lang);
+  if (options.length <= 1) return openTicket(interaction, method, lang, options.length ? 0 : -1);
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`ticket_tier:${method}:${lang}`)
+    .setPlaceholder(T("Choose an amount range", "Choisis une tranche de montant"))
+    .addOptions(options.map((o) => ({ label: o.label, description: o.description, value: o.value })));
+  return interaction.update({
+    content: T(
+      "💰 **How much is your deal?**\nPick the range that matches the amount of your deal.",
+      "💰 **Quelle est la somme de ton deal ?**\nChoisis la tranche qui correspond au montant de ton deal."
+    ),
+    components: [new ActionRowBuilder().addComponents(menu)],
+  });
+}
+
+/* Step 3: a range is picked in the menu. */
+async function openTicketFromMenu(interaction) {
+  const { method, lang } = parseTicketId(interaction.customId);
+  return openTicket(interaction, method, lang, Number(interaction.values?.[0]));
+}
+
+/* Step 4: create the ticket, entirely in the chosen language. */
+async function openTicket(interaction, method, lang, tierIndex = -1) {
+  const T = (en, fr) => byLang(lang, en, fr);
+  const options = middleman.tierOptions(lang);
+  const tier = options[tierIndex];
+  if (options.length && !tier) return interaction.update({ content: T("❌ Invalid choice.", "❌ Choix invalide."), components: [] });
 
   await interaction.update({ content: T("⏳ Creating your ticket…", "⏳ Création de ton ticket…"), components: [] });
   const { guild, user } = interaction;
@@ -2236,7 +2363,7 @@ async function openTicket(interaction) {
   const safeName = user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
 
   const channel = await guild.channels.create({
-    name: `${method === "paypal" ? "paypal" : "ltc"}-${safeName}`,
+    name: `${method === "paypal" ? "paypal" : "ltc"}-${tier ? `${tier.slug}-` : ""}${safeName}`,
     type: ChannelType.GuildText,
     parent: parent?.type === ChannelType.GuildCategory ? parent.id : undefined,
     topic: `mm-ticket:${user.id}:${method}:${lang}`,
@@ -2256,6 +2383,7 @@ async function openTicket(interaction) {
         `Bienvenue ${user} !\nSuis la **carte du deal** ci-dessous, elle te guide étape par étape et se met à jour toute seule.\n\n🚨 Un problème ? **Appelle le staff** sur la carte, le deal est gelé jusqu'à la décision du staff.`
       )
     );
+  if (tier) welcome.setDescription(`${welcome.data.description}\n\n${T(`🎚️ Range: **${tier.label}**`, `🎚️ Tranche : **${tier.label}**`)}`);
   const close = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ticket_close").setLabel(T("Close ticket", "Fermer le ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
   );
@@ -2266,7 +2394,7 @@ async function openTicket(interaction) {
     allowedMentions: { roles: STAFF_ROLE_ID ? [STAFF_ROLE_ID] : [], users: [user.id] },
   });
 
-  await middleman.openDeal(channel, user, method, lang).catch((error) => {
+  await middleman.openDeal(channel, user, method, lang, tierIndex).catch((error) => {
     console.error("Middleman could not start:", error?.message || error);
     return channel.send(T("❌ The middleman could not start. Staff has been pinged.", "❌ Le middleman n'a pas pu démarrer. Le staff est prévenu.")).catch(() => {});
   });
@@ -2301,7 +2429,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === "panel") return await postPanel(interaction);
     if (interaction.isButton() && (interaction.customId === "open_ticket" || interaction.customId.startsWith("open_ticket:"))) return await askLanguage(interaction);
-    if (interaction.isButton() && interaction.customId.startsWith("ticket_lang:")) return await openTicket(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("ticket_lang:")) return await askTier(interaction);
+    if (interaction.isStringSelectMenu?.() && interaction.customId.startsWith("ticket_tier:")) return await openTicketFromMenu(interaction);
     if (interaction.isButton() && interaction.customId === "ticket_close") return await closeTicket(interaction);
   } catch (error) {
     console.error("Interaction error:", error?.message || error);
