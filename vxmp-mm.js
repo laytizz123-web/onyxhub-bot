@@ -39,6 +39,7 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
     MM_SEED=twelve word mnemonic ...       required, run `node middleman.js new-seed` to make one
     MM_CONFIRMATIONS=2                     confirmations needed (default 2)
     MM_MIN_LTC=0.0001                      smallest deal accepted (about 0.005 USD)
+    MM_QR=off                              hide the QR code of the deposit address (default: shown)
     MM_CATEGORY_ID=...                     category where the deal channels are created (optional)
     LTC_API_URL=https://litecoinspace.org/api    Esplora-compatible API (default)
     LTC_EXPLORER_TX_URL=https://litecoinspace.org/tx/
@@ -126,6 +127,7 @@ const middleman = (() => {
     minFeeRate: Math.max(1, Number(process.env.MM_MIN_FEE_RATE) || 2),
     minSat: ltcToSat(process.env.MM_MIN_LTC || "0.0001") || 10000,
     categoryId: process.env.MM_CATEGORY_ID || "",
+    qr: String(process.env.MM_QR || "on").toLowerCase() !== "off", // QR code of the deposit address (image made by api.qrserver.com)
   };
 
   const DATA_FILE = path.join(process.env.DATA_DIR || __dirname, "middleman.json");
@@ -419,45 +421,91 @@ const middleman = (() => {
     return b;
   }
 
+  /* ---------- look & feel ---------- */
+
+  const STEPS = ["Partner", "Roles", "Amount", "Payment", "Delivery", "Payout"];
+  const STEP_OF = { partner: 0, roles: 1, amount: 2, amount_confirm: 2, awaiting_payment: 3, confirming: 3, funded: 4, released: 5, paying: 5, done: 6 };
+  const STATE_COLOR = {
+    partner: 0x5865f2, roles: 0x5865f2, amount: 0x5865f2, amount_confirm: 0x5865f2,
+    awaiting_payment: 0xfaa61a, confirming: 0xf57c00, funded: 0x2ecc71, released: 0x1abc9c, paying: 0x1abc9c,
+    done: 0x2ecc71, refunded: 0x747f8d, cancelled: 0x747f8d,
+  };
+
+  const stepper = (deal) => {
+    const current = STEP_OF[deal.state];
+    if (current === undefined) return "";
+    return STEPS.map((label, i) => (i < current ? `✅ ${label}` : i === current ? `🔵 **${label}**` : `⚪ ${label}`)).join("  ›  ");
+  };
+
+  const bar = (done, total, width = 10) => {
+    const filled = Math.max(0, Math.min(width, Math.round((width * done) / Math.max(1, total))));
+    return "▰".repeat(filled) + "▱".repeat(width - filled);
+  };
+
+  const unix = (ms) => Math.floor(ms / 1000);
+
+  const qrUrl = (deal) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&format=png&data=${encodeURIComponent(
+      `litecoin:${deal.address}?amount=${(deal.amountSat / SAT_PER_LTC).toFixed(8)}`
+    )}`;
+
+  function stateText(deal) {
+    const sender = mention(deal.senderId);
+    const receiver = mention(deal.receiverId);
+    switch (deal.state) {
+      case "partner": return "**Add the person you trade with.**\nClick the button below and send their @mention or user ID.";
+      case "roles": return "**Pick your roles.**\n📤 The *sender* pays the LTC.   📥 The *receiver* gets it when the deal is done.";
+      case "amount": return `**${sender}: set the amount.**\nType it in LTC (\`0.25\`) or in money (\`5$\`, \`5€\`).`;
+      case "amount_confirm": return `**${receiver}: check the amount and confirm it.**\nThe LTC figure is final once confirmed, even if the price moves.`;
+      case "awaiting_payment": return `**${sender}: send the exact amount below** from a wallet you control.\nThe bot spots the payment by itself, nothing to click.`;
+      case "confirming": return "**Payment spotted!**\nThe network is confirming it, this card updates by itself.";
+      case "funded": return `**Funds secured.**\n📥 ${receiver}: deliver what was agreed.\n📤 ${sender}: click **Release** only once you really received it.`;
+      case "released": return `**Funds released.**\n📥 ${receiver}: click **Enter my LTC address** to get paid.`;
+      case "paying": return "**Sending the funds…**";
+      case "done": return "**Deal complete.** Thank you both 💜";
+      case "refunded": return "**Refunded to the sender.**";
+      case "cancelled": return "**Deal cancelled.**";
+      default: return "";
+    }
+  }
+
   function dealEmbed(deal) {
-    const color = deal.state === "done" ? COLORS.ok : FINAL.has(deal.state) ? COLORS.grey : deal.frozen ? COLORS.bad : COLORS.info;
+    const color = deal.frozen ? COLORS.bad : STATE_COLOR[deal.state] || COLORS.info;
+    const amountLine = deal.amountSat
+      ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}`
+      : "*not set yet*";
+
     const embed = new EmbedBuilder()
       .setColor(color)
-      .setTitle(`Litecoin middleman — deal #${deal.n}`)
+      .setTitle(`💱  Litecoin Middleman  ·  Deal #${deal.n}`)
+      .setDescription([deal.frozen ? "🧊 **FROZEN: a dispute is open, staff will decide.**\n" : "", stepper(deal), "", stateText(deal)].filter((x) => x !== "").join("\n"))
       .addFields(
-        { name: "LTC sender", value: mention(deal.senderId), inline: true },
-        { name: "LTC receiver", value: mention(deal.receiverId), inline: true },
-        { name: "Amount", value: deal.amountSat ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}` : "*not set*", inline: true },
-        { name: "Status", value: `${deal.frozen ? "🧊 **FROZEN (dispute)** — " : ""}${STATE_TEXT[deal.state] || deal.state}` }
-      );
+        { name: "📤  Sender", value: deal.senderId ? mention(deal.senderId) : "*waiting…*", inline: true },
+        { name: "📥  Receiver", value: deal.receiverId ? mention(deal.receiverId) : "*waiting…*", inline: true },
+        { name: "💰  Amount", value: amountLine, inline: true }
+      )
+      .setFooter({ text: "VXMP MM  ·  funds are held by the bot until release" })
+      .setTimestamp();
 
-    if (deal.state === "partner") {
-      embed.setDescription("**Step 1.** Click the button and give the **@mention or ID** of the person you are trading with. They will be added to this ticket.");
-    } else if (deal.state === "roles") {
-      embed.setDescription("Each of you picks a role. The **sender** pays the LTC, the **receiver** gets it once the deal is done.");
-    } else if (deal.state === "awaiting_payment" || deal.state === "confirming") {
-      embed.setColor(deal.frozen ? COLORS.bad : COLORS.wait).addFields(
-        { name: "Send exactly", value: `\`${satToLtc(deal.amountSat)}\` LTC${deal.quote ? `\n${quoteText(deal.quote)}` : ""}`, inline: true },
-        { name: "To this address (only for this deal)", value: `\`${deal.address}\`` },
+    if (deal.state === "awaiting_payment" || deal.state === "confirming") {
+      const confirming = deal.state === "confirming";
+      const checked = deal.lastCheck ? `\n🔄 Last check <t:${unix(deal.lastCheck)}:R>` : "";
+      embed.addFields(
+        { name: "💳  Send exactly", value: `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``, inline: true },
+        { name: "📮  To this address (this deal only)", value: `\`\`\`${deal.address}\`\`\`` },
         {
-          name: "Progress",
-          value: deal.state === "confirming"
-            ? `Detected **${satToLtc(deal.seenSat)} LTC**, ${deal.confirmations}/${cfg.confirmations} confirmations.`
-            : `Needs ${cfg.confirmations} confirmation(s) (about ${cfg.confirmations * 2.5} min). Send from a wallet you control. Do not send after the deal is cancelled.`,
+          name: "⏱️  Progress",
+          value: confirming
+            ? `${bar(deal.confirmations, cfg.confirmations)}  **${Math.min(deal.confirmations, cfg.confirmations)}/${cfg.confirmations}** confirmations\nSeen: **${satToLtc(deal.seenSat)} LTC**${checked}`
+            : `${bar(0, cfg.confirmations)}  waiting for the payment\nNeeds ${cfg.confirmations} confirmation(s) after sending (about ${Math.round(cfg.confirmations * 2.5)} min)${checked}`,
         }
       );
-    } else if (deal.state === "funded") {
-      embed.setColor(COLORS.ok).addFields({
-        name: "Next",
-        value: `${mention(deal.receiverId)} delivers what was agreed.\n${mention(deal.senderId)} clicks **Release** only after you really received it.`,
-      });
-    } else if (deal.state === "released") {
-      embed.addFields({ name: "Next", value: `${mention(deal.receiverId)} clicks **Enter my LTC address**. The bot sends the funds right after.` });
+      if (cfg.qr && deal.address) embed.setThumbnail(qrUrl(deal));
     }
 
-    if (deal.payoutTxid) embed.addFields({ name: "Payout", value: `${txLink(deal.payoutTxid)} → \`${deal.payoutAddress}\``, });
-    if (deal.refundTxid) embed.addFields({ name: "Refund", value: `${txLink(deal.refundTxid)} → \`${deal.refundAddress}\`` });
-    if (deal.payoutTxid || deal.refundTxid) embed.addFields({ name: "Network fee", value: `${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)` });
+    if (deal.payoutTxid) embed.addFields({ name: "🏦  Payout", value: `${txLink(deal.payoutTxid)}\n\`${deal.payoutAddress}\`` });
+    if (deal.refundTxid) embed.addFields({ name: "↩️  Refund", value: `${txLink(deal.refundTxid)}\n\`${deal.refundAddress}\`` });
+    if (deal.payoutTxid || deal.refundTxid) embed.addFields({ name: "🧾  Network fee", value: `${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)` });
     return embed;
   }
 
@@ -492,6 +540,7 @@ const middleman = (() => {
   }
 
   async function refreshMain(deal) {
+    deal.lastRefresh = Date.now();
     const channel = await getChannel(deal);
     if (!channel) return;
     try {
@@ -506,9 +555,16 @@ const middleman = (() => {
     }
   }
 
-  async function say(deal, content) {
+  /* A short coloured card (with pings) posted under the main deal card. */
+  async function notify(deal, { title, body, color = COLORS.info, ping = [], thumbnail }) {
     const channel = await getChannel(deal);
-    if (channel) await channel.send({ content, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
+    if (!channel) return;
+    const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(body).setTimestamp();
+    if (thumbnail) embed.setThumbnail(thumbnail);
+    const mentions = ping.filter(Boolean).map((id) => (/^\d{15,25}$/.test(String(id)) ? mention(id) : id));
+    await channel
+      .send({ content: mentions.join(" ") || undefined, embeds: [embed], allowedMentions: { parse: ["users", "roles"] } })
+      .catch(() => {});
   }
 
   async function logLine(text) {
@@ -541,7 +597,12 @@ const middleman = (() => {
       deal.receivedSat = confirmedSat;
       saveStore();
       await refreshMain(deal);
-      await say(deal, `✅ ${mention(deal.senderId)} ${mention(deal.receiverId)} — **${satToLtc(confirmedSat)} LTC** received and confirmed. The funds are held by the bot.\n${mention(deal.receiverId)}: deliver what was agreed. ${mention(deal.senderId)}: click **Release** once you got it.`);
+      await notify(deal, {
+        title: "✅  Funds secured",
+        body: `**${satToLtc(confirmedSat)} LTC** received and confirmed.\nThe bot holds them until the deal is done.\n\n📥 ${mention(deal.receiverId)} deliver what was agreed.\n📤 ${mention(deal.senderId)} click **Release** once you got it.`,
+        color: COLORS.ok,
+        ping: [deal.receiverId, deal.senderId],
+      });
       await logLine(`💰 Deal #${deal.n} funded: ${satToLtc(confirmedSat)} LTC (<#${deal.channelId}>).`);
       return;
     }
@@ -550,7 +611,12 @@ const middleman = (() => {
       deal.state = "confirming";
       saveStore();
       await refreshMain(deal);
-      await say(deal, `👀 Payment detected: **${satToLtc(seenSat)} LTC**. Waiting for ${cfg.confirmations} confirmation(s).`);
+      await notify(deal, {
+        title: "👀  Payment spotted",
+        body: `**${satToLtc(seenSat)} LTC** seen on the deposit address.\nWaiting for **${cfg.confirmations}** confirmation(s), about ${Math.round(cfg.confirmations * 2.5)} min.\n\nThe deal card above shows the live progress.`,
+        color: 0xf57c00,
+        ping: [deal.senderId, deal.receiverId],
+      });
       return;
     }
 
@@ -562,7 +628,12 @@ const middleman = (() => {
     if (confirmedSat > 0 && confirmedSat === seenSat && !deal.shortWarned) {
       deal.shortWarned = true;
       saveStore();
-      await say(deal, `⚠️ ${mention(deal.senderId)} the confirmed payment (**${satToLtc(confirmedSat)} LTC**) is lower than the agreed **${satToLtc(deal.amountSat)} LTC**. Send the missing part to the same address, or ${staffPing()} can refund it.`);
+      await notify(deal, {
+        title: "⚠️  Payment too small",
+        body: `The confirmed payment is **${satToLtc(confirmedSat)} LTC** but the deal is **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} send the missing **${satToLtc(deal.amountSat - confirmedSat)} LTC** to the same address,\nor ${staffPing()} can refund it.`,
+        color: COLORS.bad,
+        ping: [deal.senderId],
+      });
     }
   }
 
@@ -573,9 +644,14 @@ const middleman = (() => {
     try {
       for (const deal of Object.values(store.deals)) {
         if (deal.state !== "awaiting_payment" && deal.state !== "confirming") continue;
+        deal.lastCheck = Date.now();
         await withLock(deal.channelId, () => checkDeal(deal)).catch((error) =>
           console.error(`⚠️ Middleman: check failed for deal #${deal.n}:`, error?.message || error)
         );
+        // refresh the card now and then so "Last check" stays alive (about once a minute)
+        if (["awaiting_payment", "confirming"].includes(deal.state) && Date.now() - (deal.lastRefresh || 0) > 55000) {
+          await refreshMain(deal).catch(() => {});
+        }
       }
     } finally {
       ticking = false;
@@ -705,7 +781,13 @@ const middleman = (() => {
         deal.state = "awaiting_payment";
         saveStore();
         await interaction.update(render(deal));
-        return say(deal, `💳 ${mention(deal.senderId)} send exactly **${satToLtc(deal.amountSat)} LTC** to \`${deal.address}\`.\nThe bot will announce it here as soon as it sees the transaction.`);
+        return notify(deal, {
+          title: "💳  Payment instructions",
+          body: `📤 ${mention(deal.senderId)} send exactly\n\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`to this address\n\`\`\`${deal.address}\`\`\`The bot announces it here as soon as it sees the transaction.`,
+          color: COLORS.wait,
+          ping: [deal.senderId],
+          thumbnail: cfg.qr ? qrUrl(deal) : undefined,
+        });
       }
 
       case "release": {
@@ -729,7 +811,12 @@ const middleman = (() => {
         saveStore();
         await interaction.update({ content: "✅ Released.", components: [] });
         await refreshMain(deal);
-        return say(deal, `🔓 ${mention(deal.senderId)} released the funds. ${mention(deal.receiverId)}: click **Enter my LTC address** to get paid.`);
+        return notify(deal, {
+          title: "🔓  Funds released",
+          body: `${mention(deal.senderId)} confirmed the delivery.\n\n📥 ${mention(deal.receiverId)} click **Enter my LTC address** to get paid.`,
+          color: 0x1abc9c,
+          ping: [deal.receiverId],
+        });
       }
 
       case "payout": {
@@ -745,7 +832,12 @@ const middleman = (() => {
         deal.frozen = true;
         saveStore();
         await interaction.update(render(deal));
-        await say(deal, `🚨 ${staffPing()} — ${mention(user.id)} called staff on deal #${deal.n}. The deal is **frozen** until staff decides.`);
+        await notify(deal, {
+          title: "🚨  Staff called",
+          body: `${mention(user.id)} called staff on deal #${deal.n}.\nThe deal is **frozen** until staff decides.`,
+          color: COLORS.bad,
+          ping: [staffPing()],
+        });
         return logLine(`🚨 Deal #${deal.n} frozen by <@${user.id}> (<#${deal.channelId}>).`);
       }
 
@@ -754,7 +846,7 @@ const middleman = (() => {
         deal.frozen = false;
         saveStore();
         await interaction.update(render(deal));
-        return say(deal, `🧊 Deal unfrozen by ${mention(user.id)}.`);
+        return notify(deal, { title: "🧊  Deal unfrozen", body: `Unfrozen by ${mention(user.id)}. The deal can continue.`, color: COLORS.info });
       }
 
       case "force_release": {
@@ -764,7 +856,12 @@ const middleman = (() => {
         deal.frozen = false;
         saveStore();
         await interaction.update(render(deal));
-        await say(deal, `⚖️ Staff (${mention(user.id)}) released the funds. ${mention(deal.receiverId)}: click **Enter my LTC address**.`);
+        await notify(deal, {
+          title: "⚖️  Released by staff",
+          body: `Staff (${mention(user.id)}) released the funds.\n\n📥 ${mention(deal.receiverId)} click **Enter my LTC address**.`,
+          color: 0x1abc9c,
+          ping: [deal.receiverId],
+        });
         return logLine(`⚖️ Deal #${deal.n} force-released by <@${user.id}>.`);
       }
 
@@ -780,7 +877,11 @@ const middleman = (() => {
         deal.state = "cancelled";
         saveStore();
         await interaction.update(render(deal));
-        return say(deal, `✖️ Deal cancelled by ${mention(user.id)}. Do **not** send any LTC to the deposit address anymore.`);
+        return notify(deal, {
+          title: "✖️  Deal cancelled",
+          body: `Cancelled by ${mention(user.id)}.\nDo **not** send any LTC to the deposit address anymore.`,
+          color: COLORS.grey,
+        });
       }
 
       case "close": {
@@ -821,7 +922,12 @@ const middleman = (() => {
       saveStore();
       await interaction.deferUpdate();
       await refreshMain(deal);
-      return say(deal, `➕ ${mention(id)} was added to the ticket by ${mention(user.id)}.\n${mention(deal.userA)} ${mention(id)}: each of you picks a role with the buttons above.`);
+      return notify(deal, {
+        title: "➕  Partner added",
+        body: `${mention(id)} joined the ticket (added by ${mention(user.id)}).\n\n📤📥 ${mention(deal.userA)} ${mention(id)} each of you picks a role with the buttons above.`,
+        color: COLORS.info,
+        ping: [id],
+      });
     }
 
     if (kind === "amount") {
@@ -838,7 +944,12 @@ const middleman = (() => {
       deal.state = "amount_confirm";
       saveStore();
       await refreshMain(deal);
-      return say(deal, `💰 ${mention(deal.senderId)} set the amount to **${satToLtc(result.sat)} LTC**${result.quote ? ` ${quoteText(result.quote)}` : ""}.\n${mention(deal.receiverId)}: confirm it with the button above. The amount to pay is the LTC figure, it will not change.`);
+      return notify(deal, {
+        title: "💰  Amount set",
+        body: `${mention(deal.senderId)} set the amount to\n\`\`\`${satToLtc(result.sat)} LTC\`\`\`${result.quote ? `${quoteText(result.quote)}\n\n` : "\n"}📥 ${mention(deal.receiverId)} confirm it with the button above.\nThe amount to pay is the **LTC figure**, it will not change.`,
+        color: COLORS.info,
+        ping: [deal.receiverId],
+      });
     }
 
     // payout / refund: both send the whole balance of the deal address
@@ -885,9 +996,9 @@ const middleman = (() => {
     const { sent } = result;
     await interaction.editReply("✅ Funds sent.");
     await refreshMain(deal);
-    await say(deal, isRefund
-      ? `↩️ Refund of **${satToLtc(sent.outValue)} LTC** sent to the sender: ${txLink(sent.txid)}`
-      : `🎉 ${mention(deal.receiverId)} you received **${satToLtc(sent.outValue)} LTC** (network fee ${satToLtc(sent.fee)} LTC): ${txLink(sent.txid)}\nDeal complete, thank you both.`);
+    await notify(deal, isRefund
+      ? { title: "↩️  Refund sent", body: `**${satToLtc(sent.outValue)} LTC** went back to the sender.\n${txLink(sent.txid)}`, color: COLORS.grey, ping: [deal.senderId] }
+      : { title: "🎉  Deal complete", body: `${mention(deal.receiverId)} received **${satToLtc(sent.outValue)} LTC**.\nNetwork fee: ${satToLtc(sent.fee)} LTC\n${txLink(sent.txid)}\n\nThank you both 💜`, color: COLORS.ok, ping: [deal.receiverId, deal.senderId] });
     return logLine(`${isRefund ? "↩️ Refund" : "✅ Payout"} deal #${deal.n}: ${satToLtc(sent.outValue)} LTC, tx ${sent.txid}`);
   }
 
@@ -1050,18 +1161,17 @@ async function postPanel(interaction) {
   }
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle("💱 Litecoin Middleman")
-    .setDescription(
-      [
-        "Trade safely: the bot holds the **LTC** until both sides are happy.",
-        "",
-        "1. Open a ticket and add the person you trade with",
-        "2. Choose who sends and who receives the LTC",
-        "3. The sender pays the address given by the bot",
-        "4. The receiver delivers, the sender clicks **Release**",
-        "5. The bot sends the funds to the receiver",
-      ].join("\n")
-    );
+    .setTitle("💱  VXMP MM  ·  Litecoin Middleman")
+    .setDescription("Trade safely: the bot **holds the LTC** until both sides are happy.\nNo trust needed, everything is tracked on the blockchain.")
+    .addFields(
+      { name: "1️⃣  Open a ticket", value: "Add the person you trade with.", inline: true },
+      { name: "2️⃣  Agree", value: "Pick who sends / receives, set the amount.", inline: true },
+      { name: "3️⃣  Pay", value: "The sender pays the address given by the bot.", inline: true },
+      { name: "4️⃣  Deliver", value: "The receiver gives what was agreed.", inline: true },
+      { name: "5️⃣  Release", value: "The sender confirms, the bot pays the receiver.", inline: true },
+      { name: "🛟  Problem?", value: "**Call staff** freezes the deal at any time.", inline: true }
+    )
+    .setFooter({ text: "Amounts can be typed in LTC, $ or €  ·  small network fee applies" });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("open_ticket").setLabel("Open a middleman ticket").setEmoji("💱").setStyle(ButtonStyle.Primary)
   );
@@ -1109,8 +1219,8 @@ async function openTicket(interaction) {
 
   const welcome = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle("💱 Middleman ticket")
-    .setDescription(`Hello ${user}, follow the steps below. A staff member can join at any time with **Call staff**.`);
+    .setTitle("🎫  Your middleman ticket")
+    .setDescription(`Welcome ${user}!\nFollow the **deal card** below, it guides you step by step and updates by itself.\n\n🚨 Anything wrong? **Call staff** on the card, the deal is frozen until staff decides.`);
   const close = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ticket_close").setLabel("Close ticket").setEmoji("🔒").setStyle(ButtonStyle.Secondary)
   );
