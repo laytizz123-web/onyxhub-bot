@@ -99,7 +99,7 @@ const middleman = (() => {
   }
 
   const cfg = {
-    seed: (process.env.MM_SEED || "").trim(),
+    seed: (process.env.MM_SEED || "").replace(/["'`]/g, " ").replace(/\s+/g, " ").trim().toLowerCase(),
     apiUrl: (process.env.LTC_API_URL || "https://litecoinspace.org/api").replace(/\/+$/, ""),
     explorerTx: process.env.LTC_EXPLORER_TX_URL || "https://litecoinspace.org/tx/",
     confirmations: Math.max(1, Number(process.env.MM_CONFIRMATIONS) || 2),
@@ -119,7 +119,8 @@ const middleman = (() => {
 
   function initWallet() {
     if (!bip39.validateMnemonic(cfg.seed)) {
-      throw new Error("MM_SEED is not a valid BIP39 mnemonic.");
+      const words = cfg.seed ? cfg.seed.split(" ").length : 0;
+      throw new Error(`MM_SEED is not valid (${words} word(s) found, it must be the 12 words from "new-seed", on one line, spelled exactly).`);
     }
     root = bip32.fromSeed(bip39.mnemonicToSeedSync(cfg.seed), LITECOIN);
   }
