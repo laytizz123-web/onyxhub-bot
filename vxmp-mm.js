@@ -861,13 +861,49 @@ const middleman = (() => {
     console.log(`💱 Middleman enabled (${cfg.confirmations} confirmation(s), polling every ${cfg.pollMs / 1000}s).`);
   }
 
-  function newSeed() {
+  /* node vxmp-mm.js new-seed          -> prints a fresh seed
+     node vxmp-mm.js new-seed --save   -> writes it straight into .env (nothing to copy)  */
+  function newSeed(save, force) {
+    const existing = cfg.seed;
     const mnemonic = bip39.generateMnemonic();
     cfg.seed = mnemonic;
     initWallet();
-    console.log("\nMM_SEED=" + mnemonic);
+
+    if (!save) {
+      console.log("\nMM_SEED=" + mnemonic);
+      console.log("First deposit address:", addressOf(0));
+      console.log("\nPut the MM_SEED line in your .env, and back the words up OFFLINE. Anyone with them controls the funds.\n");
+      return;
+    }
+
+    if (bip39.validateMnemonic(existing) && !force) {
+      console.log("\n⚠️ A valid MM_SEED is already in your .env, so I did not touch it (its funds would be lost).");
+      console.log("Back it up, then run: node vxmp-mm.js new-seed --save --force\n");
+      return;
+    }
+
+    const file = path.join(process.cwd(), ".env");
+    let text = "";
+    try {
+      text = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "");
+    } catch {
+      // no .env yet: it will be created
+    }
+    const out = [];
+    let skipping = false;
+    for (const line of text.split(/\r?\n/)) {
+      if (/^\s*MM_SEED\s*=/.test(line)) { skipping = true; continue; }
+      if (skipping && line.trim() && !/^\s*#/.test(line) && !/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line)) continue;
+      skipping = false;
+      out.push(line);
+    }
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+    out.push("MM_SEED=" + mnemonic);
+    fs.writeFileSync(file, out.join("\n") + "\n");
+
+    console.log("\n✅ New seed saved in .env (not shown here).");
     console.log("First deposit address:", addressOf(0));
-    console.log("\nPut the MM_SEED line in your .env, and back the words up OFFLINE. Anyone with them controls the funds.\n");
+    console.log('Back it up: run "notepad .env", write the 12 words on paper, close it. Anyone with them controls the funds.\n');
   }
 
   return { init, openDeal, blocksClose, forget, handleInteraction, newSeed };
@@ -894,7 +930,7 @@ const {
 } = require("discord.js");
 
 if (process.argv[2] === "new-seed") {
-  middleman.newSeed();
+  middleman.newSeed(process.argv.includes("--save"), process.argv.includes("--force"));
   process.exit(0);
 }
 
