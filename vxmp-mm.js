@@ -2526,6 +2526,274 @@ const middleman = (() => {
 })();
 
 /* =====================================================
+   IMAGES: tiny PNG drawing kit (no library to install) used by the multitools cards
+===================================================== */
+
+const gfx = (() => {
+  const zlib = require("zlib");
+  const CRC = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+
+  const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+  class Canvas {
+    constructor(w, h, bg = "#1e1f2e", bg2 = null) {
+      this.w = w;
+      this.h = h;
+      this.px = new Uint8Array(w * h * 4);
+      const a = hex(bg);
+      const b = hex(bg2 || bg);
+      for (let y = 0; y < h; y++) {
+        const f = h > 1 ? y / (h - 1) : 0;
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          this.px[i] = a[0] + (b[0] - a[0]) * f;
+          this.px[i + 1] = a[1] + (b[1] - a[1]) * f;
+          this.px[i + 2] = a[2] + (b[2] - a[2]) * f;
+          this.px[i + 3] = 255;
+        }
+      }
+    }
+    blend(x, y, c, a) {
+      if (a <= 0 || x < 0 || y < 0 || x >= this.w || y >= this.h) return;
+      const i = (y * this.w + x) * 4;
+      this.px[i] += (c[0] - this.px[i]) * a;
+      this.px[i + 1] += (c[1] - this.px[i + 1]) * a;
+      this.px[i + 2] += (c[2] - this.px[i + 2]) * a;
+    }
+    /* Fills the pixels where sdf(x, y) <= 0, with a soft edge. */
+    shape(sdf, x0, y0, x1, y1, color, alpha = 1) {
+      const c = hex(color);
+      for (let y = Math.max(0, Math.floor(y0)); y < Math.min(this.h, Math.ceil(y1)); y++) {
+        for (let x = Math.max(0, Math.floor(x0)); x < Math.min(this.w, Math.ceil(x1)); x++) {
+          const cover = clamp01(0.5 - sdf(x + 0.5, y + 0.5));
+          if (cover > 0) this.blend(x, y, c, cover * alpha);
+        }
+      }
+    }
+    rect(x, y, w, h, color, alpha = 1) {
+      this.shape((px, py) => Math.max(Math.abs(px - (x + w / 2)) - w / 2, Math.abs(py - (y + h / 2)) - h / 2), x, y, x + w, y + h, color, alpha);
+    }
+    round(x, y, w, h, r, color, alpha = 1) {
+      r = Math.min(r, w / 2, h / 2);
+      this.shape(
+        (px, py) => {
+          const dx = Math.abs(px - (x + w / 2)) - (w / 2 - r);
+          const dy = Math.abs(py - (y + h / 2)) - (h / 2 - r);
+          return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r;
+        },
+        x - 1, y - 1, x + w + 1, y + h + 1, color, alpha
+      );
+    }
+    circle(cx, cy, r, color, alpha = 1) {
+      this.shape((px, py) => Math.hypot(px - cx, py - cy) - r, cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, color, alpha);
+    }
+    ring(cx, cy, r, thickness, color, alpha = 1) {
+      this.shape((px, py) => Math.abs(Math.hypot(px - cx, py - cy) - r) - thickness / 2, cx - r - thickness, cy - r - thickness, cx + r + thickness, cy + r + thickness, color, alpha);
+    }
+    text(str, x, y, scale, color = "#ffffff", align = "left") {
+      const s = ascii(str);
+      const width = measure(s, scale);
+      let cx = align === "center" ? x - width / 2 : align === "right" ? x - width : x;
+      const c = hex(color);
+      for (const ch of s) {
+        const g = FONT[ch] || FONT["?"];
+        for (let row = 0; row < 7; row++) {
+          for (let col = 0; col < 5; col++) {
+            if (g[row][col] !== "1") continue;
+            for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) this.blend(Math.round(cx) + col * scale + dx, Math.round(y) + row * scale + dy, c, 1);
+          }
+        }
+        cx += 6 * scale;
+      }
+    }
+    png() {
+      const raw = Buffer.alloc((this.w * 4 + 1) * this.h);
+      for (let y = 0; y < this.h; y++) {
+        raw[y * (this.w * 4 + 1)] = 0;
+        Buffer.from(this.px.buffer, this.px.byteOffset + y * this.w * 4, this.w * 4).copy(raw, y * (this.w * 4 + 1) + 1);
+      }
+      const ihdr = Buffer.alloc(13);
+      ihdr.writeUInt32BE(this.w, 0);
+      ihdr.writeUInt32BE(this.h, 4);
+      ihdr[8] = 8; // bit depth
+      ihdr[9] = 6; // RGBA
+      return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw, { level: 6 })), chunk("IEND", Buffer.alloc(0))]);
+    }
+  }
+
+  /* 5x7 pixel font: letters (as capitals), digits and a few signs. */
+  const G = (s) => s.trim().split(/\s+/);
+  const FONT = {
+    " ": G("00000 00000 00000 00000 00000 00000 00000"),
+    A: G("01110 10001 10001 11111 10001 10001 10001"), B: G("11110 10001 10001 11110 10001 10001 11110"), C: G("01110 10001 10000 10000 10000 10001 01110"),
+    D: G("11110 10001 10001 10001 10001 10001 11110"), E: G("11111 10000 10000 11110 10000 10000 11111"), F: G("11111 10000 10000 11110 10000 10000 10000"),
+    G: G("01110 10001 10000 10111 10001 10001 01111"), H: G("10001 10001 10001 11111 10001 10001 10001"), I: G("01110 00100 00100 00100 00100 00100 01110"),
+    J: G("00111 00010 00010 00010 00010 10010 01100"), K: G("10001 10010 10100 11000 10100 10010 10001"), L: G("10000 10000 10000 10000 10000 10000 11111"),
+    M: G("10001 11011 10101 10101 10001 10001 10001"), N: G("10001 11001 10101 10011 10001 10001 10001"), O: G("01110 10001 10001 10001 10001 10001 01110"),
+    P: G("11110 10001 10001 11110 10000 10000 10000"), Q: G("01110 10001 10001 10001 10101 10010 01101"), R: G("11110 10001 10001 11110 10100 10010 10001"),
+    S: G("01111 10000 10000 01110 00001 00001 11110"), T: G("11111 00100 00100 00100 00100 00100 00100"), U: G("10001 10001 10001 10001 10001 10001 01110"),
+    V: G("10001 10001 10001 10001 10001 01010 00100"), W: G("10001 10001 10001 10101 10101 10101 01010"), X: G("10001 10001 01010 00100 01010 10001 10001"),
+    Y: G("10001 10001 01010 00100 00100 00100 00100"), Z: G("11111 00001 00010 00100 01000 10000 11111"),
+    0: G("01110 10001 10011 10101 11001 10001 01110"), 1: G("00100 01100 00100 00100 00100 00100 01110"), 2: G("01110 10001 00001 00010 00100 01000 11111"),
+    3: G("11110 00001 00001 01110 00001 00001 11110"), 4: G("00010 00110 01010 10010 11111 00010 00010"), 5: G("11111 10000 11110 00001 00001 10001 01110"),
+    6: G("00110 01000 10000 11110 10001 10001 01110"), 7: G("11111 00001 00010 00100 01000 01000 01000"), 8: G("01110 10001 10001 01110 10001 10001 01110"),
+    9: G("01110 10001 10001 01111 00001 00010 01100"),
+    ".": G("00000 00000 00000 00000 00000 01100 01100"), ",": G("00000 00000 00000 00000 01100 00100 01000"), ":": G("00000 01100 01100 00000 01100 01100 00000"),
+    "!": G("00100 00100 00100 00100 00100 00000 00100"), "?": G("01110 10001 00001 00110 00100 00000 00100"), "-": G("00000 00000 00000 11111 00000 00000 00000"),
+    "+": G("00000 00100 00100 11111 00100 00100 00000"), "/": G("00001 00010 00010 00100 01000 01000 10000"), "%": G("11001 11010 00010 00100 01000 01011 10011"),
+    "#": G("01010 01010 11111 01010 11111 01010 01010"), "=": G("00000 00000 11111 00000 11111 00000 00000"), "'": G("00100 00100 01000 00000 00000 00000 00000"),
+    "(": G("00010 00100 01000 01000 01000 00100 00010"), ")": G("01000 00100 00010 00010 00010 00100 01000"), "*": G("00000 10101 01110 11111 01110 10101 00000"),
+    _: G("00000 00000 00000 00000 00000 00000 11111"),
+  };
+  const ascii = (str) =>
+    String(str ?? "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[×✕]/g, "X")
+      .toUpperCase()
+      .replace(/\s+/g, " ")
+      .split("")
+      .map((ch) => (FONT[ch] ? ch : "?"))
+      .join("");
+  const measure = (str, scale) => (ascii(str).length ? ascii(str).length * 6 * scale - scale : 0);
+  const fit = (str, maxWidth, maxScale) => {
+    let s = maxScale;
+    while (s > 1 && measure(str, s) > maxWidth) s--;
+    return s;
+  };
+  const cut = (str, maxWidth, scale) => {
+    let s = ascii(str);
+    while (s.length > 1 && measure(s, scale) > maxWidth) s = s.slice(0, -1);
+    return s;
+  };
+  const hue = (seed) => {
+    let h = 0;
+    for (const ch of String(seed)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const palette = ["#5865f2", "#eb459e", "#57f287", "#fee75c", "#ed4245", "#3498db", "#e67e22", "#9b59b6"];
+    return palette[h % palette.length];
+  };
+
+  /* ---------- cards ---------- */
+  function rank({ name, level, into, need, rank: place, xp, label }) {
+    const c = new Canvas(640, 200, "#1e1f2e", "#2b2d42");
+    c.round(14, 14, 612, 172, 22, "#ffffff", 0.06);
+    c.circle(100, 100, 54, hue(name));
+    c.text((ascii(name)[0] || "?"), 100, 78, 6, "#ffffff", "center");
+    c.text(cut(name, 380, 4), 180, 34, 4, "#ffffff");
+    c.text(`${label.level} ${level}`, 180, 72, 3, "#fee75c");
+    c.text(`${label.rank} #${place}`, 620, 72, 3, "#b9bbbe", "right");
+    c.round(180, 118, 420, 26, 13, "#000000", 0.35);
+    const fill = Math.max(0, Math.min(1, into / need));
+    if (fill > 0) c.round(180, 118, Math.max(26, 420 * fill), 26, 13, "#57f287");
+    c.text(`${into} / ${need} XP`, 600, 154, 2, "#b9bbbe", "right");
+    c.text(`${xp} XP`, 180, 154, 2, "#b9bbbe");
+    return c.png();
+  }
+
+  function leaderboard(rows, label) {
+    const rowH = 58;
+    const h = 96 + rows.length * rowH + 16;
+    const c = new Canvas(720, h, "#1e1f2e", "#2b2d42");
+    c.text(label.title, 360, 26, 6, "#fee75c", "center");
+    const medal = ["#f1c40f", "#bdc3c7", "#cd7f32"];
+    rows.forEach((r, n) => {
+      const y = 92 + n * rowH;
+      c.round(20, y, 680, rowH - 8, 14, "#ffffff", n % 2 ? 0.04 : 0.08);
+      c.circle(60, y + 25, 19, medal[n] || "#4f545c");
+      c.text(String(n + 1), 60, y + 15, 3, n < 3 ? "#1e1f2e" : "#ffffff", "center");
+      c.text(cut(r.name, 330, 3), 96, y + 6, 3, "#ffffff");
+      c.round(96, y + 33, 300, 8, 4, "#000000", 0.35);
+      const f = Math.max(0, Math.min(1, r.into / r.need));
+      if (f > 0) c.round(96, y + 33, Math.max(8, 300 * f), 8, 4, "#57f287");
+      c.text(`${label.level} ${r.level}`, 676, y + 6, 3, "#fee75c", "right");
+      c.text(`${r.xp} XP`, 676, y + 32, 2, "#b9bbbe", "right");
+    });
+    return c.png();
+  }
+
+  function levelUp({ name, level, label }) {
+    const c = new Canvas(560, 170, "#2c2f6b", "#1e1f2e");
+    c.round(12, 12, 536, 146, 20, "#ffffff", 0.07);
+    c.text(label.up, 280, 28, fit(label.up, 480, 6), "#fee75c", "center");
+    c.text(cut(name, 500, 3), 280, 86, 3, "#ffffff", "center");
+    c.text(`${label.level} ${level}`, 280, 120, 4, "#57f287", "center");
+    return c.png();
+  }
+
+  function coin(face /* "A" or "B" */, letter) {
+    const c = new Canvas(280, 280, "#2b2d31");
+    c.circle(142, 148, 118, "#000000", 0.25); // shadow
+    c.circle(140, 140, 118, "#b8860b");
+    c.circle(140, 140, 108, "#f1c40f");
+    c.ring(140, 140, 90, 6, "#b8860b");
+    c.text(letter, 140, 140 - 7 * 7, 14, "#8a6508", "center");
+    c.circle(72, 78, 9, "#ffffff", 0.3);
+    return c.png();
+  }
+
+  function dice(faces, value) {
+    const c = new Canvas(280, 280, "#2b2d31");
+    c.round(48, 56, 190, 190, 38, "#000000", 0.25);
+    c.round(40, 44, 190, 190, 38, "#f8f9fa");
+    const pips = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+    if (faces <= 6) for (const [dx, dy] of pips[value]) c.circle(135 + dx * 48, 139 + dy * 48, 17, "#1e1f2e");
+    else {
+      const s = fit(String(value), 150, 12);
+      c.text(String(value), 135, 139 - (7 * s) / 2, s, "#1e1f2e", "center");
+    }
+    return c.png();
+  }
+
+  function eightBall() {
+    const c = new Canvas(280, 280, "#2b2d31");
+    c.circle(146, 150, 118, "#000000", 0.3);
+    c.circle(140, 140, 118, "#111318");
+    c.circle(110, 90, 40, "#ffffff", 0.07);
+    c.circle(140, 128, 54, "#f8f9fa");
+    c.text("8", 140, 128 - 28, 8, "#111318", "center");
+    return c.png();
+  }
+
+  function quizCard(lines, label) {
+    const c = new Canvas(640, 260, "#2c2f6b", "#1e1f2e");
+    c.round(12, 12, 616, 236, 22, "#ffffff", 0.07);
+    c.text(label, 36, 30, 4, "#fee75c");
+    const scale = Math.min(...lines.map((l) => fit(l, 560, 10)));
+    const total = lines.length * 7 * scale + (lines.length - 1) * 14;
+    let y = 150 - total / 2 + 20;
+    for (const l of lines) {
+      c.text(l, 320, y, scale, "#ffffff", "center");
+      y += 7 * scale + 14;
+    }
+    return c.png();
+  }
+
+  return { Canvas, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, ascii, measure };
+})();
+
+/* =====================================================
    PART 3: MULTITOOLS (levels, moderation, welcome, roles, fun, logs, security)
    Separate from the middleman: its own file (tools.json), switched off with TOOLS=off.
 ===================================================== */
@@ -2535,6 +2803,7 @@ const tools = (() => {
   const path = require("path");
   const {
     ActionRowBuilder,
+    AttachmentBuilder,
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
@@ -2559,7 +2828,7 @@ const tools = (() => {
     giveaways: {},
     setup: { items: [] },
     cfg: {
-      levels: { on: true, rewards: [], announce: true, ignored: [] },
+      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50 },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
@@ -2628,6 +2897,41 @@ const tools = (() => {
       await member.roles.add(roleId, "level reward").catch(() => {});
     }
   }
+  const cardLabel = () => ({ level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), title: t("CLASSEMENT", "LEADERBOARD"), up: t("NIVEAU SUPERIEUR !", "LEVEL UP!") });
+  const picture = (name, buffer) => ({ file: new AttachmentBuilder(buffer, { name }), url: `attachment://${name}` });
+
+  async function announceLevel(member, level, fallbackChannel) {
+    const cfg = db.cfg.levels;
+    let channel = fallbackChannel;
+    if (cfg.channelId) {
+      const chosen = await Promise.resolve(member.guild?.channels?.fetch?.(cfg.channelId)).catch(() => null);
+      if (chosen?.isTextBased?.()) channel = chosen;
+    }
+    if (!channel?.send) return;
+    const name = member.displayName || member.user?.username || "?";
+    const card = picture("levelup.png", gfx.levelUp({ name, level, label: cardLabel() }));
+    await channel
+      .send({
+        content: t(`🎉 <@${member.id}> passe **niveau ${level}** !`, `🎉 <@${member.id}> reached **level ${level}**!`),
+        embeds: [embed(0x57f287).setImage(card.url)],
+        files: [card.file],
+        allowedMentions: { users: [member.id] },
+      })
+      .catch(() => {});
+  }
+
+  /* Adds xp to a member (messages and quiz), gives the reward roles and announces a new level. */
+  async function addXp(member, amount, fallbackChannel) {
+    const before = levelOf(db.xp[member.id] || 0).level;
+    db.xp[member.id] = (db.xp[member.id] || 0) + amount;
+    const after = levelOf(db.xp[member.id]).level;
+    save();
+    if (after > before) {
+      await giveRewards(member, after);
+      if (db.cfg.levels.announce) await announceLevel(member, after, fallbackChannel);
+    }
+  }
+
   async function onXp(message) {
     const cfg = db.cfg.levels;
     if (!cfg.on || message.author.bot || !message.guild || !message.member) return;
@@ -2635,18 +2939,7 @@ const tools = (() => {
     const now = Date.now();
     if (now - (cooldown.get(message.author.id) || 0) < 60_000) return;
     cooldown.set(message.author.id, now);
-    const before = levelOf(db.xp[message.author.id] || 0).level;
-    db.xp[message.author.id] = (db.xp[message.author.id] || 0) + 15 + Math.floor(Math.random() * 11);
-    const after = levelOf(db.xp[message.author.id]).level;
-    save();
-    if (after > before) {
-      await giveRewards(message.member, after);
-      if (cfg.announce) {
-        await message.channel
-          .send({ content: t(`🎉 ${message.author} passe **niveau ${after}** !`, `🎉 ${message.author} reached **level ${after}**!`), allowedMentions: { users: [message.author.id] } })
-          .catch(() => {});
-      }
-    }
+    await addXp(message.member, 15 + Math.floor(Math.random() * 11), message.channel);
   }
 
   /* ---------- logs ---------- */
@@ -2716,6 +3009,13 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("reward-remove").setDescription(t("Retirer la récompense d'un niveau", "Remove the reward of a level")).addIntegerOption((o) => o.setName("niveau").setDescription("Niveau").setRequired(true)))
           .addSubcommand((s) => s.setName("rewards").setDescription(t("Voir les récompenses", "List the rewards")))
           .addSubcommand((s) => s.setName("ignore").setDescription(t("Ne pas gagner d'XP dans ce salon (ou l'inverse)", "No XP in this channel (toggle)")))
+          .addSubcommand((s) =>
+            s
+              .setName("channel")
+              .setDescription(t("Salon où les passages de niveau s'affichent", "Channel where level-ups are shown"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = là où la personne écrit)", "The channel (empty = where the person writes)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+          )
+          .addSubcommand((s) => s.setName("quiz-xp").setDescription(t("XP gagnés avec une bonne réponse au quiz", "XP won with a right quiz answer")).addIntegerOption((o) => o.setName("montant").setDescription("1-500").setMinValue(1).setMaxValue(500).setRequired(true)))
       ),
       D(
         P.ManageGuild,
@@ -2779,7 +3079,10 @@ const tools = (() => {
       ),
       strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
-      strOpt(cmd("8ball", t("Pose une question à la boule magique", "Ask the magic 8-ball")), "question", "Question", true, 200),
+      strOpt(cmd("8ball", t("Boule magique, ou sans question : un quiz à image qui rapporte de l'XP", "Magic 8-ball, or with no question: a picture quiz that wins XP")), "question", t("Ta question (vide = lancer un quiz)", "Your question (empty = start a quiz)"), false, 200),
+      cmd("quiz", t("Quiz à image : la première bonne réponse gagne de l'XP", "Picture quiz: the first right answer wins XP")).addStringOption((o) =>
+        o.setName("type").setDescription(t("Type de question", "Question type")).addChoices({ name: t("Drapeau", "Flag"), value: "flag" }, { name: t("Calcul", "Math"), value: "math" }, { name: t("Mot mélangé", "Scrambled word"), value: "word" })
+      ),
       cmd("coinflip", t("Pile ou face", "Flip a coin")),
       cmd("dice", t("Lance un dé (1-100 faces)", "Roll a die")).addIntegerOption((o) => o.setName("faces").setDescription("6").setMinValue(2).setMaxValue(100)),
       userOpt(cmd("avatar", t("Affiche l'avatar", "Show the avatar")), false),
@@ -2823,7 +3126,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -2832,20 +3135,25 @@ const tools = (() => {
     const user = i.options.getUser("membre") || i.user;
     const xp = db.xp[user.id] || 0;
     const l = levelOf(xp);
-    const e = embed()
-      .setAuthor({ name: user.username, iconURL: user.displayAvatarURL?.() })
-      .setTitle(t(`Niveau ${l.level}`, `Level ${l.level}`))
-      .setDescription(`${bar(l.into, l.need)}\n**${l.into} / ${l.need}** XP`)
-      .addFields({ name: t("Classement", "Rank"), value: `#${rankOf(user.id)}`, inline: true }, { name: "XP total", value: String(xp), inline: true });
-    return i.reply({ embeds: [e] });
+    const member = await i.guild.members.fetch(user.id).catch(() => null);
+    const name = member?.displayName || user.username;
+    const card = picture("rank.png", gfx.rank({ name, level: l.level, into: l.into, need: l.need, rank: rankOf(user.id), xp, label: cardLabel() }));
+    const e = embed().setAuthor({ name: user.username, iconURL: user.displayAvatarURL?.() }).setTitle(t(`Niveau ${l.level}`, `Level ${l.level}`)).setImage(card.url);
+    return i.reply({ embeds: [e], files: [card.file] });
   };
 
   H.leaderboard = async (i) => {
     const top = Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10);
     if (!top.length) return reply(i, t("Personne n'a encore d'XP.", "Nobody has XP yet."));
-    const medals = ["🥇", "🥈", "🥉"];
-    const lines = top.map(([id, xp], n) => `${medals[n] || `**${n + 1}.**`} <@${id}>  ·  ${t("niveau", "level")} **${levelOf(xp).level}**  ·  ${xp} XP`);
-    return i.reply({ embeds: [embed(0xf1c40f).setTitle(t("🏆 Classement", "🏆 Leaderboard")).setDescription(lines.join("\n"))], allowedMentions: { parse: [] } });
+    await i.deferReply();
+    const rows = [];
+    for (const [id, xp] of top) {
+      const m = await i.guild.members.fetch(id).catch(() => null);
+      const l = levelOf(xp);
+      rows.push({ name: m?.displayName || m?.user?.username || t("Ancien membre", "Former member"), level: l.level, into: l.into, need: l.need, xp });
+    }
+    const card = picture("leaderboard.png", gfx.leaderboard(rows, cardLabel()));
+    return i.editReply({ embeds: [embed(0xf1c40f).setTitle(t("🏆 Classement", "🏆 Leaderboard")).setImage(card.url)], files: [card.file] });
   };
 
   H.levels = async (i) => {
@@ -2881,6 +3189,17 @@ const tools = (() => {
     if (sub === "rewards") {
       const text = cfg.rewards.length ? cfg.rewards.map((r) => `${t("Niveau", "Level")} **${r.level}** → <@&${r.roleId}>`).join("\n") : t("Aucune récompense. Ajoute-en avec `/levels reward-add`.", "No rewards. Add one with `/levels reward-add`.");
       return i.reply({ embeds: [embed().setTitle(t("🎁 Récompenses de niveau", "🎁 Level rewards")).setDescription(text)], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "channel") {
+      const channel = i.options.getChannel("salon");
+      cfg.channelId = channel?.id || "";
+      save();
+      return reply(i, ok(channel ? t(`Les passages de niveau s'afficheront dans ${channel}.`, `Level-ups will be shown in ${channel}.`) : t("Les passages de niveau s'afficheront là où la personne écrit.", "Level-ups will be shown where the person writes.")));
+    }
+    if (sub === "quiz-xp") {
+      cfg.quizXp = i.options.getInteger("montant");
+      save();
+      return reply(i, ok(t(`Une bonne réponse au quiz rapporte ${cfg.quizXp} XP.`, `A right quiz answer wins ${cfg.quizXp} XP.`)));
     }
     if (sub === "ignore") {
       const has = cfg.ignored.includes(i.channelId);
@@ -3255,12 +3574,120 @@ const tools = (() => {
     fr: ["Oui, sans aucun doute.", "C'est certain.", "Très probable.", "Les signes disent oui.", "Demande plus tard.", "Je ne peux pas te répondre maintenant.", "Peu probable.", "Mes sources disent non.", "Non.", "Certainement pas."],
     en: ["Yes, without a doubt.", "It is certain.", "Very likely.", "Signs point to yes.", "Ask again later.", "Cannot predict now.", "Unlikely.", "My sources say no.", "No.", "Definitely not."],
   };
-  H["8ball"] = (i) => i.reply({ embeds: [embed(0x2c2f33).setTitle("🎱").addFields({ name: t("Question", "Question"), value: i.options.getString("question") }, { name: t("Réponse", "Answer"), value: BALL[FR ? "fr" : "en"][Math.floor(Math.random() * 10)] })] });
-  H.coinflip = (i) => i.reply(`🪙 ${Math.random() < 0.5 ? t("Pile", "Heads") : t("Face", "Tails")} !`);
+  H["8ball"] = (i) => {
+    const question = i.options.getString("question");
+    if (!question) return startQuiz(i, "random");
+    const card = picture("8ball.png", gfx.eightBall());
+    return i.reply({
+      embeds: [embed(0x2c2f33).setTitle(t("🎱 Boule magique", "🎱 Magic 8-ball")).setThumbnail(card.url).addFields({ name: t("Question", "Question"), value: question }, { name: t("Réponse", "Answer"), value: BALL[FR ? "fr" : "en"][Math.floor(Math.random() * 10)] })],
+      files: [card.file],
+    });
+  };
+  H.coinflip = (i) => {
+    const heads = Math.random() < 0.5;
+    const card = picture("coin.png", gfx.coin(heads ? "A" : "B", heads ? t("F", "H") : t("P", "T")));
+    return i.reply({ embeds: [embed(0xf1c40f).setTitle(`🪙 ${heads ? t("Face", "Heads") : t("Pile", "Tails")} !`).setImage(card.url)], files: [card.file] });
+  };
   H.dice = (i) => {
     const faces = i.options.getInteger("faces") || 6;
-    return i.reply(`🎲 d${faces} → **${1 + Math.floor(Math.random() * faces)}**`);
+    const value = 1 + Math.floor(Math.random() * faces);
+    const card = picture("dice.png", gfx.dice(faces, value));
+    return i.reply({ embeds: [embed(0xe74c3c).setTitle(`🎲 d${faces} → ${value}`).setImage(card.url)], files: [card.file] });
   };
+
+  /* ---------- quiz: a picture and a question, the first right answer in the channel wins xp ---------- */
+  const norm = (text) => String(text ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  // [flag code, French name, English name, other accepted answers]
+  const FLAGS = [
+    ["fr", "France", "France"], ["de", "Allemagne", "Germany"], ["it", "Italie", "Italy"], ["es", "Espagne", "Spain"], ["pt", "Portugal", "Portugal"], ["be", "Belgique", "Belgium"],
+    ["ch", "Suisse", "Switzerland"], ["nl", "Pays-Bas", "Netherlands", ["hollande", "holland"]], ["gb", "Royaume-Uni", "United Kingdom", ["angleterre", "england", "uk"]], ["us", "États-Unis", "United States", ["usa", "etats unis", "amerique", "america"]],
+    ["ca", "Canada", "Canada"], ["mx", "Mexique", "Mexico"], ["br", "Brésil", "Brazil"], ["ar", "Argentine", "Argentina"], ["jp", "Japon", "Japan"], ["cn", "Chine", "China"],
+    ["kr", "Corée du Sud", "South Korea", ["coree", "korea"]], ["in", "Inde", "India"], ["ru", "Russie", "Russia"], ["tr", "Turquie", "Turkey"], ["eg", "Égypte", "Egypt"], ["ma", "Maroc", "Morocco"],
+    ["dz", "Algérie", "Algeria"], ["tn", "Tunisie", "Tunisia"], ["sn", "Sénégal", "Senegal"], ["ci", "Côte d'Ivoire", "Ivory Coast", ["cote d ivoire"]], ["ng", "Nigéria", "Nigeria"], ["za", "Afrique du Sud", "South Africa"],
+    ["au", "Australie", "Australia"], ["nz", "Nouvelle-Zélande", "New Zealand"], ["se", "Suède", "Sweden"], ["no", "Norvège", "Norway"], ["dk", "Danemark", "Denmark"], ["fi", "Finlande", "Finland"],
+    ["pl", "Pologne", "Poland"], ["gr", "Grèce", "Greece"], ["ie", "Irlande", "Ireland"], ["at", "Autriche", "Austria"], ["ua", "Ukraine", "Ukraine"], ["sa", "Arabie saoudite", "Saudi Arabia"],
+    ["cm", "Cameroun", "Cameroon"], ["ro", "Roumanie", "Romania"],
+  ];
+  const WORDS = {
+    fr: ["ORDINATEUR", "TELEPHONE", "BIBLIOTHEQUE", "CHOCOLAT", "VOITURE", "MONTAGNE", "GUITARE", "FENETRE", "ELEPHANT", "PYRAMIDE", "PAPILLON", "BOULANGERIE", "AVENTURE", "TROTTINETTE", "DINOSAURE", "PARAPLUIE", "CROISSANT", "ASTRONAUTE", "TELEVISION", "CHAMPIGNON"],
+    en: ["COMPUTER", "TELEPHONE", "LIBRARY", "CHOCOLATE", "MOUNTAIN", "GUITAR", "WINDOW", "ELEPHANT", "PYRAMID", "BUTTERFLY", "BAKERY", "ADVENTURE", "SCOOTER", "DINOSAUR", "UMBRELLA", "SANDWICH", "ASTRONAUT", "TELEVISION", "MUSHROOM", "KEYBOARD"],
+  };
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const shuffle = (word) => {
+    const letters = word.split("");
+    for (let n = 0; n < 20; n++) {
+      for (let k = letters.length - 1; k > 0; k--) {
+        const j = Math.floor(Math.random() * (k + 1));
+        [letters[k], letters[j]] = [letters[j], letters[k]];
+      }
+      if (letters.join("") !== word) break;
+    }
+    return letters.join("");
+  };
+  const QUIZ_SECONDS = 30;
+  const quizzes = new Map(); // channelId -> running quiz
+  let canRead = true;
+
+  function makeQuiz(type) {
+    const kind = type === "random" || !type ? pick(["flag", "math", "word"]) : type;
+    if (kind === "flag") {
+      const [code, frName, enName, extra = []] = pick(FLAGS);
+      const answers = [...new Set([norm(frName), norm(enName), ...extra.map(norm)])];
+      return { kind, question: t("🏳️ De quel pays est ce drapeau ?", "🏳️ Which country is this flag?"), imageUrl: `https://flagcdn.com/w640/${code}.png`, answers, reveal: FR ? frName : enName };
+    }
+    if (kind === "word") {
+      const word = pick(WORDS[FR ? "fr" : "en"]);
+      return { kind, question: t("🔤 Remets les lettres dans l'ordre : quel est ce mot ?", "🔤 Put the letters in order: what is this word?"), image: gfx.quizCard([shuffle(word)], "QUIZ"), answers: [norm(word)], reveal: word.toLowerCase() };
+    }
+    const op = pick(["+", "-", "*"]);
+    let a = 0;
+    let b = 0;
+    if (op === "*") { a = 2 + Math.floor(Math.random() * 11); b = 2 + Math.floor(Math.random() * 11); }
+    else { a = 10 + Math.floor(Math.random() * 90); b = 10 + Math.floor(Math.random() * 90); if (op === "-" && b > a) [a, b] = [b, a]; }
+    const result = op === "+" ? a + b : op === "-" ? a - b : a * b;
+    return { kind: "math", question: t("🧮 Combien font ce calcul ?", "🧮 What is the result?"), image: gfx.quizCard([`${a} ${op === "*" ? "X" : op} ${b} = ?`], "QUIZ"), answers: [String(result)], reveal: String(result) };
+  }
+
+  async function startQuiz(i, type) {
+    if (!canRead) return reply(i, no(t("Le quiz a besoin de lire les messages : active « Message Content Intent » dans le Developer Portal (onglet Bot), puis redémarre le bot.", "The quiz needs to read messages: switch on \"Message Content Intent\" in the Developer Portal (Bot tab), then restart the bot.")));
+    if (quizzes.has(i.channelId)) return reply(i, no(t("Un quiz est déjà en cours dans ce salon.", "A quiz is already running in this channel.")));
+    const q = makeQuiz(type);
+    const xp = db.cfg.levels.quizXp;
+    const e = embed(0x9b59b6).setTitle(q.question).setDescription(t(`Écris la réponse dans le salon ! **${QUIZ_SECONDS} secondes**, la première bonne réponse gagne **${xp} XP**.`, `Type the answer in the channel! **${QUIZ_SECONDS} seconds**, the first right answer wins **${xp} XP**.`));
+    const body = { embeds: [e] };
+    if (q.image) {
+      const card = picture("quiz.png", q.image);
+      e.setImage(card.url);
+      body.files = [card.file];
+    } else e.setImage(q.imageUrl);
+    quizzes.set(i.channelId, { ...q, xp, channel: i.channel });
+    await i.reply(body);
+    const running = quizzes.get(i.channelId);
+    running.timer = setTimeout(() => expireQuiz(i.channelId), QUIZ_SECONDS * 1000);
+    running.timer.unref?.();
+  }
+  H.quiz = (i) => startQuiz(i, i.options.getString("type") || "random");
+
+  async function expireQuiz(channelId) {
+    const q = quizzes.get(channelId);
+    if (!q) return;
+    quizzes.delete(channelId);
+    await q.channel.send({ embeds: [embed(0x747f8d).setDescription(t(`⏰ Temps écoulé ! La réponse était **${q.reveal}**.`, `⏰ Time is up! The answer was **${q.reveal}**.`))] }).catch(() => {});
+  }
+
+  /* Returns true when the message was the right answer of the quiz of its channel. */
+  async function onQuizAnswer(message) {
+    const q = quizzes.get(message.channelId);
+    if (!q || message.author.bot || !message.member) return false;
+    const text = norm(message.content);
+    if (!text || !q.answers.some((a) => text === a || ` ${text} `.includes(` ${a} `))) return false;
+    clearTimeout(q.timer);
+    quizzes.delete(message.channelId);
+    await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed(0x57f287).setDescription(t(`🎉 Bravo ! La réponse était **${q.reveal}**.\n**+${q.xp} XP** pour toi !`, `🎉 Well done! The answer was **${q.reveal}**.\n**+${q.xp} XP** for you!`))], allowedMentions: { users: [message.author.id] } }).catch(() => {});
+    await addXp(message.member, q.xp, message.channel);
+    return true;
+  }
+
   H.avatar = (i) => {
     const user = i.options.getUser("membre") || i.user;
     return i.reply({ embeds: [embed().setTitle(user.username).setImage(user.displayAvatarURL({ size: 1024 }))] });
@@ -3369,6 +3796,7 @@ const tools = (() => {
       if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
     }
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
+    if (made.levels) db.cfg.levels.channelId = made.levels.id;
     if (made.suggestions) db.cfg.suggest.channelId = made.suggestions.id;
     if (made.rules) {
       await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
@@ -3420,6 +3848,7 @@ const tools = (() => {
     if (ids.has(db.cfg.welcome.channelId)) db.cfg.welcome.channelId = "";
     if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
     if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
+    if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
     db.setup.items = [];
     save(true);
@@ -3433,10 +3862,10 @@ const tools = (() => {
         embed()
           .setTitle(t("🧰 Commandes", "🧰 Commands"))
           .addFields(
-            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp`" },
+            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp` `/quiz`" },
             { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear`" },
             { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
-            { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
+            { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
             { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup status`" },
             { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
@@ -3532,11 +3961,13 @@ const tools = (() => {
   let exitHooked = false;
   function attach(discordClient, canReadMessages) {
     client = discordClient;
+    canRead = Boolean(canReadMessages);
     if (!ON) return;
     load();
     client.on(Events.MessageCreate, async (message) => {
       try {
         if (await protect(message)) return;
+        if (await onQuizAnswer(message)) return;
         await onXp(message);
       } catch (error) {
         console.error("⚠️ Tools message error:", error?.message || error);
@@ -3564,7 +3995,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
