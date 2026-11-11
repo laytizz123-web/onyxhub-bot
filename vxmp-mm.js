@@ -3098,7 +3098,7 @@ const tools = (() => {
             s
               .setName("create")
               .setDescription(t("Créer les salons (catégories, règles, général, logs...)", "Create the channels (categories, rules, general, logs...)"))
-              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: "Steal a Brainrot (trades, shops, middleman)", value: "brainrot" }, { name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("delete").setDescription(t("Supprimer les salons créés par le bot", "Delete the channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
@@ -3354,6 +3354,7 @@ const tools = (() => {
     }
     if (sub === "message") {
       w.message = i.options.getString("texte");
+      db.setup.autoWelcome = false;
       save();
       return reply(i, ok(t("Message de bienvenue enregistré.", "Welcome message saved.")));
     }
@@ -3750,6 +3751,46 @@ const tools = (() => {
         { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
       ] },
     ],
+    brainrot: [
+      { category: t("📌 INFORMATIONS", "📌 INFORMATION"), channels: [
+        { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly", topic: t("Les règles du serveur. Lis-les avant de trader.", "The server rules. Read them before trading.") },
+        { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly", topic: t("Les annonces du serveur.", "Server announcements.") },
+        { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "scam", name: t("🚨│anti-scam", "🚨│scam-alerts"), kind: "readonly", topic: t("Comment ne pas te faire arnaquer. Utilise toujours un middleman.", "How not to get scammed. Always use a middleman.") },
+      ] },
+      { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
+        { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
+        { key: "memes", name: t("🧠│brainrot-memes", "🧠│brainrot-memes"), kind: "text", slow: 5 },
+        { key: "clips", name: t("🎥│clips-steal", "🎥│steal-clips"), kind: "text", topic: t("Tes meilleurs vols et clips de Steal a Brainrot.", "Your best steals and Steal a Brainrot clips.") },
+        { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text" },
+        { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
+        { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
+      ] },
+      { category: t("🔄 TRADES", "🔄 TRADES"), channels: [
+        { key: "trades", name: t("🤝│trade-brainrot", "🤝│trade-brainrot"), kind: "text", slow: 30, topic: t("Poste ton offre de trade : ce que tu donnes, ce que tu veux. 1 message toutes les 30 s.", "Post your trade offer: what you give, what you want. 1 message every 30 s.") },
+        { key: "lookingfor", name: t("🔎│je-cherche", "🔎│looking-for"), kind: "text", slow: 30, topic: t("Tu cherches un brainrot précis ? Demande-le ici.", "Looking for a specific brainrot? Ask here.") },
+        { key: "rare", name: t("💎│trades-rares", "💎│rare-trades"), kind: "text", slow: 30, topic: t("Brainrots rares, secrets et mutations.", "Rare brainrots, secrets and mutations.") },
+      ] },
+      { category: t("🛒 SHOPS", "🛒 SHOPS"), channels: [
+        { key: "shopbrainrot", name: t("🛒│shop-brainrot", "🛒│shop-brainrot"), kind: "text", slow: 60, topic: t("Vends tes brainrots : prix, photo, pseudo. 1 message par minute.", "Sell your brainrots: price, picture, username. 1 message per minute.") },
+        { key: "shopmutations", name: t("🧬│shop-mutations", "🧬│shop-mutations"), kind: "text", slow: 60, topic: t("Mutations et brainrots spéciaux à vendre.", "Mutations and special brainrots for sale.") },
+        { key: "shopitems", name: t("🎁│shop-autres", "🎁│shop-other"), kind: "text", slow: 60, topic: t("Autres objets à vendre.", "Other items for sale.") },
+        { key: "prices", name: t("💰│prix-et-valeurs", "💰│prices-and-values"), kind: "text", topic: t("Discute de la valeur des brainrots.", "Talk about brainrot values.") },
+      ] },
+      { category: t("🛡️ MIDDLEMAN", "🛡️ MIDDLEMAN"), channels: [
+        { key: "middleman", name: t("💱│middleman", "💱│middleman"), kind: "readonly", topic: t("Trade sécurisé : ouvre un ticket avec le bouton du panneau.", "Safe trade: open a ticket with the panel button.") },
+        { key: "vouches", name: t("⭐│vouches", "⭐│vouches"), kind: "text", slow: 60, topic: t("Laisse un avis après un trade réussi.", "Leave a review after a successful trade.") },
+      ] },
+      { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
+        { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
+        { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
+        { key: "quiz", name: t("🎯│quiz", "🎯│quiz"), kind: "text", topic: t("Tape /8ball ici : une image, une question, de l'XP à gagner.", "Type /8ball here: a picture, a question, XP to win.") },
+      ] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [
+        { key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" },
+        { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
+      ] },
+    ],
     minimal: [
       { category: t("💬 SERVEUR", "💬 SERVER"), channels: [
         { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
@@ -3771,7 +3812,8 @@ const tools = (() => {
   async function setupCreate(i) {
     if (db.setup.items.length) return reply(i, no(t("Les salons ont déjà été créés. Utilise `/setup delete` d'abord, ou `/setup status`.", "The channels were already created. Use `/setup delete` first, or `/setup status`.")));
     await i.deferReply({ flags: ephemeral });
-    const model = TEMPLATES[i.options.getString("modele") || "full"] || TEMPLATES.full;
+    const modelKey = TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "brainrot";
+    const model = TEMPLATES[modelKey];
     const guild = i.guild;
     const made = {};
     try {
@@ -3779,7 +3821,7 @@ const tools = (() => {
         const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
         db.setup.items.push({ id: category.id, kind: "category" });
         for (const c of group.channels) {
-          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), reason: "setup" });
+          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
           db.setup.items.push({ id: channel.id, kind: "text", key: c.key });
           made[c.key] = channel;
         }
@@ -3792,7 +3834,12 @@ const tools = (() => {
     // wire the new channels to the tools
     if (made.welcome) {
       db.cfg.welcome.channelId = made.welcome.id;
-      if (!db.cfg.welcome.message) db.cfg.welcome.message = t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
+      if (!db.cfg.welcome.message || db.setup.autoWelcome) {
+        db.setup.autoWelcome = true; // a text written by the bot, replaced next time; a text typed with /welcome message is never touched
+        db.cfg.welcome.message = modelKey === "brainrot"
+          ? t("🧠 Bienvenue {user} sur **{server}** ! Trade, achète et vends tes brainrots ici. Lis les règles, et pour un trade sûr passe toujours par le **middleman**. Nous sommes {count} !", "🧠 Welcome {user} to **{server}**! Trade, buy and sell your brainrots here. Read the rules, and for a safe trade always use the **middleman**. We are {count}!")
+          : t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
+      }
       if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
     }
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
@@ -3801,9 +3848,26 @@ const tools = (() => {
     if (made.rules) {
       await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
     }
+    if (modelKey === "brainrot") {
+      if (made.rules) {
+        await made.rules.send({ embeds: [embed(0xf1c40f).setTitle(t("📜 Règlement : Steal a Brainrot", "📜 Rules: Steal a Brainrot")).setDescription(t(
+          "1. Respecte tout le monde, pas d'insultes.\n2. **Tout trade de valeur passe par un middleman** (salon 💱│middleman).\n3. Pas de spam, pas de pub, pas de liens suspects.\n4. Ne donne **jamais** ton mot de passe ou ton code Roblox.\n5. Poste ton offre dans le bon salon (trade, shop, je-cherche).\n6. Les arnaques mènent à un bannissement définitif.\n7. Écoute le staff.\n\n*Modifie ce message comme tu veux.*",
+          "1. Respect everyone, no insults.\n2. **Every valuable trade goes through a middleman** (💱│middleman channel).\n3. No spam, no ads, no suspicious links.\n4. **Never** give your Roblox password or code.\n5. Post your offer in the right channel (trade, shop, looking-for).\n6. Scams mean a permanent ban.\n7. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
+      }
+      if (made.scam) {
+        await made.scam.send({ embeds: [embed(0xed4245).setTitle(t("🚨 Évite les arnaques", "🚨 Avoid scams")).setDescription(t(
+          "• Personne ne te donne de brainrot gratuit : méfie-toi des « deals trop beaux ».\n• Ne trade **jamais** hors du middleman pour un objet de valeur.\n• Vérifie toujours le pseudo : les faux comptes copient les vrais.\n• Ne clique pas sur les liens inconnus et ne scanne aucun code.\n• Un doute ? Ouvre un ticket middleman ou préviens le staff.",
+          "• Nobody gives free brainrots: be careful with « too good to be true » deals.\n• **Never** trade valuable items outside the middleman.\n• Always check the username: fake accounts copy real ones.\n• Do not click unknown links or scan any code.\n• In doubt? Open a middleman ticket or tell the staff."))] }).catch(() => {});
+      }
+      if (made.middleman) {
+        await made.middleman.send({ embeds: [embed(0x5865f2).setTitle(t("💱 Middleman", "💱 Middleman")).setDescription(t(
+          "Trade sécurisé : le middleman garde l'argent ou les LTC jusqu'à ce que tout soit livré.\n\n**Les administrateurs** : tape `/panel` ici pour poster le panneau Litecoin, puis `/panel` avec le type PayPal pour le panneau PayPal.",
+          "Safe trade: the middleman holds the money or LTC until everything is delivered.\n\n**Administrators**: type `/panel` here to post the Litecoin panel, then `/panel` with the PayPal type for the PayPal panel."))] }).catch(() => {});
+      }
+    }
     save(true);
     const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
-    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs et les suggestions sont déjà branchés. Pour tout enlever : \`/setup delete\`.`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.`)));
+    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs, les niveaux et les suggestions sont déjà branchés.${made.middleman ? ` Va dans <#${made.middleman.id}> et tape \`/panel\` pour poster le middleman.` : ""} Pour tout enlever : \`/setup delete\`.`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.`)));
   }
 
   H.setup = async (i) => {
