@@ -40,7 +40,8 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
     MM_CONFIRMATIONS=2                     confirmations needed (default 2)
     MM_MIN_LTC=0.0001                      smallest deal accepted (about 0.005 USD)
     MM_QR=off                              hide the QR code of the deposit address (default: shown)
-    MM_PAYPAL_EMAIL=you@example.com        turns the PayPal panel on (manual mode, staff checks and pays)
+    MM_PAYPAL_EMAIL=you@example.com        optional: first PayPal account. Accounts are managed in Discord with /paypal
+                                           (add, change, remove, set present / absent), up to 4
     MM_PAYPAL_CURRENCY=USD                 USD or EUR (the currency of your PayPal account)
     MM_PAYPAL_MIN=1                        smallest PayPal deal, in that currency
     MM_PAYPAL_NOTE=text                    extra line shown to the payer (for example "Send as Friends & Family")
@@ -351,7 +352,7 @@ const middleman = (() => {
      STORAGE
   ===================================================== */
 
-  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {} };
+  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1 };
 
   function loadStore() {
     try {
@@ -415,7 +416,6 @@ const middleman = (() => {
   const isParticipant = (deal, id) => id === deal.userA || id === deal.userB;
 
   /* ---------- PayPal (manual mode): the bot guides the steps, staff checks PayPal and sends the money ---------- */
-  const paypalEnabled = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cfg.paypalEmail);
   const isPaypal = (deal) => deal.method === "paypal";
   const CUR = { USD: "$", EUR: "€" };
   const fmtFiat = (cents, currency) => `${CUR[currency] || ""}${(cents / 100).toFixed(2)} ${currency}`;
@@ -637,8 +637,8 @@ const middleman = (() => {
           deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide.\n​" : null,
           `📤 ${mention(deal.senderId)} send exactly`,
           `\`\`\`${fmtFiat(deal.amountCents, deal.currency)}\`\`\``,
-          "to this PayPal account",
-          `\`\`\`${cfg.paypalEmail}\`\`\``,
+          `to this PayPal account (**${deal.ppLabel}**)`,
+          `\`\`\`${deal.ppEmail}\`\`\``,
           "and write this **reference** in the PayPal note",
           `\`\`\`${deal.ref}\`\`\``,
           cfg.paypalNote ? `ℹ️ ${cfg.paypalNote}` : null,
@@ -755,7 +755,10 @@ const middleman = (() => {
     const staff = [];
     if (deal.frozen) staff.push(button("unfreeze", "Unfreeze", ButtonStyle.Secondary, "🧊"));
     if (isPaypal(deal)) {
-      if (s === "awaiting_payment") staff.push(button("mark_paid", "Payment received", ButtonStyle.Success, "✅"));
+      if (s === "awaiting_payment") {
+        staff.push(button("mark_paid", "Payment received", ButtonStyle.Success, "✅"));
+        if (!deal.paidClaimed && pickPaypal(deal.ppId)) staff.push(button("switch_pp", "Switch PayPal account", ButtonStyle.Secondary, "🔁"));
+      }
       if (s === "funded") staff.push(button("force_release", "Force release", ButtonStyle.Primary, "⚖️"));
       if (s === "payout_pending") staff.push(button("payout_sent", "Payout sent", ButtonStyle.Success, "🏦"));
       if (["funded", "released", "payout_pending"].includes(s)) staff.push(button("refund", "Refund payer", ButtonStyle.Danger, "↩️"));
@@ -939,6 +942,178 @@ const middleman = (() => {
   const staffPing = () => (options.staffRoleId ? `<@&${options.staffRoleId}>` : "Staff");
   const reply = (interaction, content) => interaction.reply({ content, flags: ephemeral });
 
+  /* ---------- PayPal accounts, managed from Discord with /paypal ---------- */
+
+  const MAX_PAYPAL = 4;
+  const ppList = () => (store.paypal = Array.isArray(store.paypal) ? store.paypal : []);
+  const ppActiveDeals = (account) => Object.values(store.deals).filter((d) => isPaypal(d) && d.ppId === account.id && !FINAL.has(d.state));
+  const ppWaiting = (account) => ppActiveDeals(account).filter((d) => d.state === "awaiting_payment" && !d.paidClaimed);
+  const isAdmin = (member) =>
+    Boolean(member?.permissions?.has(PermissionFlagsBits.Administrator) || (options.ownerRoleId && member?.roles?.cache?.has(options.ownerRoleId)));
+
+  /* configured: at least one account exists. available: at least one is present (not marked absent). */
+  function paypalStatus() {
+    const list = ppList();
+    return { configured: list.length > 0, available: list.some((a) => !a.away) };
+  }
+
+  /* The present account with the fewest deals in progress (never the one in `excludeId`). */
+  function pickPaypal(excludeId) {
+    const present = ppList().filter((a) => !a.away && a.id !== excludeId);
+    present.sort((a, b) => ppActiveDeals(a).length - ppActiveDeals(b).length);
+    return present[0] || null;
+  }
+
+  /* The deal keeps a copy, so changing or removing an account never moves a deal that is already running. */
+  function assignPaypal(deal, account) {
+    deal.ppId = account.id;
+    deal.ppEmail = account.email;
+    deal.ppLabel = account.label;
+    deal.ppHolder = account.holderId || "";
+  }
+
+  const ppButton = (id, label, style = ButtonStyle.Secondary, emoji) => {
+    const b = new ButtonBuilder().setCustomId(`pp:${id}`).setLabel(label).setStyle(style);
+    if (emoji) b.setEmoji(emoji);
+    return b;
+  };
+
+  function paypalManagerView(admin) {
+    const list = ppList();
+    const embed = new EmbedBuilder()
+      .setColor(0x0070ba)
+      .setTitle("💙  PayPal accounts")
+      .setDescription(
+        list.length
+          ? list.map((a) => `${a.away ? "🔴" : "🟢"}  **${a.label}**  ·  \`${a.email}\`${a.holderId ? `  ·  <@${a.holderId}>` : ""}\n${ppActiveDeals(a).length} deal(s) in progress`).join("\n\n")
+          : "*No PayPal account yet.*\nAn administrator adds one with the button below."
+      )
+      .setFooter({ text: "A PayPal ticket needs at least one 🟢 present account  ·  each deal gets the least busy present one" });
+    const rows = list.map((a) =>
+      new ActionRowBuilder().addComponents(
+        ppButton(`toggle:${a.id}`, `${a.away ? "🔴" : "🟢"} ${a.label}`.slice(0, 80), a.away ? ButtonStyle.Secondary : ButtonStyle.Success),
+        ppButton(`edit:${a.id}`, "Edit", ButtonStyle.Secondary, "✏️").setDisabled(!admin),
+        ppButton(`remove:${a.id}`, "Remove", ButtonStyle.Danger, "🗑️").setDisabled(!admin)
+      )
+    );
+    rows.push(new ActionRowBuilder().addComponents(ppButton("add", "Add a PayPal account", ButtonStyle.Primary, "➕").setDisabled(!admin || list.length >= MAX_PAYPAL)));
+    return { embeds: [embed], components: rows };
+  }
+
+  function ppModal(customId, title, account) {
+    const input = (id, label, required, max, value) => {
+      const field = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(required).setMaxLength(max);
+      if (value) field.setValue(value);
+      return new ActionRowBuilder().addComponents(field);
+    };
+    return new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
+      input("label", "Name (who owns it)", true, 20, account?.label),
+      input("email", "PayPal email", true, 100, account?.email),
+      input("holder", "Owner on Discord (@mention or ID, optional)", false, 60, account?.holderId)
+    );
+  }
+
+  async function handlePaypalModal(interaction, parts, admin) {
+    if (!admin) return reply(interaction, "❌ Only administrators can change the PayPal accounts.");
+    const kind = parts[2]; // add | edit
+    const label = interaction.fields.getTextInputValue("label").trim();
+    const email = interaction.fields.getTextInputValue("email").trim();
+    const holderRaw = interaction.fields.getTextInputValue("holder").trim();
+    if (!label) return reply(interaction, "❌ Give the account a name.");
+    if (!EMAIL.test(email)) return reply(interaction, "❌ That is not a valid email address.");
+    const holderId = holderRaw ? holderRaw.match(/\d{15,25}/)?.[0] || "" : "";
+    if (holderRaw && !holderId) return reply(interaction, "❌ Send the owner as an @mention or a numeric ID, or leave it empty.");
+
+    const list = ppList();
+    const duplicate = list.find((a) => a.email.toLowerCase() === email.toLowerCase() && a.id !== parts[3]);
+    if (duplicate) return reply(interaction, `❌ **${duplicate.label}** already uses this email.`);
+
+    if (kind === "add") {
+      if (list.length >= MAX_PAYPAL) return reply(interaction, `❌ You can have at most ${MAX_PAYPAL} PayPal accounts.`);
+      list.push({ id: `a${store.nextPaypal++}`, label, email, holderId, away: false });
+    } else {
+      const account = list.find((a) => a.id === parts[3]);
+      if (!account) return reply(interaction, "❌ This account no longer exists.");
+      Object.assign(account, { label, email, holderId });
+    }
+    saveStore();
+
+    const view = paypalManagerView(true);
+    if (interaction.isFromMessage?.()) await interaction.update(view);
+    else await interaction.reply({ ...view, flags: ephemeral });
+    return logLine(`💙 PayPal account ${kind === "add" ? "added" : "changed"}: **${label}** (by <@${interaction.user.id}>).`);
+  }
+
+  /* /paypal and its buttons (pp:...). Staff can open it and set accounts present / absent, administrators change the list. */
+  async function handlePaypalAdmin(interaction) {
+    if (!isStaff(interaction.member)) return reply(interaction, "❌ Staff only.");
+    const admin = isAdmin(interaction.member);
+    if (interaction.isChatInputCommand?.()) return interaction.reply({ ...paypalManagerView(admin), flags: ephemeral });
+
+    const parts = String(interaction.customId || "").split(":"); // pp:action[:id]  |  pp:m:add  |  pp:m:edit:id
+    if (interaction.isModalSubmit?.()) return handlePaypalModal(interaction, parts, admin);
+
+    const [, action, id] = parts;
+    const account = ppList().find((a) => a.id === id);
+    const needAdmin = () => !admin && (reply(interaction, "❌ Only administrators can change the PayPal accounts."), true);
+    const view = () => paypalManagerView(admin);
+
+    switch (action) {
+      case "add":
+        if (needAdmin()) return;
+        if (ppList().length >= MAX_PAYPAL) return reply(interaction, `❌ You can have at most ${MAX_PAYPAL} PayPal accounts.`);
+        return interaction.showModal(ppModal("pp:m:add", "Add a PayPal account"));
+
+      case "edit":
+        if (needAdmin()) return;
+        if (!account) return reply(interaction, "❌ This account no longer exists.");
+        return interaction.showModal(ppModal(`pp:m:edit:${id}`, "Edit this PayPal account", account));
+
+      case "toggle": {
+        if (!account) return reply(interaction, "❌ This account no longer exists.");
+        account.away = !account.away;
+        saveStore();
+        await interaction.update(view());
+        if (account.away) {
+          const waiting = ppWaiting(account).length;
+          if (waiting) {
+            await interaction.followUp({
+              content: `⚠️ ${waiting} deal(s) are waiting for a payment on **${account.label}**. In each ticket, use **Staff tools → Switch PayPal account**.`,
+              flags: ephemeral,
+            });
+          }
+        }
+        return logLine(`${account.away ? "🔴" : "🟢"} PayPal **${account.label}** set ${account.away ? "absent" : "present"} by <@${interaction.user.id}>.`);
+      }
+
+      case "remove": {
+        if (needAdmin()) return;
+        if (!account) return reply(interaction, "❌ This account no longer exists.");
+        const running = ppActiveDeals(account).length;
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(COLORS.bad)
+              .setTitle("🗑️  Remove this PayPal account?")
+              .setDescription(`**${account.label}**  ·  \`${account.email}\`${running ? `\n\n${running} deal(s) in progress keep using it until they end.` : ""}`),
+          ],
+          components: [new ActionRowBuilder().addComponents(ppButton(`rm_yes:${id}`, "Yes, remove", ButtonStyle.Danger), ppButton("rm_no", "Cancel"))],
+        });
+      }
+
+      case "rm_yes": {
+        if (needAdmin()) return;
+        store.paypal = ppList().filter((a) => a.id !== id);
+        saveStore();
+        await interaction.update(view());
+        return logLine(`🗑️ PayPal account **${account?.label || id}** removed by <@${interaction.user.id}>.`);
+      }
+
+      case "rm_no":
+        return interaction.update(view());
+    }
+  }
+
   /* ---------- blockchain watcher ---------- */
 
   async function checkDeal(deal) {
@@ -1036,8 +1211,12 @@ const middleman = (() => {
       await channel.send("❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.");
       return false;
     }
-    if (method === "paypal" && !paypalEnabled()) {
-      await channel.send("❌ PayPal is not configured yet (MM_PAYPAL_EMAIL is missing). Staff has been notified in this ticket.");
+    if (method === "paypal" && !paypalStatus().available) {
+      await channel.send(
+        paypalStatus().configured
+          ? "❌ No PayPal account is available right now (everyone is absent). Staff has been notified in this ticket."
+          : "❌ PayPal is not set up yet: an administrator adds an account with `/paypal`. Staff has been notified in this ticket."
+      );
       return false;
     }
 
@@ -1146,6 +1325,19 @@ const middleman = (() => {
         if (deal.state !== "amount_confirm") return reply(interaction, "❌ Nothing to confirm right now.");
         if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver confirms the amount.");
         if (isPaypal(deal)) {
+          if (!deal.ppId) {
+            const account = pickPaypal();
+            if (!account) {
+              await reply(interaction, "❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.");
+              return notify(deal, {
+                title: "⚠️  No PayPal available",
+                body: `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
+                color: COLORS.bad,
+                ping: [staffPing()],
+              });
+            }
+            assignPaypal(deal, account);
+          }
           deal.ref = deal.ref || makeRef(deal);
         } else if (!deal.address) {
           deal.index = store.nextIndex++;
@@ -1187,7 +1379,7 @@ const middleman = (() => {
         if (user.id !== deal.senderId && !staff) return reply(interaction, "❌ Only the sender needs the payment details.");
         if (!["awaiting_payment", "confirming"].includes(deal.state)) return reply(interaction, "❌ There is nothing to pay right now.");
         if (isPaypal(deal)) {
-          await interaction.reply({ content: cfg.paypalEmail, flags: ephemeral });
+          await interaction.reply({ content: deal.ppEmail, flags: ephemeral });
           await interaction.followUp({ content: (deal.amountCents / 100).toFixed(2), flags: ephemeral });
           await interaction.followUp({ content: deal.ref, flags: ephemeral });
           return interaction.followUp({
@@ -1229,7 +1421,7 @@ const middleman = (() => {
           title: "💸  Payment sent?",
           body: `${mention(user.id)} says the PayPal payment is sent.\n\n${staffPing()} check PayPal for **${fmtFiat(deal.amountCents, deal.currency)}** with the reference \`${deal.ref}\`, then open **Staff tools → Payment received**.`,
           color: 0xf57c00,
-          ping: [staffPing()],
+          ping: [staffPing(), deal.ppHolder],
         });
         return logLine(`💸 Deal #${deal.n}: payer says PayPal ${fmtFiat(deal.amountCents, deal.currency)} sent, ref ${deal.ref} (<#${deal.channelId}>).`);
       }
@@ -1243,6 +1435,24 @@ const middleman = (() => {
         await refreshPaymentCard(deal);
         await advance(deal, { ping: [deal.receiverId, deal.senderId] });
         return logLine(`💙 Deal #${deal.n}: PayPal payment verified by <@${user.id}> (${fmtFiat(deal.amountCents, deal.currency)}).`);
+      }
+
+      case "switch_pp": {
+        if (needStaff()) return;
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, "❌ Nothing to change right now.");
+        if (deal.paidClaimed) return reply(interaction, "❌ The payer says it is already paid: check PayPal first.");
+        const account = pickPaypal(deal.ppId);
+        if (!account) return reply(interaction, "❌ No other PayPal account is available.");
+        assignPaypal(deal, account);
+        saveStore();
+        await ack(interaction, deal, false);
+        await refreshPaymentCard(deal);
+        return notify(deal, {
+          title: "🔁  PayPal account changed",
+          body: `Please pay to the **new** account shown in the payment card: **${account.label}**.\nDo not use the previous one.`,
+          color: 0xf57c00,
+          ping: [deal.senderId],
+        });
       }
 
       case "payout_sent": {
@@ -1507,6 +1717,19 @@ const middleman = (() => {
   /* Returns true when the interaction belongs to the middleman, so index.js stops there. */
   async function handleInteraction(interaction) {
     const id = interaction.customId;
+    const isPayPalCommand = Boolean(interaction.isChatInputCommand?.()) && interaction.commandName === "paypal";
+    if (isPayPalCommand || (typeof id === "string" && id.startsWith("pp:"))) {
+      try {
+        if (!enabled) await reply(interaction, "❌ The middleman is not configured yet (MM_SEED is missing).");
+        else await handlePaypalAdmin(interaction);
+      } catch (error) {
+        console.error("⚠️ PayPal accounts error:", error?.message || error);
+        const message = "❌ Something went wrong. Check the bot console.";
+        if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, flags: ephemeral }).catch(() => {});
+        else await interaction.reply({ content: message, flags: ephemeral }).catch(() => {});
+      }
+      return true;
+    }
     if (typeof id !== "string" || !id.startsWith("mm:")) return false;
 
     try {
@@ -1556,6 +1779,14 @@ const middleman = (() => {
         saveStore();
         console.error(`⚠️ Middleman: deal #${deal.n} was interrupted while sending. Check ${deal.address} on the explorer before retrying.`);
       }
+    }
+
+    // MM_PAYPAL_EMAIL in the .env becomes the first account, once; after that /paypal is the only place to manage them
+    if (!Array.isArray(store.paypal)) store.paypal = [];
+    if (!store.paypal.length && EMAIL.test(cfg.paypalEmail)) {
+      store.paypal.push({ id: `a${store.nextPaypal || 1}`, label: "Main", email: cfg.paypalEmail, holderId: "", away: false });
+      store.nextPaypal = (store.nextPaypal || 1) + 1;
+      saveStore();
     }
 
     enabled = true;
@@ -1608,7 +1839,7 @@ const middleman = (() => {
     console.log('Back it up: run "notepad .env", write the 12 words on paper, close it. Anyone with them controls the funds.\n');
   }
 
-  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalEnabled };
+  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus };
 })();
 
 /* =====================================================
@@ -1666,8 +1897,8 @@ async function postPanel(interaction) {
   let embed;
   let row;
   if (type === "paypal") {
-    if (!middleman.paypalEnabled()) {
-      return interaction.reply({ content: "❌ PayPal is not set up. Add `MM_PAYPAL_EMAIL` to your .env (or your host's secrets), restart the bot, then run this command again.", flags: ephemeral });
+    if (!middleman.paypalStatus().configured) {
+      return interaction.reply({ content: "❌ No PayPal account yet. Add one with `/paypal` first, then post this panel again.", flags: ephemeral });
     }
     embed = new EmbedBuilder()
       .setColor(0x0070ba)
@@ -1711,8 +1942,10 @@ async function postPanel(interaction) {
 
 async function openTicket(interaction) {
   const method = interaction.customId === "open_ticket:paypal" ? "paypal" : "ltc"; // an older panel button is just "open_ticket"
-  if (method === "paypal" && !middleman.paypalEnabled()) {
-    return interaction.reply({ content: "❌ PayPal tickets are not available right now.", flags: ephemeral });
+  if (method === "paypal") {
+    const status = middleman.paypalStatus();
+    if (!status.configured) return interaction.reply({ content: "❌ PayPal tickets are not available right now.", flags: ephemeral });
+    if (!status.available) return interaction.reply({ content: "❌ No PayPal account is available right now (everyone is absent). Please try again later.", flags: ephemeral });
   }
   await interaction.deferReply({ flags: ephemeral });
   const { guild, user } = interaction;
@@ -1830,6 +2063,7 @@ client.on(Events.Invalidated, () => {
               .addChoices({ name: "Litecoin (automatic)", value: "ltc" }, { name: "PayPal (manual, checked by staff)", value: "paypal" })
           )
           .toJSON(),
+        new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").toJSON(),
       ],
     });
     await client.login(process.env.DISCORD_TOKEN);
