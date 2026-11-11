@@ -13,7 +13,7 @@
     node vxmp-mm.js                   -> starts the bot; type /panel in the channel you want
 */
 
-require("dotenv").config();
+require("dotenv").config({ override: true, quiet: true }); // the .env wins over variables already set on the PC
 
 /* =====================================================
    PART 1: LITECOIN ESCROW ENGINE
