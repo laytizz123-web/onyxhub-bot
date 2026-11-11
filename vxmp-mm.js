@@ -2537,6 +2537,7 @@ const tools = (() => {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    ChannelType,
     EmbedBuilder,
     Events,
     MessageFlags,
@@ -2556,6 +2557,7 @@ const tools = (() => {
     warns: {},
     polls: {},
     giveaways: {},
+    setup: { items: [] },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [] },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
@@ -2785,6 +2787,19 @@ const tools = (() => {
       cmd("serverinfo", t("Infos sur le serveur", "Server info")),
       cmd("ping", t("Latence du bot", "Bot latency")),
       cmd("help", t("Liste des commandes", "Command list")),
+      // channels made by the bot
+      D(
+        P.Administrator,
+        cmd("setup", t("Créer ou supprimer les salons automatiquement", "Create or delete the channels automatically"))
+          .addSubcommand((s) =>
+            s
+              .setName("create")
+              .setDescription(t("Créer les salons (catégories, règles, général, logs...)", "Create the channels (categories, rules, general, logs...)"))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
+          )
+          .addSubcommand((s) => s.setName("delete").setDescription(t("Supprimer les salons créés par le bot", "Delete the channels the bot created")))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
+      ),
       // logs and security
       D(
         P.ManageGuild,
@@ -2808,7 +2823,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -3283,6 +3298,134 @@ const tools = (() => {
     });
   };
   H.ping = (i) => i.reply(`🏓 ${Math.round(client?.ws?.ping ?? 0)} ms`);
+  /* ---------- /setup: channels made (and removed) by the bot ---------- */
+  // kind: text | readonly | private | privatetext. Every name is created once, remembered, and only those are ever deleted.
+  const TEMPLATES = {
+    full: [
+      { category: t("📌 INFORMATIONS", "📌 INFORMATION"), channels: [
+        { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly" },
+        { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly" },
+        { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+      ] },
+      { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
+        { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
+        { key: "media", name: t("🖼️│médias", "🖼️│media"), kind: "text" },
+        { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text" },
+        { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
+        { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
+      ] },
+      { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
+        { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
+        { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
+      ] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [
+        { key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" },
+        { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
+      ] },
+    ],
+    minimal: [
+      { category: t("💬 SERVEUR", "💬 SERVER"), channels: [
+        { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
+      ] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [{ key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" }] },
+    ],
+  };
+
+  function overwritesFor(guild, kind, isPrivate) {
+    const everyone = guild.roles.everyone.id;
+    const me = client?.user?.id;
+    const bot = me ? [{ id: me, allow: [P.ViewChannel, P.SendMessages, P.EmbedLinks, P.ManageChannels, P.ReadMessageHistory] }] : [];
+    if (isPrivate || kind === "private" || kind === "privatetext") return [{ id: everyone, deny: [P.ViewChannel] }, ...bot];
+    if (kind === "readonly") return [{ id: everyone, deny: [P.SendMessages, P.AddReactions] }, ...bot];
+    return [];
+  }
+
+  async function setupCreate(i) {
+    if (db.setup.items.length) return reply(i, no(t("Les salons ont déjà été créés. Utilise `/setup delete` d'abord, ou `/setup status`.", "The channels were already created. Use `/setup delete` first, or `/setup status`.")));
+    await i.deferReply({ flags: ephemeral });
+    const model = TEMPLATES[i.options.getString("modele") || "full"] || TEMPLATES.full;
+    const guild = i.guild;
+    const made = {};
+    try {
+      for (const group of model) {
+        const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
+        db.setup.items.push({ id: category.id, kind: "category" });
+        for (const c of group.channels) {
+          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), reason: "setup" });
+          db.setup.items.push({ id: channel.id, kind: "text", key: c.key });
+          made[c.key] = channel;
+        }
+      }
+    } catch (error) {
+      save(true);
+      console.error("⚠️ Setup error:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu tout créer (il me faut la permission « Gérer les salons »). Ce qui a déjà été créé est gardé : `/setup delete` le supprime.", "I could not create everything (I need the Manage Channels permission). What was created is kept: `/setup delete` removes it.")));
+    }
+    // wire the new channels to the tools
+    if (made.welcome) {
+      db.cfg.welcome.channelId = made.welcome.id;
+      if (!db.cfg.welcome.message) db.cfg.welcome.message = t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
+      if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
+    }
+    if (made.logs) db.cfg.logs.channelId = made.logs.id;
+    if (made.suggestions) db.cfg.suggest.channelId = made.suggestions.id;
+    if (made.rules) {
+      await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
+    }
+    save(true);
+    const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
+    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs et les suggestions sont déjà branchés. Pour tout enlever : \`/setup delete\`.`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.`)));
+  }
+
+  H.setup = async (i) => {
+    if (need_perm(i, P.Administrator)) return;
+    const sub = i.options.getSubcommand();
+    if (sub === "create") return setupCreate(i);
+    if (sub === "status") {
+      const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
+      return reply(i, list ? t(`Salons créés par le bot : ${list}`, `Channels created by the bot: ${list}`) : t("Le bot n'a créé aucun salon.", "The bot created no channels."));
+    }
+    if (sub === "delete") {
+      if (!db.setup.items.length) return reply(i, no(t("Le bot n'a créé aucun salon.", "The bot created no channels.")));
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("tl:setup:yes").setLabel(t("Oui, tout supprimer", "Yes, delete everything")).setEmoji("🗑️").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("tl:setup:no").setLabel(t("Annuler", "Cancel")).setStyle(ButtonStyle.Secondary)
+      );
+      return i.reply({
+        flags: ephemeral,
+        content: t(`⚠️ Je vais supprimer **${db.setup.items.length}** élément(s) créés par moi (salons et catégories). Seuls ceux-là, rien d'autre. C'est irréversible.`, `⚠️ I will delete **${db.setup.items.length}** item(s) I created (channels and categories). Only those, nothing else. This cannot be undone.`),
+        components: [row],
+      });
+    }
+  };
+  async function setupDeleteButton(i, answer) {
+    if (!(i.memberPermissions?.has?.(P.Administrator) || i.member?.permissions?.has?.(P.Administrator))) return reply(i, no(t("Réservé aux administrateurs.", "Administrators only.")));
+    if (answer !== "yes") return i.update({ content: t("Annulé.", "Cancelled."), components: [] });
+    await i.update({ content: t("⏳ Suppression…", "⏳ Deleting…"), components: [] });
+    let removed = 0;
+    const ids = new Set(db.setup.items.map((x) => x.id));
+    for (const item of [...db.setup.items].reverse()) {
+      const channel = await i.guild.channels.fetch(item.id).catch(() => null);
+      if (channel) {
+        try {
+          await channel.delete("setup delete");
+          removed++;
+        } catch {
+          /* kept in the list below */
+        }
+      }
+    }
+    // forget the settings that pointed to a removed channel
+    if (ids.has(db.cfg.welcome.channelId)) db.cfg.welcome.channelId = "";
+    if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
+    if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
+    db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
+    db.setup.items = [];
+    save(true);
+    return i.editReply({ content: ok(t(`${removed} salon(s) et catégorie(s) supprimé(s).`, `${removed} channel(s) and category(ies) deleted.`)), components: [] });
+  }
+
   H.help = (i) =>
     i.reply({
       flags: ephemeral,
@@ -3295,6 +3438,7 @@ const tools = (() => {
             { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
             { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
+            { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup status`" },
             { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
           ),
       ],
@@ -3371,6 +3515,7 @@ const tools = (() => {
         if (kind === "rr") await roleButton(i, arg);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
+        else if (kind === "setup") await setupDeleteButton(i, arg);
         return true;
       }
     } catch (error) {
