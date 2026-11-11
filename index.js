@@ -1,4 +1,5 @@
 require("dotenv").config();
+const middleman = require("./middleman");
 
 const {
   Client,
@@ -2131,6 +2132,7 @@ async function checkGiveaways() {
 client.once(Events.ClientReady, () => {
   setInterval(() => checkGiveaways().catch((e) => console.error("Giveaway check error:", e?.message || e)), 15000);
   startAutoMessages();
+  middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: OWNER_ROLE_ID, logChannelId: LOG_CHANNEL_ID });
 });
 
 /* =====================================================
@@ -2720,6 +2722,9 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    // Litecoin middleman: handles its own /middleman command, buttons and modals.
+    if (await middleman.handleInteraction(interaction)) return;
+
     /* =================================================
        SLASH COMMANDS
     ================================================= */
@@ -3779,6 +3784,8 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("nuke")
       .setDescription("Delete and recreate the current channel with the same permissions."),
+
+    ...middleman.commands,
 
   ];
 
