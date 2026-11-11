@@ -465,9 +465,9 @@ const middleman = (() => {
   /* ---------- look & feel ---------- */
 
   const STEPS = ["Partner", "Roles", "Amount", "Payment", "Delivery", "Payout"];
-  const STEP_OF = { partner: 0, roles: 1, amount: 2, amount_confirm: 2, awaiting_payment: 3, confirming: 3, funded: 4, released: 5, payout_pending: 5, paying: 5, done: 6 };
+  const STEP_OF = { partner: 0, roles: 1, amount: 2, amount_confirm: 2, choose_pp: 3, awaiting_payment: 3, confirming: 3, funded: 4, released: 5, payout_pending: 5, paying: 5, done: 6 };
   const STATE_COLOR = {
-    partner: 0x5865f2, roles: 0x5865f2, amount: 0x5865f2, amount_confirm: 0x5865f2,
+    partner: 0x5865f2, roles: 0x5865f2, amount: 0x5865f2, amount_confirm: 0x5865f2, choose_pp: 0x0070ba,
     awaiting_payment: 0xfaa61a, confirming: 0xf57c00, funded: 0x2ecc71, released: 0x1abc9c, payout_pending: 0x1abc9c, paying: 0x1abc9c,
     done: 0x2ecc71, refunded: 0x747f8d, cancelled: 0x747f8d,
   };
@@ -513,6 +513,8 @@ const middleman = (() => {
           `${receiver} accept or decline on the **amount card** below.`,
           pp ? "🔒 Once confirmed, the amount is locked." : "🔒 Once confirmed, the LTC figure is locked.",
         ]);
+      case "choose_pp":
+        return block("💙  Choose the PayPal account", [`${staffPing()} pick the account that receives this payment.`, "Only staff can choose. The payer sees the account right after."]);
       case "awaiting_payment":
         return pp
           ? block("💳  Waiting for the PayPal payment", [
@@ -573,6 +575,21 @@ const middleman = (() => {
           { name: "💰  Amount", value: amountLine, inline: true }
         )
     );
+
+    // 2b. PayPal accounts to choose from (only while a staff member has to choose)
+    if (deal.state === "choose_pp") {
+      const present = ppList().filter((a) => !a.away);
+      panels.push(
+        new EmbedBuilder()
+          .setColor(0x0070ba)
+          .setTitle("💙  PayPal accounts present")
+          .setDescription(
+            present.length
+              ? present.map((a) => `🟢  **${a.label}**${a.holderId ? `  ·  <@${a.holderId}>` : ""}  ·  ${ppActiveDeals(a).length} deal(s) in progress`).join("\n")
+              : "*Nobody is present right now. Set an account present with `/paypal`.*"
+          )
+      );
+    }
 
     // 3. result
     if (deal.payoutTxid || deal.refundTxid) {
@@ -737,11 +754,14 @@ const middleman = (() => {
     const pp = isPaypal(deal);
     if (s === "roles") main.push(button("role:sender", pp ? "I pay" : "I send the LTC", ButtonStyle.Primary, "📤"), button("role:receiver", pp ? "I get paid" : "I receive the LTC", ButtonStyle.Success, "📥"));
     if (s === "amount") main.push(button("amount", "Set the amount", ButtonStyle.Primary, "💰"));
+    if (s === "choose_pp") {
+      for (const account of ppList().filter((a) => !a.away).slice(0, 4)) main.push(button(`ppick:${account.id}`, account.label.slice(0, 80), ButtonStyle.Primary, "💙"));
+    }
       if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
     if (s === "released") main.push(button("payout", pp ? "Enter my PayPal email" : "Enter my LTC address", ButtonStyle.Success, "🏦"));
     if (s === "awaiting_payment" || s === "confirming") main.push(button("copy", "Copy details", ButtonStyle.Secondary, "📋"));
     if (pp && s === "awaiting_payment" && !deal.paidClaimed) main.push(button("paid", "I've paid", ButtonStyle.Success, "💸"));
-    if (["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(s) && !(pp && deal.paidClaimed)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
+    if (["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(s) && !(pp && deal.paidClaimed)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
     if (["awaiting_payment", "confirming", "funded", "released", "payout_pending"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
 
     if (staffComponents(deal).length) main.push(button("staff", "Staff tools", ButtonStyle.Secondary, "🛠️"));
@@ -964,6 +984,13 @@ const middleman = (() => {
     return present[0] || null;
   }
 
+  /* Deals waiting for a staff choice show the accounts that are present right now. */
+  async function refreshChooseCards() {
+    for (const deal of Object.values(store.deals)) {
+      if (deal.state === "choose_pp") await refreshMain(deal).catch(() => {});
+    }
+  }
+
   /* The deal keeps a copy, so changing or removing an account never moves a deal that is already running. */
   function assignPaypal(deal, account) {
     deal.ppId = account.id;
@@ -1041,6 +1068,7 @@ const middleman = (() => {
     const view = paypalManagerView(true);
     if (interaction.isFromMessage?.()) await interaction.update(view);
     else await interaction.reply({ ...view, flags: ephemeral });
+    await refreshChooseCards();
     return logLine(`💙 PayPal account ${kind === "add" ? "added" : "changed"}: **${label}** (by <@${interaction.user.id}>).`);
   }
 
@@ -1083,6 +1111,7 @@ const middleman = (() => {
             });
           }
         }
+        await refreshChooseCards();
         return logLine(`${account.away ? "🔴" : "🟢"} PayPal **${account.label}** set ${account.away ? "absent" : "present"} by <@${interaction.user.id}>.`);
       }
 
@@ -1106,6 +1135,7 @@ const middleman = (() => {
         store.paypal = ppList().filter((a) => a.id !== id);
         saveStore();
         await interaction.update(view());
+        await refreshChooseCards();
         return logLine(`🗑️ PayPal account **${account?.label || id}** removed by <@${interaction.user.id}>.`);
       }
 
@@ -1325,25 +1355,21 @@ const middleman = (() => {
         if (deal.state !== "amount_confirm") return reply(interaction, "❌ Nothing to confirm right now.");
         if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver confirms the amount.");
         if (isPaypal(deal)) {
-          if (!deal.ppId) {
-            const account = pickPaypal();
-            if (!account) {
-              await reply(interaction, "❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.");
-              return notify(deal, {
-                title: "⚠️  No PayPal available",
-                body: `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
-                color: COLORS.bad,
-                ping: [staffPing()],
-              });
-            }
-            assignPaypal(deal, account);
+          if (!ppList().some((a) => !a.away)) {
+            await reply(interaction, "❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.");
+            return notify(deal, {
+              title: "⚠️  No PayPal available",
+              body: `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
+              color: COLORS.bad,
+              ping: [staffPing()],
+            });
           }
           deal.ref = deal.ref || makeRef(deal);
         } else if (!deal.address) {
           deal.index = store.nextIndex++;
           deal.address = addressOf(deal.index);
         }
-        deal.state = "awaiting_payment";
+        deal.state = isPaypal(deal) ? "choose_pp" : "awaiting_payment";
         saveStore();
         if (deal.messageId && interaction.message?.id === deal.messageId) {
           await interaction.deferUpdate(); // an old card carried the button: fold it
@@ -1351,6 +1377,11 @@ const middleman = (() => {
         } else {
           deal.amountMsgId = "";
           await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
+        }
+        if (isPaypal(deal)) {
+          // a staff member now picks which PayPal account receives the payment
+          const holders = [...new Set(ppList().filter((a) => !a.away).map((a) => a.holderId).filter(Boolean))];
+          return advance(deal, { ping: [staffPing(), ...holders] });
         }
         return postPaymentCard(deal);
       }
@@ -1437,15 +1468,45 @@ const middleman = (() => {
         return logLine(`💙 Deal #${deal.n}: PayPal payment verified by <@${user.id}> (${fmtFiat(deal.amountCents, deal.currency)}).`);
       }
 
+      case "ppick": {
+        if (needStaff()) return;
+        if (!isPaypal(deal) || deal.state !== "choose_pp") return reply(interaction, "❌ Nothing to choose right now.");
+        const account = ppList().find((a) => a.id === arg);
+        if (!account || account.away) {
+          await reply(interaction, "❌ This PayPal account is no longer available. The list was refreshed.");
+          return refreshMain(deal);
+        }
+        assignPaypal(deal, account);
+        deal.state = "awaiting_payment";
+        saveStore();
+        await interaction.deferUpdate();
+        await foldStepCard(deal, `✅  **PayPal account**  ·  **${account.label}** chosen by ${mention(user.id)}`);
+        await postPaymentCard(deal);
+        return logLine(`💙 Deal #${deal.n}: PayPal account ${account.label} chosen by <@${user.id}>.`);
+      }
+
       case "switch_pp": {
         if (needStaff()) return;
         if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, "❌ Nothing to change right now.");
         if (deal.paidClaimed) return reply(interaction, "❌ The payer says it is already paid: check PayPal first.");
-        const account = pickPaypal(deal.ppId);
-        if (!account) return reply(interaction, "❌ No other PayPal account is available.");
+        const others = ppList().filter((a) => !a.away && a.id !== deal.ppId).slice(0, 4);
+        if (!others.length) return reply(interaction, "❌ No other PayPal account is available.");
+        return interaction.reply({
+          content: "🔁 Which PayPal account should this deal use instead?",
+          components: [new ActionRowBuilder().addComponents(others.map((a) => button(`ppswitch:${a.id}`, a.label.slice(0, 80), ButtonStyle.Primary, "💙")))],
+          flags: ephemeral,
+        });
+      }
+
+      case "ppswitch": {
+        if (needStaff()) return;
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return interaction.update({ content: "❌ Nothing to change right now.", components: [] });
+        if (deal.paidClaimed) return interaction.update({ content: "❌ The payer says it is already paid: check PayPal first.", components: [] });
+        const account = ppList().find((a) => a.id === arg);
+        if (!account || account.away || account.id === deal.ppId) return interaction.update({ content: "❌ This PayPal account is not available.", components: [] });
         assignPaypal(deal, account);
         saveStore();
-        await ack(interaction, deal, false);
+        await interaction.update({ content: `✅ This deal now uses **${account.label}**.`, components: [] });
         await refreshPaymentCard(deal);
         return notify(deal, {
           title: "🔁  PayPal account changed",
@@ -1533,7 +1594,7 @@ const middleman = (() => {
 
       case "cancel": {
         if (needParticipant()) return;
-        if (!["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(deal.state) || (isPaypal(deal) && deal.paidClaimed)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
+        if (!["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(deal.state) || (isPaypal(deal) && deal.paidClaimed)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
         await closeAmountCard(deal, "superseded");
         deal.state = "cancelled";
         saveStore();
@@ -1907,8 +1968,8 @@ async function postPanel(interaction) {
       .addFields(
         { name: "1️⃣  Open a ticket", value: "Add the person you trade with.", inline: true },
         { name: "2️⃣  Agree", value: "Pick payer and seller, set the amount.", inline: true },
-        { name: "3️⃣  Pay", value: "The payer sends it by PayPal with the **reference**.", inline: true },
-        { name: "4️⃣  Staff checks", value: "Staff verifies the payment on PayPal.", inline: true },
+        { name: "3️⃣  Staff picks a PayPal", value: "A staff member chooses the account that receives the payment.", inline: true },
+        { name: "4️⃣  Pay & check", value: "The payer sends it with the **reference**, staff verifies it.", inline: true },
         { name: "5️⃣  Deliver & release", value: "The seller delivers, the payer releases.", inline: true },
         { name: "6️⃣  Payout", value: "Staff sends the money to the seller.", inline: true }
       )
