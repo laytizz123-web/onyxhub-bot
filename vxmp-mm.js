@@ -583,9 +583,9 @@ const middleman = (() => {
           pp ? T("🔒 Once confirmed, the amount is locked.", "🔒 Une fois confirmé, le montant est verrouillé.") : T("🔒 Once confirmed, the LTC figure is locked.", "🔒 Une fois confirmé, le montant en LTC est verrouillé."),
         ]);
       case "choose_pp":
-        return block(T("💙  Choose the PayPal account", "💙  Choisissez le compte PayPal"), [
-          T(`${staffPing(deal)} pick the account that receives this payment.`, `${staffPing(deal)} choisissez le compte qui reçoit ce paiement.`),
-          T("Only staff can choose. The payer sees the account right after.", "Seul le staff peut choisir. Le payeur voit le compte juste après."),
+        return block(T("💙  A staff member gives their PayPal", "💙  Un staff donne son PayPal"), [
+          T(`${staffPing(deal)} press **PayPal** and enter the PayPal email that receives this payment.`, `${staffPing(deal)} appuyez sur **PayPal** et entrez l'email PayPal qui reçoit ce paiement.`),
+          T("The two people of the deal cannot do this. The payer sees the PayPal right after.", "Les deux personnes du deal ne peuvent pas le faire. Le payeur voit le PayPal juste après."),
         ]);
       case "awaiting_payment":
         return pp
@@ -673,21 +673,6 @@ const middleman = (() => {
           ...(deal.tier ? [{ name: T("🎚️  Range", "🎚️  Tranche"), value: deal.tier.label, inline: true }] : [])
         )
     );
-
-    // 2b. PayPal accounts to choose from (only while a staff member has to choose)
-    if (deal.state === "choose_pp") {
-      const present = ppList().filter((a) => !a.away);
-      panels.push(
-        new EmbedBuilder()
-          .setColor(0x0070ba)
-          .setTitle(T("💙  PayPal accounts present", "💙  Comptes PayPal présents"))
-          .setDescription(
-            present.length
-              ? present.map((a) => `🟢  **${a.label}**${a.holderId ? `  ·  <@${a.holderId}>` : ""}  ·  ${ppActiveDeals(a).length} ${T("deal(s) in progress", "deal(s) en cours")}`).join("\n")
-              : T("*Nobody is present right now. Set an account present with `/paypal`.*", "*Personne n'est présent pour l'instant. Passe un compte en présent avec `/paypal`.*")
-          )
-      );
-    }
 
     // 3. result
     if (deal.payoutTxid || deal.refundTxid) {
@@ -877,7 +862,7 @@ const middleman = (() => {
     }
     if (s === "amount") main.push(button("amount", T("Set the amount", "Fixer le montant"), ButtonStyle.Primary, "💰"));
     if (s === "choose_pp") {
-      for (const account of ppList().filter((a) => !a.away).slice(0, 4)) main.push(button(`ppick:${account.id}`, account.label.slice(0, 80), ButtonStyle.Primary, "💙"));
+      main.push(button("staffpp", "PayPal", ButtonStyle.Primary, "💙"));
     }
     if (s === "funded") main.push(button("release", T("Release the funds", "Libérer les fonds"), ButtonStyle.Success, "🔓"));
     if (s === "released") main.push(button("payout", pp ? T("Enter my PayPal email", "Entrer mon email PayPal") : T("Enter my LTC address", "Entrer mon adresse LTC"), ButtonStyle.Success, "🏦"));
@@ -1456,8 +1441,7 @@ const middleman = (() => {
 
   /* configured: at least one account exists. available: at least one is present (not marked absent). */
   function paypalStatus() {
-    const list = ppList();
-    return { configured: list.length > 0, available: list.some((a) => !a.away) };
+    return { configured: true, available: true };
   }
 
   /* The present account with the fewest deals in progress (never the one in `excludeId`). */
@@ -1862,25 +1846,12 @@ const middleman = (() => {
         if (deal.state !== "amount_confirm") return reply(interaction, T("❌ Nothing to confirm right now.", "❌ Rien à confirmer pour le moment."));
         if (user.id !== deal.receiverId) return reply(interaction, T("❌ Only the LTC receiver confirms the amount.", "❌ Seul le destinataire des LTC confirme le montant."));
         if (isPaypal(deal)) {
-          if (!ppList().some((a) => !a.away)) {
-            await reply(interaction, T("❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Le staff est prévenu, réessaie dans un instant."));
-            return notify(deal, {
-              title: T("⚠️  No PayPal available", "⚠️  Aucun PayPal disponible"),
-              body: T(
-                `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing(deal)} set an account present with \`/paypal\`.`,
-                `Le vendeur veut confirmer le montant mais tous les comptes PayPal sont absents.\n\n${staffPing(deal)} passez un compte en présent avec \`/paypal\`.`
-              ),
-              color: COLORS.bad,
-              ping: [staffPing(deal)],
-            });
-          }
           deal.ref = deal.ref || makeRef(deal);
         } else if (!deal.address) {
           deal.index = store.nextIndex++;
           deal.address = addressOf(deal.index);
         }
-        if (isPaypal(deal)) assignPaypal(deal, pickPaypal() || ppList()[0]); // no choosing step: the least busy present account
-        deal.state = "awaiting_payment";
+        deal.state = isPaypal(deal) ? "choose_pp" : "awaiting_payment";
         saveStore();
         if (deal.messageId && interaction.message?.id === deal.messageId) {
           await interaction.deferUpdate(); // an old card carried the button: fold it
@@ -1889,7 +1860,21 @@ const middleman = (() => {
           deal.amountMsgId = "";
           await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
         }
+        if (isPaypal(deal)) return advance(deal, { ping: [staffPing(deal)] }); // a staff member now gives their PayPal
         return postPaymentCard(deal);
+      }
+
+      case "staffpp": {
+        if (needStaff()) return;
+        if (!isPaypal(deal) || deal.state !== "choose_pp") return reply(interaction, T("❌ Nothing to do right now.", "❌ Rien à faire pour le moment."));
+        if (isParticipant(deal, user.id)) return reply(interaction, T("❌ The two people of the deal cannot give the PayPal. A staff member does.", "❌ Les deux personnes du deal ne peuvent pas donner le PayPal. C'est un staff."));
+        return interaction.showModal(
+          new ModalBuilder().setCustomId("mm:m:staffpp").setTitle(T("Your PayPal", "Ton PayPal")).addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder().setCustomId("value").setLabel(T("PayPal email that receives the payment", "Email PayPal qui reçoit le paiement")).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(100)
+            )
+          )
+        );
       }
 
       case "release": {
@@ -2230,6 +2215,22 @@ const middleman = (() => {
       const outcome = await withLock(deal.channelId, () => setDealAmount(deal, value));
       if (outcome.error) return interaction.followUp({ content: `❌ ${outcome.error}`, flags: ephemeral });
       return;
+    }
+
+    if (isPaypal(deal) && kind === "staffpp") {
+      if (!staffFor(deal, interaction.member) || isParticipant(deal, user.id)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
+      if (deal.state !== "choose_pp") return reply(interaction, T("❌ This is not possible in the current state of the deal.", "❌ Impossible dans l'état actuel du deal."));
+      if (!EMAIL.test(value)) return reply(interaction, T("❌ That is not a valid PayPal email address.", "❌ Ce n'est pas une adresse email PayPal valide."));
+      deal.ppId = "";
+      deal.ppEmail = value;
+      deal.ppLabel = interaction.member?.displayName || user.username || "Staff";
+      deal.ppHolder = user.id;
+      deal.state = "awaiting_payment";
+      saveStore();
+      await reply(interaction, T("✅ Your PayPal is set. The payer sees it now.", "✅ Ton PayPal est enregistré. Le payeur le voit maintenant."));
+      await foldStepCard(deal, T(`✅  **PayPal**  ·  given by ${mention(user.id)}`, `✅  **PayPal**  ·  donné par ${mention(user.id)}`));
+      await postPaymentCard(deal);
+      return logLine(`💙 Deal #${deal.n}: PayPal given by <@${user.id}> (<#${deal.channelId}>).`);
     }
 
     if (isPaypal(deal) && kind === "payout") {
