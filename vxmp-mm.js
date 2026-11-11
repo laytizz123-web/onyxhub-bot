@@ -239,7 +239,7 @@ const middleman = (() => {
     const rest = raw.replace(number, "").replace(/\s+/g, "");
     if (/^(\$|usd|dollars?)?$/.test(rest) && /[$]|usd|dollar/.test(rest)) return { kind: "USD", value: number };
     if (/^(€|eur|euros?)$/.test(rest)) return { kind: "EUR", value: number };
-    if (/^(ltc)?$/.test(rest)) return { kind: "LTC", value: number };
+    if (/^(ltc)?$/.test(rest)) return { kind: "LTC", value: number, bare: rest === "" };
     return null;
   }
 
@@ -455,7 +455,7 @@ const middleman = (() => {
     switch (deal.state) {
       case "partner": return "**Add the person you trade with.**\nClick the button below and send their @mention or user ID.";
       case "roles": return "**Pick your roles.**\n📤 The *sender* pays the LTC.   📥 The *receiver* gets it when the deal is done.";
-      case "amount": return `**${sender}: set the amount.**\nType it in LTC (\`0.25\`) or in money (\`5$\`, \`5€\`).`;
+      case "amount": return `**${sender}: set the amount.**\nType it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).\nWith a plain number, I ask which one you mean.`;
       case "amount_confirm": return `**${receiver}: accept or decline the amount.**\nUse the buttons on the **amount card** below. Once confirmed, the LTC figure is locked.`;
       case "awaiting_payment": return `**${sender}: send the exact amount below** from a wallet you control.\nThe bot spots the payment by itself, nothing to click.`;
       case "confirming": return "**Payment spotted!**\nThe network is confirming it, this card updates by itself.";
@@ -519,6 +519,7 @@ const middleman = (() => {
     if (s === "amount") main.push(button("amount", "Set the amount", ButtonStyle.Primary, "💰"));
       if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
     if (s === "released") main.push(button("payout", "Enter my LTC address", ButtonStyle.Success, "🏦"));
+    if (s === "awaiting_payment" || s === "confirming") main.push(button("copy", "Copy details", ButtonStyle.Secondary, "📋"));
     if (["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(s)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
     if (["awaiting_payment", "confirming", "funded", "released"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
     if (main.length) rows.push(new ActionRowBuilder().addComponents(main));
@@ -614,6 +615,22 @@ const middleman = (() => {
     const message = await channel?.messages.fetch(deal.amountMsgId).catch(() => null);
     await message?.edit({ embeds: [amountCard(deal, status)], components: [] }).catch(() => {});
     deal.amountMsgId = "";
+  }
+
+  /* Validates an amount typed by the sender, stores it and posts the Confirm / Decline card. */
+  async function setDealAmount(deal, text) {
+    if (!["amount", "amount_confirm"].includes(deal.state)) return { error: "The amount can no longer be changed." };
+    const result = await resolveAmount(text).catch((error) => ({ error: error?.message || String(error) }));
+    if (result.error) return { error: result.error };
+    if (result.sat < cfg.minSat) return { error: `That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.` };
+    await closeAmountCard(deal, "superseded"); // a previous, still pending card is replaced
+    deal.amountSat = result.sat;
+    deal.quote = result.quote;
+    deal.state = "amount_confirm";
+    saveStore();
+    await refreshMain(deal);
+    await postAmountCard(deal);
+    return {};
   }
 
   async function logLine(text) {
@@ -776,7 +793,7 @@ const middleman = (() => {
     return deal.state === "awaiting_payment" && deal.seenSat > 0;
   }
 
-  async function handleButton(interaction, deal, action, arg) {
+  async function handleButton(interaction, deal, action, arg, extra) {
     const user = interaction.user;
     const staff = isStaff(interaction.member);
     const participant = isParticipant(deal, user.id);
@@ -815,7 +832,7 @@ const middleman = (() => {
         if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender sets the amount.");
         const modal = new ModalBuilder().setCustomId("mm:m:amount").setTitle("Amount to send")
           .addComponents(new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("value").setLabel("Amount: 0.25 (LTC) / 5$ / 5€").setPlaceholder("0.25   or   0.01$   or   5€").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
+            new TextInputBuilder().setCustomId("value").setLabel("Amount: 5$ / 5€ / 0.25 LTC").setPlaceholder("0.01   (I will ask: dollars or LTC?)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
           ));
         return interaction.showModal(modal);
       }
@@ -842,6 +859,7 @@ const middleman = (() => {
           color: COLORS.wait,
           ping: [deal.senderId],
           thumbnail: cfg.qr ? qrUrl(deal) : undefined,
+          components: [new ActionRowBuilder().addComponents(button("copy", "Copy details (mobile)", ButtonStyle.Secondary, "📋"))],
         });
       }
 
@@ -853,6 +871,27 @@ const middleman = (() => {
           flags: ephemeral,
           content: "⚠️ Release the funds **only if you received what was agreed**. This cannot be undone.",
           components: [new ActionRowBuilder().addComponents(button("release_yes", "Yes, I received it", ButtonStyle.Success), button("release_no", "No", ButtonStyle.Secondary))],
+        });
+      }
+
+      case "pick": {
+        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender sets the amount.");
+        if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ The amount can no longer be changed.");
+        if ((arg !== "usd" && arg !== "ltc") || !parseAmountInput(extra)?.bare) return reply(interaction, "❌ Invalid choice.");
+        await interaction.update({ content: "⏳ Setting the amount…", components: [] });
+        const outcome = await withLock(deal.channelId, () => setDealAmount(deal, arg === "usd" ? `${extra}$` : `${extra} ltc`));
+        return interaction.editReply({ content: outcome.error ? `❌ ${outcome.error}` : "✅ Sent to the receiver for confirmation.", components: [] });
+      }
+
+      case "copy": {
+        if (user.id !== deal.senderId && !staff) return reply(interaction, "❌ Only the sender needs the payment details.");
+        if (!["awaiting_payment", "confirming"].includes(deal.state)) return reply(interaction, "❌ There is nothing to pay right now.");
+        // one value per message so "Copy Text" on mobile copies exactly that value
+        await interaction.reply({ content: deal.address, flags: ephemeral });
+        await interaction.followUp({ content: satToLtc(deal.amountSat), flags: ephemeral });
+        return interaction.followUp({
+          content: "📋 **Tap and hold** a message above, then **Copy Text**.\n1️⃣ the **address**   2️⃣ the **amount** in LTC\nSend exactly that amount to that address.",
+          flags: ephemeral,
         });
       }
 
@@ -1008,20 +1047,32 @@ const middleman = (() => {
 
     if (kind === "amount") {
       if (user.id !== deal.senderId || !["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ Not possible right now.");
-      if (!parseAmountInput(value)) return reply(interaction, "❌ Invalid amount. Examples: `0.25` (LTC), `5$` (dollars), `5€` (euros).");
-      await interaction.deferUpdate(); // the price lookup can take a moment
-      const result = await resolveAmount(value).catch((error) => ({ error: error?.message || String(error) }));
-      if (result.error) return interaction.followUp({ content: `❌ ${result.error}`, flags: ephemeral });
-      if (result.sat < cfg.minSat) {
-        return interaction.followUp({ content: `❌ That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.`, flags: ephemeral });
+      const parsed = parseAmountInput(value);
+      if (!parsed) return reply(interaction, "❌ Invalid amount. Examples: `5$` (dollars), `5€` (euros), `0.25 ltc`.");
+
+      if (parsed.bare) {
+        // "0.01" alone is ambiguous: show both readings side by side and let the sender pick
+        await interaction.deferReply({ flags: ephemeral });
+        const prices = await getLtcPrice().catch(() => null);
+        const asLtc = ltcToSat(parsed.value);
+        const dollarSat = prices ? Math.round((Number(parsed.value) / prices.usd) * SAT_PER_LTC) : 0;
+        const dollarLabel = prices ? `$${parsed.value}  =  ${satToLtc(dollarSat)} LTC` : `$${parsed.value} (price unavailable)`;
+        const ltcLabel = asLtc ? `${parsed.value} LTC${prices ? `  (≈ $${fmtMoney((asLtc / SAT_PER_LTC) * prices.usd)})` : ""}` : "invalid LTC amount";
+        return interaction.editReply({
+          content: `**${parsed.value}** what do you mean?\nPick one, the receiver then confirms it.`,
+          components: [
+            new ActionRowBuilder().addComponents(
+              button(`pick:usd:${parsed.value}`, dollarLabel.slice(0, 80), ButtonStyle.Primary, "💵").setDisabled(!prices || dollarSat < 1),
+              button(`pick:ltc:${parsed.value}`, ltcLabel.slice(0, 80), ButtonStyle.Secondary, "🪙").setDisabled(!asLtc)
+            ),
+          ],
+        });
       }
-      await closeAmountCard(deal, "superseded"); // a previous, still pending card is replaced
-      deal.amountSat = result.sat;
-      deal.quote = result.quote;
-      deal.state = "amount_confirm";
-      saveStore();
-      await refreshMain(deal);
-      return postAmountCard(deal);
+
+      await interaction.deferUpdate(); // the price lookup can take a moment
+      const outcome = await withLock(deal.channelId, () => setDealAmount(deal, value));
+      if (outcome.error) return interaction.followUp({ content: `❌ ${outcome.error}`, flags: ephemeral });
+      return;
     }
 
     // payout / refund: both send the whole balance of the deal address
@@ -1093,7 +1144,7 @@ const middleman = (() => {
 
       const parts = id.split(":"); // mm:action[:arg]  |  mm:m:kind
       if (interaction.isModalSubmit()) await handleModal(interaction, deal, parts[2]);
-      else if (interaction.isButton()) await handleButton(interaction, deal, parts[1], parts[2]);
+      else if (interaction.isButton()) await handleButton(interaction, deal, parts[1], parts[2], parts[3]);
     } catch (error) {
       console.error("⚠️ Middleman error:", error?.message || error);
       const message = "❌ Something went wrong. Check the bot console.";
