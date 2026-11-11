@@ -47,9 +47,12 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
     MM_PAYPAL_MIN=1                        smallest PayPal deal, in that currency
     MM_PAYPAL_NOTE=text                    extra line shown to the payer (for example "Send as Friends & Family")
     MM_TIERS=0-25,25-50,50-100,100-250,250-500,500-1000,1000-2500,2500+
-                                           amount ranges offered before a ticket opens (min-max, or min+ for "and more").
-                                           The amount typed in the ticket must fit the range. "off" removes this step
+                                           the FIRST list of amount ranges offered before a ticket opens (min-max, or min+
+                                           for "and more"). Afterwards the ranges live in Discord: /tiers lets an
+                                           administrator add, edit, remove them and give each one a staff role.
+                                           The amount typed in the ticket must fit its range. "off" starts without ranges
     MM_TIER_CURRENCY=USD                   USD or EUR, the currency of those ranges
+    MM_STAFF_ROLE_ID=...                   sees and handles EVERY ticket (a range role only sees the tickets of its range)
     MM_CATEGORY_ID=...                     category where the deal channels are created (optional)
     LTC_API_URL=https://litecoinspace.org/api    Esplora-compatible API (default)
     LTC_EXPLORER_TX_URL=https://litecoinspace.org/tx/
@@ -74,6 +77,8 @@ const middleman = (() => {
     MessageFlags,
     ModalBuilder,
     PermissionFlagsBits,
+    RoleSelectMenuBuilder,
+    StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
   } = require("discord.js");
@@ -128,7 +133,7 @@ const middleman = (() => {
     }
   }
 
-  /* "0-25,25-50,500+"  ->  [{ min, max, slug }]   (max is null for "and more"). "off" gives no ranges at all. */
+  /* "0-25,25-50,500+"  ->  [{ min, max }]   (max is null for "and more"). "off" gives no ranges at all. */
   function parseTiers(text) {
     const raw = String(text ?? "0-25,25-50,50-100,100-250,250-500,500-1000,1000-2500,2500+").trim();
     if (/^(off|none|no|false)$/i.test(raw)) return [];
@@ -139,7 +144,7 @@ const middleman = (() => {
       const min = Number(m[1]);
       const max = m[3] ? null : Number(m[2]);
       if (max !== null && max <= min) continue;
-      out.push({ min, max, slug: (m[3] ? `${m[1]}plus` : `${m[1]}-${m[2]}`).replace(/\./g, "_") });
+      out.push({ min, max });
     }
     if (!out.length && text !== undefined) return parseTiers(undefined); // nothing valid: back to the defaults
     return out.slice(0, 25);
@@ -159,7 +164,7 @@ const middleman = (() => {
     paypalCurrency: String(process.env.MM_PAYPAL_CURRENCY || "USD").trim().toUpperCase() === "EUR" ? "EUR" : "USD",
     paypalMinCents: Math.round((Number(process.env.MM_PAYPAL_MIN) || 1) * 100),
     paypalNote: (process.env.MM_PAYPAL_NOTE || "").trim(),
-    tiers: parseTiers(process.env.MM_TIERS),
+    tiersEnv: process.env.MM_TIERS,
     tierCurrency: String(process.env.MM_TIER_CURRENCY || "USD").trim().toUpperCase() === "EUR" ? "EUR" : "USD",
   };
 
@@ -382,7 +387,7 @@ const middleman = (() => {
      STORAGE
   ===================================================== */
 
-  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1 };
+  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1, tiers: [], nextTier: 1, tiersReady: false };
 
   function loadStore() {
     try {
@@ -496,6 +501,9 @@ const middleman = (() => {
     );
   }
 
+  /* Staff of ONE deal: general staff / administrators, or the holder of the role of the deal's amount range. */
+  const staffFor = (deal, member) => isStaff(member) || Boolean(dealTierRole(deal) && member?.roles?.cache?.has(dealTierRole(deal)));
+
   function button(id, label, style = ButtonStyle.Secondary, emoji) {
     const b = new ButtonBuilder().setCustomId(`mm:${id}`).setLabel(label).setStyle(style);
     if (emoji) b.setEmoji(emoji);
@@ -564,7 +572,7 @@ const middleman = (() => {
         ]);
       case "choose_pp":
         return block(T("💙  Choose the PayPal account", "💙  Choisissez le compte PayPal"), [
-          T(`${staffPing()} pick the account that receives this payment.`, `${staffPing()} choisissez le compte qui reçoit ce paiement.`),
+          T(`${staffPing(deal)} pick the account that receives this payment.`, `${staffPing(deal)} choisissez le compte qui reçoit ce paiement.`),
           T("Only staff can choose. The payer sees the account right after.", "Seul le staff peut choisir. Le payeur voit le compte juste après."),
         ]);
       case "awaiting_payment":
@@ -1075,26 +1083,51 @@ const middleman = (() => {
     if (channel?.isTextBased()) await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
   }
 
-  const staffPing = () => (options.staffRoleId ? `<@&${options.staffRoleId}>` : "Staff");
+  /* The role to ping: the role of the range of the deal when it has one, otherwise the general staff role. */
+  const staffPing = (deal) => {
+    const id = dealTierRole(deal) || options.staffRoleId;
+    return id ? `<@&${id}>` : "Staff";
+  };
   const reply = (interaction, content) => interaction.reply({ content, flags: ephemeral });
 
   /* ---------- amount ranges ("tiers"): the person picks one before the ticket opens ---------- */
 
   const tierLabel = (t) => `${CUR[cfg.tierCurrency]}${t.min}${t.max === null ? "+" : ` – ${CUR[cfg.tierCurrency]}${t.max}`}`;
+  const tierSlug = (t) => (t.max === null ? `${t.min}plus` : `${t.min}-${t.max}`).replace(/\./g, "_");
 
-  const tierOf = (index) => {
-    const t = cfg.tiers[index];
-    return t ? { min: t.min, max: t.max, slug: t.slug, currency: cfg.tierCurrency, label: tierLabel(t) } : undefined;
+  /* Before the first start the ranges come from MM_TIERS; then they live in the store and are managed with /tiers. */
+  const seedTiers = () => parseTiers(cfg.tiersEnv).map((t, i) => ({ id: `t${i + 1}`, min: t.min, max: t.max, roleId: "" }));
+
+  function ensureTiers() {
+    if (store.tiersReady) return;
+    store.tiers = seedTiers();
+    store.nextTier = store.tiers.length + 1;
+    store.tiersReady = true;
+    saveStore();
+  }
+
+  function tierList() {
+    const list = store.tiersReady ? store.tiers : seedTiers();
+    return [...list].sort((a, b) => a.min - b.min || (a.max ?? Infinity) - (b.max ?? Infinity));
+  }
+  const tierById = (id) => tierList().find((t) => t.id === id);
+  const tierRoleId = (id) => tierById(id)?.roleId || "";
+  /* The role that handles a deal (live: a change made in /tiers applies at once). */
+  const dealTierRole = (deal) => (deal?.tier ? tierRoleId(deal.tier.id) : "");
+
+  const tierOf = (id) => {
+    const t = tierById(id);
+    return t ? { id: t.id, min: t.min, max: t.max, slug: tierSlug(t), currency: cfg.tierCurrency, label: tierLabel(t) } : undefined;
   };
 
   /* The choices of the menu, in the language of the person. */
   function tierOptions(lang) {
     const fr = lang === "fr";
     const sym = CUR[cfg.tierCurrency];
-    return cfg.tiers.map((t, i) => ({
-      value: String(i),
+    return tierList().map((t) => ({
+      value: t.id,
       label: tierLabel(t),
-      slug: t.slug,
+      slug: tierSlug(t),
       description:
         t.max === null
           ? (fr ? `Deals au-dessus de ${sym}${t.min}` : `Deals above ${sym}${t.min}`)
@@ -1132,6 +1165,220 @@ const middleman = (() => {
       `This ticket is for deals of ${tier.label}. Your amount is about ${shown}. Open a ticket in the right range, or type another amount.`,
       `Ce ticket est pour les deals de ${tier.label}. Ton montant fait environ ${shown}. Ouvre un ticket dans la bonne tranche, ou écris un autre montant.`
     );
+  }
+
+  /* ---------- /tiers: the amount ranges and the staff role of each one, managed from Discord ---------- */
+
+  const MAX_TIERS = 25;
+  const trButton = (id, label, style = ButtonStyle.Secondary, emoji) => {
+    const b = new ButtonBuilder().setCustomId(`tr:${id}`).setLabel(label).setStyle(style);
+    if (emoji) b.setEmoji(emoji);
+    return b;
+  };
+  const tierActiveDeals = (t) => Object.values(store.deals).filter((d) => d.tier?.id === t.id && !FINAL.has(d.state));
+
+  function tiersView(selectedId) {
+    const list = tierList();
+    const selected = list.find((t) => t.id === selectedId);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("🎚️  Amount ranges")
+      .setDescription(
+        list.length
+          ? list.map((t) => `**${tierLabel(t)}**  ·  ${t.roleId ? `<@&${t.roleId}>` : "*no role: general staff only*"}  ·  ${tierActiveDeals(t).length} open ticket(s)`).join("\n")
+          : "*No range: tickets open without asking for one.*"
+      )
+      .setFooter({ text: "A member with the role of a range only sees and handles the tickets of that range  ·  the general staff role sees them all" });
+    const rows = [];
+    if (list.length) {
+      rows.push(
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("tr:pick")
+            .setPlaceholder("Choose a range to set its role, edit or remove it")
+            .addOptions(list.slice(0, MAX_TIERS).map((t) => ({ label: tierLabel(t), description: t.roleId ? "Has a staff role" : "No staff role", value: t.id, default: t.id === selectedId })))
+        )
+      );
+    }
+    if (selected) {
+      const role = new RoleSelectMenuBuilder().setCustomId(`tr:role:${selected.id}`).setPlaceholder(`Staff role for ${tierLabel(selected)}`).setMinValues(1).setMaxValues(1);
+      if (selected.roleId) role.setDefaultRoles([selected.roleId]);
+      rows.push(new ActionRowBuilder().addComponents(role));
+      rows.push(
+        new ActionRowBuilder().addComponents(
+          trButton(`edit:${selected.id}`, "Edit range", ButtonStyle.Secondary, "✏️"),
+          trButton(`clear:${selected.id}`, "Clear role", ButtonStyle.Secondary, "🧹").setDisabled(!selected.roleId),
+          trButton(`remove:${selected.id}`, "Remove", ButtonStyle.Danger, "🗑️")
+        )
+      );
+    }
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        trButton("add", "Add a range", ButtonStyle.Primary, "➕").setDisabled(list.length >= MAX_TIERS),
+        trButton("reset", "Back to defaults", ButtonStyle.Secondary, "🔄")
+      )
+    );
+    return { embeds: [embed], components: rows };
+  }
+
+  function tiersModal(customId, title, tier) {
+    const input = (id, label, required, value) => {
+      const field = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(required).setMaxLength(12);
+      if (value !== undefined && value !== "") field.setValue(String(value));
+      return new ActionRowBuilder().addComponents(field);
+    };
+    return new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
+      input("from", `From (in ${cfg.tierCurrency})`, true, tier ? tier.min : ""),
+      input("to", "To (empty = and more)", false, tier && tier.max !== null ? tier.max : "")
+    );
+  }
+
+  /* When the role of a range changes, the tickets that are still open follow (the bot edits their permissions). */
+  async function syncTierAccess(tierId, oldRoleId, newRoleId) {
+    if (oldRoleId === newRoleId) return 0;
+    let touched = 0;
+    for (const deal of Object.values(store.deals)) {
+      if (deal.tier?.id !== tierId || FINAL.has(deal.state)) continue;
+      const channel = await client.channels.fetch(deal.channelId).catch(() => null);
+      if (!channel?.permissionOverwrites) continue;
+      try {
+        if (oldRoleId && oldRoleId !== options.staffRoleId) await channel.permissionOverwrites.delete(oldRoleId);
+        if (newRoleId) await channel.permissionOverwrites.edit(newRoleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true });
+        touched++;
+      } catch (error) {
+        console.error(`⚠️ Could not update the access of ticket #${deal.n}:`, error?.message || error);
+      }
+    }
+    return touched;
+  }
+
+  async function handleTiersModal(interaction, parts) {
+    const kind = parts[2]; // add | edit
+    const id = parts[3];
+    const number = (text) => {
+      const v = Number(String(text).trim().replace(",", "."));
+      return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : null;
+    };
+    const from = number(interaction.fields.getTextInputValue("from"));
+    const toRaw = interaction.fields.getTextInputValue("to").trim();
+    const andMore = toRaw === "" || toRaw === "+";
+    const to = andMore ? null : number(toRaw);
+    if (from === null) return reply(interaction, "❌ \"From\" must be a number, for example `25`.");
+    if (!andMore && to === null) return reply(interaction, "❌ \"To\" must be a number, or empty for \"and more\".");
+    if (to !== null && to <= from) return reply(interaction, "❌ \"To\" must be bigger than \"From\".");
+
+    ensureTiers();
+    if (kind === "edit" && !store.tiers.some((t) => t.id === id)) return reply(interaction, "❌ This range no longer exists.");
+    const others = store.tiers.filter((t) => t.id !== id);
+    const clash = others.find((t) => from < (t.max ?? Infinity) && (to ?? Infinity) > t.min);
+    if (clash) return reply(interaction, `❌ This range overlaps **${tierLabel(clash)}**. Change that one first.`);
+
+    let tier;
+    if (kind === "add") {
+      if (store.tiers.length >= MAX_TIERS) return reply(interaction, `❌ You can have at most ${MAX_TIERS} ranges.`);
+      tier = { id: `t${store.nextTier++}`, min: from, max: to, roleId: "" };
+      store.tiers.push(tier);
+    } else {
+      tier = store.tiers.find((t) => t.id === id);
+      if (!tier) return reply(interaction, "❌ This range no longer exists.");
+      tier.min = from;
+      tier.max = to;
+    }
+    saveStore();
+
+    const view = tiersView(tier.id);
+    if (interaction.isFromMessage?.()) await interaction.update(view);
+    else await interaction.reply({ ...view, flags: ephemeral });
+    return logLine(`🎚️ Range ${kind === "add" ? "added" : "changed"}: **${tierLabel(tier)}** (by <@${interaction.user.id}>).`);
+  }
+
+  async function handleTiersAdmin(interaction) {
+    if (!isAdmin(interaction.member)) return reply(interaction, "❌ Only administrators can change the amount ranges.");
+    ensureTiers();
+    if (interaction.isChatInputCommand?.()) return interaction.reply({ ...tiersView(""), flags: ephemeral });
+
+    const parts = String(interaction.customId || "").split(":"); // tr:action[:id]  |  tr:m:add  |  tr:m:edit:id
+    if (interaction.isModalSubmit?.()) return handleTiersModal(interaction, parts);
+
+    const [, action, id] = parts;
+    const tier = store.tiers.find((t) => t.id === id);
+    const gone = () => reply(interaction, "❌ This range no longer exists.");
+
+    const setRole = async (roleId) => {
+      const old = tier.roleId;
+      tier.roleId = roleId;
+      saveStore();
+      await interaction.update(tiersView(tier.id));
+      const touched = await syncTierAccess(tier.id, old, roleId);
+      if (touched) await interaction.followUp({ content: `✅ The access of ${touched} open ticket(s) was updated.`, flags: ephemeral });
+      return logLine(`🎚️ Range **${tierLabel(tier)}**: ${roleId ? `role set to <@&${roleId}>` : "role cleared"} (by <@${interaction.user.id}>).`);
+    };
+
+    switch (action) {
+      case "pick":
+        return interaction.update(tiersView(interaction.values?.[0] || ""));
+
+      case "role":
+        if (!tier) return gone();
+        return setRole(interaction.values?.[0] || "");
+
+      case "clear":
+        if (!tier) return gone();
+        return setRole("");
+
+      case "add":
+        if (store.tiers.length >= MAX_TIERS) return reply(interaction, `❌ You can have at most ${MAX_TIERS} ranges.`);
+        return interaction.showModal(tiersModal("tr:m:add", "Add a range"));
+
+      case "edit":
+        if (!tier) return gone();
+        return interaction.showModal(tiersModal(`tr:m:edit:${id}`, "Edit this range", tier));
+
+      case "remove": {
+        if (!tier) return gone();
+        const running = tierActiveDeals(tier).length;
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(COLORS.bad)
+              .setTitle("🗑️  Remove this range?")
+              .setDescription(`**${tierLabel(tier)}**${tier.roleId ? `  ·  <@&${tier.roleId}>` : ""}${running ? `\n\n${running} open ticket(s) keep this range, but its role loses access to them.` : ""}`),
+          ],
+          components: [new ActionRowBuilder().addComponents(trButton(`rm_yes:${id}`, "Yes, remove", ButtonStyle.Danger), trButton(`rm_no:${id}`, "Cancel"))],
+        });
+      }
+
+      case "rm_yes": {
+        if (!tier) return gone();
+        const old = tier.roleId;
+        store.tiers = store.tiers.filter((t) => t.id !== id);
+        saveStore();
+        await interaction.update(tiersView(""));
+        await syncTierAccess(id, old, "");
+        return logLine(`🗑️ Range **${tierLabel(tier)}** removed by <@${interaction.user.id}>.`);
+      }
+
+      case "rm_no":
+        return interaction.update(tiersView(id || ""));
+
+      case "reset":
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder().setColor(COLORS.bad).setTitle("🔄  Back to the default ranges?").setDescription("All ranges are replaced by the default ones (**MM_TIERS** of your .env, or 0-25 … 2500+). **The roles you set are cleared.**"),
+          ],
+          components: [new ActionRowBuilder().addComponents(trButton("reset_yes", "Yes, reset", ButtonStyle.Danger), trButton("rm_no", "Cancel"))],
+        });
+
+      case "reset_yes": {
+        const previous = store.tiers;
+        const fresh = parseTiers(cfg.tiersEnv);
+        store.tiers = fresh.map((t) => ({ id: `t${store.nextTier++}`, min: t.min, max: t.max, roleId: "" }));
+        saveStore();
+        await interaction.update(tiersView(""));
+        for (const t of previous) if (t.roleId) await syncTierAccess(t.id, t.roleId, "");
+        return logLine(`🔄 Ranges reset to the defaults by <@${interaction.user.id}>.`);
+      }
+    }
   }
 
   /* ---------- PayPal accounts, managed from Discord with /paypal ---------- */
@@ -1372,8 +1619,8 @@ const middleman = (() => {
         title: tr(deal, "⚠️  Payment too small", "⚠️  Paiement trop faible"),
         body: tr(
           deal,
-          `The confirmed payment is **${satToLtc(confirmedSat)} LTC** but the deal is **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} send the missing **${satToLtc(deal.amountSat - confirmedSat)} LTC** to the same address,\nor ${staffPing()} can refund it.`,
-          `Le paiement confirmé est de **${satToLtc(confirmedSat)} LTC** mais le deal est de **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} envoie les **${satToLtc(deal.amountSat - confirmedSat)} LTC** manquants à la même adresse,\nou ${staffPing()} peut rembourser.`
+          `The confirmed payment is **${satToLtc(confirmedSat)} LTC** but the deal is **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} send the missing **${satToLtc(deal.amountSat - confirmedSat)} LTC** to the same address,\nor ${staffPing(deal)} can refund it.`,
+          `Le paiement confirmé est de **${satToLtc(confirmedSat)} LTC** mais le deal est de **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} envoie les **${satToLtc(deal.amountSat - confirmedSat)} LTC** manquants à la même adresse,\nou ${staffPing(deal)} peut rembourser.`
         ),
         color: COLORS.bad,
         ping: [deal.senderId],
@@ -1416,7 +1663,7 @@ const middleman = (() => {
   /* ---------- interactions ---------- */
 
   /* Called by index.js right after a "middleman" ticket channel was created. */
-  async function openDeal(channel, user, method = "ltc", lang = "en", tierIndex = -1) {
+  async function openDeal(channel, user, method = "ltc", lang = "en", tierId = "") {
     const L = { lang: lang === "fr" ? "fr" : "en" };
     if (!enabled) {
       await channel.send(tr(L, "❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.", "❌ Le middleman n'est pas encore configuré (MM_SEED manque). Le staff est prévenu dans ce ticket."));
@@ -1439,7 +1686,7 @@ const middleman = (() => {
       userA: user.id,
       userB: null,
       lang: L.lang,
-      tier: tierOf(tierIndex),
+      tier: tierOf(tierId),
       method: method === "paypal" ? "paypal" : "ltc",
       amountCents: 0,
       currency: "",
@@ -1498,7 +1745,7 @@ const middleman = (() => {
   async function handleButton(interaction, deal, action, arg, extra) {
     const T = (en, fr) => tr(deal, en, fr);
     const user = interaction.user;
-    const staff = isStaff(interaction.member);
+    const staff = staffFor(deal, interaction.member);
     const participant = isParticipant(deal, user.id);
 
     const needParticipant = () => !participant && !staff && (reply(interaction, T("❌ You are not part of this deal.", "❌ Tu ne fais pas partie de ce deal.")), true);
@@ -1556,11 +1803,11 @@ const middleman = (() => {
             return notify(deal, {
               title: T("⚠️  No PayPal available", "⚠️  Aucun PayPal disponible"),
               body: T(
-                `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
-                `Le vendeur veut confirmer le montant mais tous les comptes PayPal sont absents.\n\n${staffPing()} passez un compte en présent avec \`/paypal\`.`
+                `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing(deal)} set an account present with \`/paypal\`.`,
+                `Le vendeur veut confirmer le montant mais tous les comptes PayPal sont absents.\n\n${staffPing(deal)} passez un compte en présent avec \`/paypal\`.`
               ),
               color: COLORS.bad,
-              ping: [staffPing()],
+              ping: [staffPing(deal)],
             });
           }
           deal.ref = deal.ref || makeRef(deal);
@@ -1580,7 +1827,7 @@ const middleman = (() => {
         if (isPaypal(deal)) {
           // a staff member now picks which PayPal account receives the payment
           const holders = [...new Set(ppList().filter((a) => !a.away).map((a) => a.holderId).filter(Boolean))];
-          return advance(deal, { ping: [staffPing(), ...holders] });
+          return advance(deal, { ping: [staffPing(deal), ...holders] });
         }
         return postPaymentCard(deal);
       }
@@ -1659,11 +1906,11 @@ const middleman = (() => {
         await notify(deal, {
           title: T("💸  Payment sent?", "💸  Paiement envoyé ?"),
           body: T(
-            `${mention(user.id)} says the PayPal payment is sent.\n\n${staffPing()} check PayPal for **${fmtFiat(deal.amountCents, deal.currency)}** with the reference \`${deal.ref}\`, then open **Staff tools → Payment received**.`,
-            `${mention(user.id)} dit que le paiement PayPal est envoyé.\n\n${staffPing()} vérifiez PayPal : **${fmtFiat(deal.amountCents, deal.currency)}** avec la référence \`${deal.ref}\`, puis ouvrez **Outils staff → Paiement reçu**.`
+            `${mention(user.id)} says the PayPal payment is sent.\n\n${staffPing(deal)} check PayPal for **${fmtFiat(deal.amountCents, deal.currency)}** with the reference \`${deal.ref}\`, then open **Staff tools → Payment received**.`,
+            `${mention(user.id)} dit que le paiement PayPal est envoyé.\n\n${staffPing(deal)} vérifiez PayPal : **${fmtFiat(deal.amountCents, deal.currency)}** avec la référence \`${deal.ref}\`, puis ouvrez **Outils staff → Paiement reçu**.`
           ),
           color: 0xf57c00,
-          ping: [staffPing(), deal.ppHolder],
+          ping: [staffPing(deal), deal.ppHolder],
         });
         return logLine(`💸 Deal #${deal.n}: payer says PayPal ${fmtFiat(deal.amountCents, deal.currency)} sent, ref ${deal.ref} (<#${deal.channelId}>).`);
       }
@@ -1773,7 +2020,7 @@ const middleman = (() => {
             `${mention(user.id)} a appelé le staff sur le deal #${deal.n}.\nLe deal est **gelé** jusqu'à la décision du staff.`
           ),
           color: COLORS.bad,
-          ping: [staffPing()],
+          ping: [staffPing(deal)],
         });
         return logLine(`🚨 Deal #${deal.n} frozen by <@${user.id}> (<#${deal.channelId}>).`);
       }
@@ -1933,12 +2180,12 @@ const middleman = (() => {
       deal.state = "payout_pending";
       saveStore();
       await reply(interaction, T("✅ Sent to staff. They pay you and mark the deal as done.", "✅ Envoyé au staff. Il te paie puis marque le deal comme terminé."));
-      await advance(deal, { summary: T("🏦  **PayPal email received**", "🏦  **Email PayPal reçu**"), ping: [staffPing(), deal.senderId] });
+      await advance(deal, { summary: T("🏦  **PayPal email received**", "🏦  **Email PayPal reçu**"), ping: [staffPing(deal), deal.senderId] });
       return logLine(`🏦 Deal #${deal.n}: pay ${fmtFiat(deal.amountCents, deal.currency)} to ${value} (<#${deal.channelId}>).`);
     }
 
     if (isPaypal(deal) && kind === "payout_sent") {
-      if (!isStaff(interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
+      if (!staffFor(deal, interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
       if (deal.state !== "payout_pending") return reply(interaction, T("❌ This is not possible in the current state of the deal.", "❌ Impossible dans l'état actuel du deal."));
       deal.resultNote = value;
       deal.state = "done";
@@ -1949,7 +2196,7 @@ const middleman = (() => {
     }
 
     if (isPaypal(deal) && kind === "refund_pp") {
-      if (!isStaff(interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
+      if (!staffFor(deal, interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
       if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, T("❌ Nothing to refund.", "❌ Rien à rembourser."));
       deal.resultNote = value;
       deal.state = "refunded";
@@ -1962,7 +2209,7 @@ const middleman = (() => {
 
     // payout / refund: both send the whole balance of the deal address
     const isRefund = kind === "refund";
-    if (isRefund ? !isStaff(interaction.member) : user.id !== deal.receiverId) return reply(interaction, T("❌ Not allowed.", "❌ Non autorisé."));
+    if (isRefund ? !staffFor(deal, interaction.member) : user.id !== deal.receiverId) return reply(interaction, T("❌ Not allowed.", "❌ Non autorisé."));
     if (!isValidLtcAddress(value)) return reply(interaction, T("❌ That is not a valid Litecoin address.", "❌ Ce n'est pas une adresse Litecoin valide."));
     if (value === deal.address) return reply(interaction, T("❌ You cannot send the funds back to the deposit address.", "❌ Tu ne peux pas renvoyer les fonds vers l'adresse de dépôt."));
 
@@ -2031,6 +2278,19 @@ const middleman = (() => {
       }
       return true;
     }
+    const isTiersCommand = Boolean(interaction.isChatInputCommand?.()) && interaction.commandName === "tiers";
+    if (isTiersCommand || (typeof id === "string" && id.startsWith("tr:"))) {
+      try {
+        if (!enabled) await reply(interaction, "❌ The middleman is not configured yet (MM_SEED is missing).");
+        else await handleTiersAdmin(interaction);
+      } catch (error) {
+        console.error("⚠️ Amount ranges error:", error?.message || error);
+        const message = "❌ Something went wrong. Check the bot console.";
+        if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, flags: ephemeral }).catch(() => {});
+        else await interaction.reply({ content: message, flags: ephemeral }).catch(() => {});
+      }
+      return true;
+    }
     if (typeof id !== "string" || !id.startsWith("mm:")) return false;
 
     // the language of the ticket also tells how to answer when the deal itself is gone
@@ -2093,6 +2353,8 @@ const middleman = (() => {
       saveStore();
     }
 
+    ensureTiers();
+
     enabled = true;
     timer = setInterval(() => watcherTick().catch((e) => console.error("Middleman watcher error:", e?.message || e)), cfg.pollMs);
     console.log(`💱 Middleman enabled (${cfg.confirmations} confirmation(s), polling every ${cfg.pollMs / 1000}s).`);
@@ -2143,7 +2405,10 @@ const middleman = (() => {
     console.log('Back it up: run "notepad .env", write the 12 words on paper, close it. Anyone with them controls the funds.\n');
   }
 
-  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions };
+  /* Is this member staff for the ticket of that channel? (general staff, or the role of its amount range) */
+  const isStaffFor = (channelId, member) => (store.deals[channelId] ? staffFor(store.deals[channelId], member) : isStaff(member));
+
+  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions, tierRole: tierRoleId, isStaffFor };
 })();
 
 /* =====================================================
@@ -2306,7 +2571,7 @@ async function askTier(interaction) {
     }
   }
   const options = middleman.tierOptions(lang);
-  if (options.length <= 1) return openTicket(interaction, method, lang, options.length ? 0 : -1);
+  if (options.length <= 1) return openTicket(interaction, method, lang, options.length ? options[0].value : "");
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`ticket_tier:${method}:${lang}`)
@@ -2324,14 +2589,14 @@ async function askTier(interaction) {
 /* Step 3: a range is picked in the menu. */
 async function openTicketFromMenu(interaction) {
   const { method, lang } = parseTicketId(interaction.customId);
-  return openTicket(interaction, method, lang, Number(interaction.values?.[0]));
+  return openTicket(interaction, method, lang, String(interaction.values?.[0] || ""));
 }
 
 /* Step 4: create the ticket, entirely in the chosen language. */
-async function openTicket(interaction, method, lang, tierIndex = -1) {
+async function openTicket(interaction, method, lang, tierId = "") {
   const T = (en, fr) => byLang(lang, en, fr);
   const options = middleman.tierOptions(lang);
-  const tier = options[tierIndex];
+  const tier = options.find((o) => o.value === tierId);
   if (options.length && !tier) return interaction.update({ content: T("❌ Invalid choice.", "❌ Choix invalide."), components: [] });
 
   await interaction.update({ content: T("⏳ Creating your ticket…", "⏳ Création de ton ticket…"), components: [] });
@@ -2358,6 +2623,10 @@ async function openTicket(interaction, method, lang, tierIndex = -1) {
     },
   ];
   if (STAFF_ROLE_ID && guild.roles.cache.has(STAFF_ROLE_ID)) overwrites.push({ id: STAFF_ROLE_ID, allow });
+  // the role of the amount range sees this ticket (and no other range's tickets)
+  const tierRoleId = tier ? middleman.tierRole(tier.value) : "";
+  if (tierRoleId && tierRoleId !== STAFF_ROLE_ID && guild.roles.cache.has(tierRoleId)) overwrites.push({ id: tierRoleId, allow });
+  const pingRoleId = tierRoleId && guild.roles.cache.has(tierRoleId) ? tierRoleId : STAFF_ROLE_ID;
 
   const parent = CATEGORY_ID ? await guild.channels.fetch(CATEGORY_ID).catch(() => null) : null;
   const safeName = user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
@@ -2388,13 +2657,13 @@ async function openTicket(interaction, method, lang, tierIndex = -1) {
     new ButtonBuilder().setCustomId("ticket_close").setLabel(T("Close ticket", "Fermer le ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
   );
   await channel.send({
-    content: STAFF_ROLE_ID ? `<@&${STAFF_ROLE_ID}> ${user}` : `${user}`,
+    content: pingRoleId ? `<@&${pingRoleId}> ${user}` : `${user}`,
     embeds: [welcome],
     components: [close],
-    allowedMentions: { roles: STAFF_ROLE_ID ? [STAFF_ROLE_ID] : [], users: [user.id] },
+    allowedMentions: { roles: pingRoleId ? [pingRoleId] : [], users: [user.id] },
   });
 
-  await middleman.openDeal(channel, user, method, lang, tierIndex).catch((error) => {
+  await middleman.openDeal(channel, user, method, lang, tier ? tier.value : "").catch((error) => {
     console.error("Middleman could not start:", error?.message || error);
     return channel.send(T("❌ The middleman could not start. Staff has been pinged.", "❌ Le middleman n'a pas pu démarrer. Le staff est prévenu.")).catch(() => {});
   });
@@ -2410,7 +2679,7 @@ async function closeTicket(interaction) {
     return interaction.reply({ content: T("❌ This is not a middleman ticket.", "❌ Ce n'est pas un ticket middleman."), flags: ephemeral });
   }
   const ownerId = channel.topic.split(":")[1];
-  if (interaction.user.id !== ownerId && !isStaff(interaction.member)) {
+  if (interaction.user.id !== ownerId && !isStaff(interaction.member) && !middleman.isStaffFor(channel.id, interaction.member)) {
     return interaction.reply({ content: T("❌ Only the ticket owner or staff can close this ticket.", "❌ Seul le propriétaire du ticket ou le staff peut fermer ce ticket."), flags: ephemeral });
   }
   if (middleman.blocksClose(channel.id)) {
@@ -2466,6 +2735,7 @@ client.on(Events.Invalidated, () => {
           )
           .toJSON(),
         new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").toJSON(),
+        new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").toJSON(),
       ],
     });
     await client.login(process.env.DISCORD_TOKEN);
