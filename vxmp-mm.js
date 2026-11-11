@@ -78,6 +78,7 @@ const middleman = (() => {
     ModalBuilder,
     PermissionFlagsBits,
     RoleSelectMenuBuilder,
+    UserSelectMenuBuilder,
     StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
@@ -1813,13 +1814,11 @@ const middleman = (() => {
       case "partner": {
         if (user.id !== deal.userA) return reply(interaction, T("❌ Only the person who opened the ticket can add the other person.", "❌ Seule la personne qui a ouvert le ticket peut ajouter l'autre personne."));
         if (deal.state !== "partner") return reply(interaction, T("❌ The other person was already added.", "❌ L'autre personne a déjà été ajoutée."));
-        return interaction.showModal(
-          new ModalBuilder().setCustomId("mm:m:partner").setTitle(T("Who do you trade with?", "Avec qui échanges-tu ?")).addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId("value").setLabel(T("@mention or user ID", "@mention ou ID de l'utilisateur")).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(60)
-            )
-          )
-        );
+        return interaction.reply({
+          flags: ephemeral,
+          content: T("👤 **Who do you trade with?** Pick the person in the list.", "👤 **Avec qui échanges-tu ?** Choisis la personne dans la liste."),
+          components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId("mm:pickpartner").setPlaceholder(T("Search a member", "Cherche un membre")).setMinValues(1).setMaxValues(1))],
+        });
       }
 
       case "role": {
@@ -2173,6 +2172,26 @@ const middleman = (() => {
     );
   }
 
+  /* The person is picked in a user menu (an @mention typed in a text box is not recognised by Discord). */
+  async function handlePartnerPick(interaction, deal) {
+    const T = (en, fr) => tr(deal, en, fr);
+    const user = interaction.user;
+    if (user.id !== deal.userA || deal.state !== "partner") return interaction.update({ content: T("❌ Not possible right now.", "❌ Impossible pour le moment."), components: [] });
+    const id = interaction.values?.[0];
+    if (!id) return;
+    if (id === user.id) return interaction.update({ content: T("❌ You cannot trade with yourself. Pick someone else.", "❌ Tu ne peux pas échanger avec toi-même. Choisis quelqu'un d'autre."), components: interaction.message?.components || [] });
+    const member = await interaction.guild.members.fetch(id).catch(() => null);
+    if (!member || member.user.bot) {
+      return interaction.update({ content: T("❌ I could not find that person in this server (bots are not allowed).", "❌ Je ne trouve pas cette personne sur ce serveur (les bots ne sont pas autorisés)."), components: interaction.message?.components || [] });
+    }
+    await interaction.channel.permissionOverwrites.edit(id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true });
+    deal.userB = id;
+    deal.state = "roles";
+    saveStore();
+    await interaction.update({ content: T(`✅ Added ${mention(id)}.`, `✅ ${mention(id)} ajouté.`), components: [] });
+    return advance(deal, { summary: T(`✅  **Partner added**  ·  ${mention(id)}`, `✅  **Partenaire ajouté**  ·  ${mention(id)}`), ping: [deal.userA, id] });
+  }
+
   async function handleModal(interaction, deal, kind, arg) {
     const T = (en, fr) => tr(deal, en, fr);
     const user = interaction.user;
@@ -2401,6 +2420,7 @@ const middleman = (() => {
 
       const parts = id.split(":"); // mm:action[:arg]  |  mm:m:kind
       if (interaction.isModalSubmit()) await handleModal(interaction, deal, parts[2], parts[3]);
+      else if (interaction.isUserSelectMenu?.() && parts[1] === "pickpartner") await handlePartnerPick(interaction, deal);
       else if (interaction.isButton()) await handleButton(interaction, deal, parts[1], parts[2], parts[3]);
     } catch (error) {
       console.error("⚠️ Middleman error:", error?.message || error);
