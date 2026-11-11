@@ -2832,6 +2832,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
+      autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       security: { antiSpam: false, antiLink: "off", antiRaid: false },
     },
   };
@@ -3080,6 +3081,19 @@ const tools = (() => {
       strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
       strOpt(cmd("8ball", t("Boule magique, ou sans question : un quiz à image qui rapporte de l'XP", "Magic 8-ball, or with no question: a picture quiz that wins XP")), "question", t("Ta question (vide = lancer un quiz)", "Your question (empty = start a quiz)"), false, 200),
+      D(
+        P.ManageGuild,
+        cmd("autoquiz", t("Un quiz automatique toutes les X minutes", "An automatic quiz every X minutes"))
+          .addSubcommand((s) =>
+            s
+              .setName("start")
+              .setDescription(t("Lancer le quiz automatique (30 min par défaut)", "Start the automatic quiz (30 min by default)"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+              .addIntegerOption((o) => o.setName("minutes").setDescription(t("Toutes les X minutes (5-1440)", "Every X minutes (5-1440)")).setMinValue(5).setMaxValue(1440))
+          )
+          .addSubcommand((s) => s.setName("stop").setDescription(t("Arrêter le quiz automatique", "Stop the automatic quiz")))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état", "See the status")))
+      ),
       cmd("quiz", t("Quiz à image : la première bonne réponse gagne de l'XP", "Picture quiz: the first right answer wins XP")).addStringOption((o) =>
         o.setName("type").setDescription(t("Type de question", "Question type")).addChoices({ name: t("Drapeau", "Flag"), value: "flag" }, { name: t("Calcul", "Math"), value: "math" }, { name: t("Mot mélangé", "Scrambled word"), value: "word" })
       ),
@@ -3126,7 +3140,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -3649,9 +3663,8 @@ const tools = (() => {
     return { kind: "math", question: t("🧮 Combien font ce calcul ?", "🧮 What is the result?"), image: gfx.quizCard([`${a} ${op === "*" ? "X" : op} ${b} = ?`], "QUIZ"), answers: [String(result)], reveal: String(result) };
   }
 
-  async function startQuiz(i, type) {
-    if (!canRead) return reply(i, no(t("Le quiz a besoin de lire les messages : active « Message Content Intent » dans le Developer Portal (onglet Bot), puis redémarre le bot.", "The quiz needs to read messages: switch on \"Message Content Intent\" in the Developer Portal (Bot tab), then restart the bot.")));
-    if (quizzes.has(i.channelId)) return reply(i, no(t("Un quiz est déjà en cours dans ce salon.", "A quiz is already running in this channel.")));
+  /* Builds the quiz message and registers the quiz of the channel (call armQuiz once it is posted). */
+  function buildQuiz(type, channel) {
     const q = makeQuiz(type);
     const xp = db.cfg.levels.quizXp;
     const e = embed(0x9b59b6).setTitle(q.question).setDescription(t(`Écris la réponse dans le salon ! **${QUIZ_SECONDS} secondes**, la première bonne réponse gagne **${xp} XP**.`, `Type the answer in the channel! **${QUIZ_SECONDS} seconds**, the first right answer wins **${xp} XP**.`));
@@ -3661,12 +3674,71 @@ const tools = (() => {
       e.setImage(card.url);
       body.files = [card.file];
     } else e.setImage(q.imageUrl);
-    quizzes.set(i.channelId, { ...q, xp, channel: i.channel });
-    await i.reply(body);
-    const running = quizzes.get(i.channelId);
-    running.timer = setTimeout(() => expireQuiz(i.channelId), QUIZ_SECONDS * 1000);
+    quizzes.set(channel.id, { ...q, xp, channel });
+    return body;
+  }
+  function armQuiz(channelId) {
+    const running = quizzes.get(channelId);
+    if (!running) return;
+    running.timer = setTimeout(() => expireQuiz(channelId), QUIZ_SECONDS * 1000);
     running.timer.unref?.();
   }
+
+  async function startQuiz(i, type) {
+    if (!canRead) return reply(i, no(t("Le quiz a besoin de lire les messages : active « Message Content Intent » dans le Developer Portal (onglet Bot), puis redémarre le bot.", "The quiz needs to read messages: switch on \"Message Content Intent\" in the Developer Portal (Bot tab), then restart the bot.")));
+    if (quizzes.has(i.channelId)) return reply(i, no(t("Un quiz est déjà en cours dans ce salon.", "A quiz is already running in this channel.")));
+    const body = buildQuiz(type, i.channel);
+    await i.reply(body);
+    armQuiz(i.channelId);
+  }
+
+  /* ---------- automatic quiz: one every N minutes (30 by default) in the chosen channel ---------- */
+  async function tickAutoQuiz() {
+    const cfg = db.cfg.autoquiz;
+    if (!cfg.on || !cfg.channelId || !canRead) return;
+    const now = Date.now();
+    if (!cfg.nextAt) {
+      cfg.nextAt = now + cfg.minutes * 60_000;
+      save();
+      return;
+    }
+    if (now < cfg.nextAt) return;
+    cfg.nextAt = now + cfg.minutes * 60_000;
+    save();
+    const channel = await Promise.resolve(client?.channels?.fetch?.(cfg.channelId)).catch(() => null);
+    if (!channel?.isTextBased?.() || quizzes.has(channel.id)) return;
+    const body = buildQuiz("random", channel);
+    try {
+      await channel.send(body);
+    } catch (error) {
+      quizzes.delete(channel.id);
+      console.error("⚠️ Auto quiz could not be posted:", error?.message || error);
+      return;
+    }
+    armQuiz(channel.id);
+  }
+  H.autoquiz = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const cfg = db.cfg.autoquiz;
+    const sub = i.options.getSubcommand();
+    if (sub === "start") {
+      if (!canRead) return reply(i, no(t("Le quiz a besoin de lire les messages : active « Message Content Intent » dans le Developer Portal (onglet Bot), puis redémarre le bot.", "The quiz needs to read messages: switch on \"Message Content Intent\" in the Developer Portal (Bot tab), then restart the bot.")));
+      const channel = i.options.getChannel("salon");
+      cfg.channelId = channel?.id || i.channelId;
+      cfg.minutes = i.options.getInteger("minutes") || 30;
+      cfg.on = true;
+      cfg.nextAt = Date.now(); // the first one comes within the minute
+      save();
+      return reply(i, ok(t(`Un quiz sera lancé toutes les **${cfg.minutes} minutes** dans <#${cfg.channelId}>. Le premier arrive dans moins d'une minute.`, `A quiz will start every **${cfg.minutes} minutes** in <#${cfg.channelId}>. The first one comes within a minute.`)));
+    }
+    if (sub === "stop") {
+      cfg.on = false;
+      cfg.nextAt = 0;
+      save();
+      return reply(i, ok(t("Quiz automatique arrêté.", "Automatic quiz stopped.")));
+    }
+    return reply(i, cfg.on ? t(`✅ Un quiz toutes les ${cfg.minutes} min dans <#${cfg.channelId}>. Prochain <t:${Math.floor((cfg.nextAt || Date.now()) / 1000)}:R>.`, `✅ A quiz every ${cfg.minutes} min in <#${cfg.channelId}>. Next one <t:${Math.floor((cfg.nextAt || Date.now()) / 1000)}:R>.`) : t("❌ Le quiz automatique est arrêté. Lance-le avec `/autoquiz start`.", "❌ The automatic quiz is off. Start it with `/autoquiz start`."));
+  };
   H.quiz = (i) => startQuiz(i, i.options.getString("type") || "random");
 
   async function expireQuiz(channelId) {
@@ -3845,6 +3917,9 @@ const tools = (() => {
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
     if (made.levels) db.cfg.levels.channelId = made.levels.id;
     if (made.suggestions) db.cfg.suggest.channelId = made.suggestions.id;
+    if (made.quiz) {
+      Object.assign(db.cfg.autoquiz, { on: true, channelId: made.quiz.id, minutes: db.cfg.autoquiz.minutes || 30, nextAt: Date.now() + 60_000 });
+    }
     if (made.rules) {
       await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
     }
@@ -3913,6 +3988,7 @@ const tools = (() => {
     if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
     if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
+    if (ids.has(db.cfg.autoquiz.channelId)) Object.assign(db.cfg.autoquiz, { on: false, channelId: "", nextAt: 0 });
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
     db.setup.items = [];
     save(true);
@@ -3926,7 +4002,7 @@ const tools = (() => {
         embed()
           .setTitle(t("🧰 Commandes", "🧰 Commands"))
           .addFields(
-            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp` `/quiz`" },
+            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp` `/quiz` `/autoquiz`" },
             { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear`" },
             { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
             { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
@@ -4049,7 +4125,10 @@ const tools = (() => {
     client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
     client.on(Events.GuildBanAdd, (b) => log(b.guild, `🔨 **Ban** ${b.user.username} (${b.user.id})`, 0xed4245));
     if (tickTimer) clearInterval(tickTimer);
-    tickTimer = setInterval(() => tickGiveaways().catch(() => {}), 30_000);
+    tickTimer = setInterval(() => {
+      tickGiveaways().catch(() => {});
+      tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
+    }, 30_000);
     tickTimer.unref?.();
     if (!exitHooked) {
       exitHooked = true;
@@ -4059,7 +4138,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
