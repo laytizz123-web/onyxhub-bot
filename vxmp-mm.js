@@ -249,7 +249,8 @@ const middleman = (() => {
     if (parsed.kind === "LTC") {
       const sat = ltcToSat(parsed.value);
       if (!sat) return { error: "Invalid amount. Use at most 8 decimals, for example `0.25`." };
-      return { sat, quote: null };
+      const prices = await getLtcPrice().catch(() => null);
+      return { sat, quote: prices ? { fiat: (sat / SAT_PER_LTC) * prices.usd, currency: "USD", price: prices.usd, indicative: true } : null };
     }
 
     const fiat = Number(parsed.value);
@@ -259,7 +260,11 @@ const middleman = (() => {
     return { sat: Math.round((fiat / price) * SAT_PER_LTC), quote: { fiat, currency: parsed.kind, price } };
   }
 
-  const quoteText = (q) => (q ? `≈ ${q.fiat} ${q.currency} (1 LTC = ${q.price} ${q.currency}, rate fixed now)` : "");
+  const fmtMoney = (n) => (n >= 1 ? n.toFixed(2) : n >= 0.0001 ? Number(n.toFixed(4)).toString() : Number(n.toPrecision(2)).toString());
+  const quoteText = (q) =>
+    !q ? "" : q.indicative
+      ? `≈ ${fmtMoney(q.fiat)} ${q.currency} (1 LTC = ${q.price} ${q.currency})`
+      : `≈ ${q.fiat} ${q.currency} (1 LTC = ${q.price} ${q.currency}, rate fixed now)`;
 
   async function getTipHeight() {
     const height = parseInt(await api("/blocks/tip/height"), 10);
@@ -432,7 +437,7 @@ const middleman = (() => {
       embed.setDescription("Each of you picks a role. The **sender** pays the LTC, the **receiver** gets it once the deal is done.");
     } else if (deal.state === "awaiting_payment" || deal.state === "confirming") {
       embed.setColor(deal.frozen ? COLORS.bad : COLORS.wait).addFields(
-        { name: "Send exactly", value: `\`${satToLtc(deal.amountSat)}\` LTC`, inline: true },
+        { name: "Send exactly", value: `\`${satToLtc(deal.amountSat)}\` LTC${deal.quote ? `\n${quoteText(deal.quote)}` : ""}`, inline: true },
         { name: "To this address (only for this deal)", value: `\`${deal.address}\`` },
         {
           name: "Progress",
