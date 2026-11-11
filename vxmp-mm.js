@@ -448,7 +448,15 @@ const middleman = (() => {
 
   /* ---------- language: every ticket is entirely in English or in French ---------- */
   const isFr = (deal) => deal?.lang === "fr";
-  const tr = (deal, en, fr) => (isFr(deal) ? fr : en);
+  /* PayPal deals never talk about Litecoin: the LTC wording of shared texts becomes payer / seller. */
+  const noLtc = (text, fr) =>
+    (fr
+      ? text.replace(/l'expéditeur des LTC/g, "le payeur").replace(/le destinataire des LTC/g, "le vendeur").replace(/destinataire des LTC/g, "vendeur").replace(/expéditeur des LTC/g, "payeur")
+      : text.replace(/the LTC sender/g, "the payer").replace(/the LTC receiver/g, "the seller").replace(/LTC sender/g, "payer").replace(/LTC receiver/g, "seller"));
+  const tr = (deal, en, fr) => {
+    const text = isFr(deal) ? fr : en;
+    return deal?.method === "paypal" && typeof text === "string" ? noLtc(text, isFr(deal)) : text;
+  };
   const frozenLine = (deal) => tr(deal, "🧊  **FROZEN**: a dispute is open, staff will decide.", "🧊  **GELÉ** : un litige est ouvert, le staff va décider.");
 
   const mention = (id) => (id ? `<@${id}>` : "—");
@@ -467,9 +475,10 @@ const middleman = (() => {
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   /* "5", "5.50", "5$", "$5", "5 usd", "5€", "5 eur"  ->  { cents } in the PayPal currency, or { error } */
-  function parseFiatCents(text, deal) {
+  function parseFiatCents(text, deal, chosen) {
+    const want = chosen === "EUR" || chosen === "USD" ? chosen : cfg.paypalCurrency;
     let raw = String(text || "").trim().toLowerCase().replace(",", ".").replace(/\s+/g, "");
-    let currency = cfg.paypalCurrency;
+    let currency = want;
     if (/\$|usd|dollars?/.test(raw)) {
       currency = "USD";
       raw = raw.replace(/\$|usd|dollars?/g, "");
@@ -477,14 +486,14 @@ const middleman = (() => {
       currency = "EUR";
       raw = raw.replace(/€|eur|euros?/g, "");
     }
-    const example = `\`5${CUR[cfg.paypalCurrency]}\``;
+    const example = `\`5${CUR[want]}\``;
     if (!/^\d+(\.\d{1,2})?$/.test(raw)) return { error: tr(deal, `Invalid amount. Example: ${example}.`, `Montant invalide. Exemple : ${example}.`) };
-    if (currency !== cfg.paypalCurrency) {
-      return { error: tr(deal, `This server takes PayPal in ${cfg.paypalCurrency}. Type for example ${example}.`, `Ce serveur accepte PayPal en ${cfg.paypalCurrency}. Écris par exemple ${example}.`) };
+    if (currency !== want) {
+      return { error: tr(deal, `You chose ${want}. Type for example ${example}, or press the amount button again to choose the other currency.`, `Tu as choisi ${want}. Écris par exemple ${example}, ou rappuie sur le bouton du montant pour choisir l'autre devise.`) };
     }
     const cents = Math.round(Number(raw) * 100);
     if (!(cents > 0) || cents > 100000000) return { error: tr(deal, "Invalid amount.", "Montant invalide.") };
-    return { cents };
+    return { cents, currency };
   }
 
   const amountText = (deal) =>
@@ -571,7 +580,7 @@ const middleman = (() => {
       case "amount":
         return pp
           ? block(T("💰  Set the amount", "💰  Fixe le montant"), [
-              T(`${sender} type it in ${cfg.paypalCurrency === "EUR" ? "euros" : "dollars"}, for example \`5${CUR[cfg.paypalCurrency]}\`.`, `${sender} écris-le en ${cfg.paypalCurrency === "EUR" ? "euros" : "dollars"}, par exemple \`5${CUR[cfg.paypalCurrency]}\`.`),
+              T(`${sender} press the button, **choose $ or €**, then type the amount.`, `${sender} appuie sur le bouton, **choisis $ ou €**, puis écris le montant.`),
             ])
           : block(T("💰  Set the amount", "💰  Fixe le montant"), [
               T(`${sender} type it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).`, `${sender} écris-le en argent (\`5$\`, \`5€\`) ou en LTC (\`0.25 ltc\`).`),
@@ -1036,19 +1045,19 @@ const middleman = (() => {
   }
 
   /* Validates an amount typed by the sender, stores it and posts the Confirm / Decline card. */
-  async function setDealAmount(deal, text) {
+  async function setDealAmount(deal, text, chosenCurrency) {
     const T = (en, fr) => tr(deal, en, fr);
     if (!["amount", "amount_confirm"].includes(deal.state)) return { error: T("The amount can no longer be changed.", "Le montant ne peut plus être modifié.") };
 
     if (isPaypal(deal)) {
-      const parsed = parseFiatCents(text, deal);
+      const parsed = parseFiatCents(text, deal, chosenCurrency);
       if (parsed.error) return { error: parsed.error };
-      if (parsed.cents < cfg.paypalMinCents) return { error: T(`Minimum deal: ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`, `Deal minimum : ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`) };
-      const tierError = await checkTier(deal, { cents: parsed.cents });
+      if (parsed.cents < cfg.paypalMinCents) return { error: T(`Minimum deal: ${fmtFiat(cfg.paypalMinCents, parsed.currency)}.`, `Deal minimum : ${fmtFiat(cfg.paypalMinCents, parsed.currency)}.`) };
+      const tierError = await checkTier(deal, { cents: parsed.cents, currency: parsed.currency });
       if (tierError) return { error: tierError };
       await closeAmountCard(deal, "superseded");
       deal.amountCents = parsed.cents;
-      deal.currency = cfg.paypalCurrency;
+      deal.currency = parsed.currency;
       deal.state = "amount_confirm";
       saveStore();
       await foldStepCard(deal, T(`💰  **Amount proposed**  ·  ${fmtFiat(deal.amountCents, deal.currency)}`, `💰  **Montant proposé**  ·  ${fmtFiat(deal.amountCents, deal.currency)}`));
@@ -1143,7 +1152,7 @@ const middleman = (() => {
       const p = await prices();
       return p ? amount * (from === "USD" ? p.eur / p.usd : p.usd / p.eur) : null;
     };
-    if (isPaypal(deal)) return convert(input.cents / 100, cfg.paypalCurrency);
+    if (isPaypal(deal)) return convert(input.cents / 100, input.currency || cfg.paypalCurrency);
     if (input.quote && !input.quote.indicative) return convert(input.quote.fiat, input.quote.currency); // typed in dollars or euros
     const p = await prices();                                                                        // typed in LTC
     return p ? (input.sat / SAT_PER_LTC) * (to === "EUR" ? p.eur : p.usd) : null;
@@ -1833,10 +1842,18 @@ const middleman = (() => {
       case "amount": {
         if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, T("❌ The amount can no longer be changed.", "❌ Le montant ne peut plus être modifié."));
         if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the LTC sender sets the amount.", "❌ Seul l'expéditeur des LTC fixe le montant."));
-        const modal = new ModalBuilder().setCustomId("mm:m:amount").setTitle(T("Amount to send", "Montant à envoyer"))
+        if (isPaypal(deal) && arg !== "USD" && arg !== "EUR") {
+          return interaction.reply({
+            flags: ephemeral,
+            content: T("💱 **Which currency?**", "💱 **Quelle devise ?**"),
+            components: [new ActionRowBuilder().addComponents(button("amount:USD", T("Dollars ($)", "Dollars ($)"), ButtonStyle.Primary, "💵"), button("amount:EUR", T("Euros (€)", "Euros (€)"), ButtonStyle.Primary, "💶"))],
+          });
+        }
+        const cur = isPaypal(deal) ? arg : "";
+        const modal = new ModalBuilder().setCustomId(isPaypal(deal) ? `mm:m:amount:${cur}` : "mm:m:amount").setTitle(T("Amount to send", "Montant à envoyer"))
           .addComponents(new ActionRowBuilder().addComponents(
             isPaypal(deal)
-              ? new TextInputBuilder().setCustomId("value").setLabel(T(`Amount in ${deal.currency || cfg.paypalCurrency}`, `Montant en ${deal.currency || cfg.paypalCurrency}`)).setPlaceholder(`5${CUR[cfg.paypalCurrency]}`).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
+              ? new TextInputBuilder().setCustomId("value").setLabel(T(`Amount in ${cur}`, `Montant en ${cur}`)).setPlaceholder(`5${CUR[cur]}`).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
               : new TextInputBuilder().setCustomId("value").setLabel(T("Amount: 5$ / 5€ / 0.25 LTC", "Montant : 5$ / 5€ / 0.25 LTC")).setPlaceholder(T("0.01   (I will ask: dollars or LTC?)", "0.01   (je demanderai : dollars ou LTC ?)")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
           ));
         return interaction.showModal(modal);
@@ -2156,7 +2173,7 @@ const middleman = (() => {
     );
   }
 
-  async function handleModal(interaction, deal, kind) {
+  async function handleModal(interaction, deal, kind, arg) {
     const T = (en, fr) => tr(deal, en, fr);
     const user = interaction.user;
     const value = interaction.fields.getTextInputValue("value").trim();
@@ -2212,7 +2229,7 @@ const middleman = (() => {
       }
 
       await interaction.deferUpdate(); // the price lookup can take a moment
-      const outcome = await withLock(deal.channelId, () => setDealAmount(deal, value));
+      const outcome = await withLock(deal.channelId, () => setDealAmount(deal, value, arg));
       if (outcome.error) return interaction.followUp({ content: `❌ ${outcome.error}`, flags: ephemeral });
       return;
     }
@@ -2383,7 +2400,7 @@ const middleman = (() => {
       L.lang = deal.lang === "fr" ? "fr" : "en";
 
       const parts = id.split(":"); // mm:action[:arg]  |  mm:m:kind
-      if (interaction.isModalSubmit()) await handleModal(interaction, deal, parts[2]);
+      if (interaction.isModalSubmit()) await handleModal(interaction, deal, parts[2], parts[3]);
       else if (interaction.isButton()) await handleButton(interaction, deal, parts[1], parts[2], parts[3]);
     } catch (error) {
       console.error("⚠️ Middleman error:", error?.message || error);
