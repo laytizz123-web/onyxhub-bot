@@ -5,8 +5,8 @@
   ---------------------------------------
   Node 18+ / discord.js v14 / bitcoinjs-lib v6.
 
-  Flow (everything happens in a private ticket channel):
-    1. /middleman start user:@partner     -> private channel with both people + staff
+  Flow (everything happens inside a ticket opened with the "Middleman" button of the ticket panel):
+    1. The person who opened the ticket adds the person he trades with (@mention or ID)
     2. Each person picks a role: LTC sender or LTC receiver
     3. The sender enters the amount, the receiver confirms it
     4. The bot gives a deposit address (one per deal, derived from MM_SEED)
@@ -40,12 +40,10 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
   EmbedBuilder,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
-  SlashCommandBuilder,
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
@@ -263,6 +261,7 @@ const COLORS = { info: 0x5865f2, wait: 0xfaa61a, ok: 0x2ecc71, bad: 0xed4245, gr
 const ephemeral = MessageFlags.Ephemeral;
 
 const STATE_TEXT = {
+  partner: "Add the person you trade with",
   roles: "Both people choose a role",
   amount: "The sender enters the amount",
   amount_confirm: "The receiver confirms the amount",
@@ -308,7 +307,9 @@ function dealEmbed(deal) {
       { name: "Status", value: `${deal.frozen ? "🧊 **FROZEN (dispute)** — " : ""}${STATE_TEXT[deal.state] || deal.state}` }
     );
 
-  if (deal.state === "roles") {
+  if (deal.state === "partner") {
+    embed.setDescription("**Step 1.** Click the button and give the **@mention or ID** of the person you are trading with. They will be added to this ticket.");
+  } else if (deal.state === "roles") {
     embed.setDescription("Each of you picks a role. The **sender** pays the LTC, the **receiver** gets it once the deal is done.");
   } else if (deal.state === "awaiting_payment" || deal.state === "confirming") {
     embed.setColor(deal.frozen ? COLORS.bad : COLORS.wait).addFields(
@@ -341,12 +342,13 @@ function dealComponents(deal) {
   const s = deal.state;
   const main = [];
 
+  if (s === "partner") main.push(button("partner", "Add the other person", ButtonStyle.Primary, "➕"));
   if (s === "roles") main.push(button("role:sender", "I send the LTC", ButtonStyle.Primary, "📤"), button("role:receiver", "I receive the LTC", ButtonStyle.Success, "📥"));
   if (s === "amount") main.push(button("amount", "Set the amount", ButtonStyle.Primary, "💰"));
   if (s === "amount_confirm") main.push(button("confirm_amount", "Confirm the amount", ButtonStyle.Success, "✅"), button("amount", "Change amount", ButtonStyle.Secondary, "✏️"));
   if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
   if (s === "released") main.push(button("payout", "Enter my LTC address", ButtonStyle.Success, "🏦"));
-  if (["roles", "amount", "amount_confirm", "awaiting_payment"].includes(s)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
+  if (["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(s)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
   if (["awaiting_payment", "confirming", "funded", "released"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
   if (main.length) rows.push(new ActionRowBuilder().addComponents(main));
 
@@ -469,59 +471,24 @@ async function sweep(deal, toAddress) {
 
 /* ---------- interactions ---------- */
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("middleman")
-    .setDescription("Litecoin middleman (escrow).")
-    .addSubcommand((sub) =>
-      sub
-        .setName("start")
-        .setDescription("Open a private middleman deal with someone.")
-        .addUserOption((o) => o.setName("user").setDescription("The other person in the deal").setRequired(true))
-    ),
-];
-
-async function startDeal(interaction) {
-  const partner = interaction.options.getUser("user", true);
-  if (partner.bot || partner.id === interaction.user.id) {
-    return reply(interaction, "❌ Pick another real person for the deal.");
+/* Called by index.js right after a "middleman" ticket channel was created. */
+async function openDeal(channel, user) {
+  if (!enabled) {
+    await channel.send("❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.");
+    return false;
   }
-  const open = Object.values(store.deals).filter((d) => !FINAL.has(d.state) && (d.userA === interaction.user.id || d.userB === interaction.user.id));
-  if (open.length >= 3) return reply(interaction, "❌ You already have 3 open deals. Finish or cancel one first.");
-  await interaction.deferReply({ flags: ephemeral });
 
-  const guild = interaction.guild;
   const n = store.nextDeal++;
-  saveStore();
-
-  const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles];
-  const overwrites = [
-    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: interaction.user.id, allow },
-    { id: partner.id, allow },
-    { id: client.user.id, allow: [...allow, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.EmbedLinks] },
-  ];
-  for (const roleId of [options.staffRoleId, options.ownerRoleId]) {
-    if (roleId && guild.roles.cache.has(roleId)) overwrites.push({ id: roleId, allow });
-  }
-
-  const channel = await guild.channels.create({
-    name: `mm-${n}`,
-    type: ChannelType.GuildText,
-    parent: cfg.categoryId || undefined,
-    permissionOverwrites: overwrites,
-  });
-
   const deal = {
     n,
     channelId: channel.id,
     messageId: "",
-    userA: interaction.user.id,
-    userB: partner.id,
+    userA: user.id,
+    userB: null,
     senderId: null,
     receiverId: null,
     amountSat: 0,
-    state: "roles",
+    state: "partner",
     frozen: false,
     index: null,
     address: "",
@@ -533,15 +500,23 @@ async function startDeal(interaction) {
   store.deals[channel.id] = deal;
 
   const message = await channel.send({
-    content: `${mention(deal.userA)} ${mention(deal.userB)}`,
+    content: mention(deal.userA),
     ...render(deal),
-    allowedMentions: { users: [deal.userA, deal.userB] },
+    allowedMentions: { users: [deal.userA] },
   });
   deal.messageId = message.id;
   saveStore();
 
-  await logLine(`🆕 Deal #${n} opened by <@${deal.userA}> with <@${deal.userB}> (<#${channel.id}>).`);
-  return interaction.editReply(`✅ Deal opened: <#${channel.id}>`);
+  await logLine(`🆕 Middleman deal #${n} opened by <@${deal.userA}> (<#${channel.id}>).`);
+  return true;
+}
+
+/* True while a deal still holds (or may hold) funds: the ticket must not be closed then. */
+function blocksClose(channelId) {
+  const deal = store.deals[channelId];
+  if (!deal) return false;
+  if (["confirming", "funded", "released", "paying"].includes(deal.state)) return true;
+  return deal.state === "awaiting_payment" && deal.seenSat > 0;
 }
 
 async function handleButton(interaction, deal, action, arg) {
@@ -554,6 +529,18 @@ async function handleButton(interaction, deal, action, arg) {
   const frozenBlock = () => deal.frozen && (reply(interaction, "🧊 This deal is frozen. Wait for staff."), true);
 
   switch (action) {
+    case "partner": {
+      if (user.id !== deal.userA) return reply(interaction, "❌ Only the person who opened the ticket can add the other person.");
+      if (deal.state !== "partner") return reply(interaction, "❌ The other person was already added.");
+      return interaction.showModal(
+        new ModalBuilder().setCustomId("mm:m:partner").setTitle("Who do you trade with?").addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("value").setLabel("@mention or user ID").setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(60)
+          )
+        )
+      );
+    }
+
     case "role": {
       if (!participant) return reply(interaction, "❌ You are not part of this deal.");
       if (deal.state !== "roles") return reply(interaction, "❌ Roles are already set.");
@@ -657,7 +644,7 @@ async function handleButton(interaction, deal, action, arg) {
 
     case "cancel": {
       if (needParticipant()) return;
-      if (!["roles", "amount", "amount_confirm", "awaiting_payment"].includes(deal.state)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
+      if (!["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(deal.state)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
       deal.state = "cancelled";
       saveStore();
       await interaction.update(render(deal));
@@ -686,6 +673,24 @@ function addressModal(id, title, label) {
 async function handleModal(interaction, deal, kind) {
   const user = interaction.user;
   const value = interaction.fields.getTextInputValue("value").trim();
+
+  if (kind === "partner") {
+    if (user.id !== deal.userA || deal.state !== "partner") return reply(interaction, "❌ Not possible right now.");
+    const id = value.match(/\d{15,25}/)?.[0];
+    if (!id) return reply(interaction, "❌ Send an @mention or the numeric user ID.");
+    if (id === user.id) return reply(interaction, "❌ You cannot trade with yourself.");
+    const member = await interaction.guild.members.fetch(id).catch(() => null);
+    if (!member || member.user.bot) return reply(interaction, "❌ I could not find that person in this server (bots are not allowed).");
+    await interaction.channel.permissionOverwrites.edit(id, {
+      ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true,
+    });
+    deal.userB = id;
+    deal.state = "roles";
+    saveStore();
+    await interaction.deferUpdate();
+    await refreshMain(deal);
+    return say(deal, `➕ ${mention(id)} was added to the ticket by ${mention(user.id)}.\n${mention(deal.userA)} ${mention(id)}: each of you picks a role with the buttons above.`);
+  }
 
   if (kind === "amount") {
     if (user.id !== deal.senderId || !["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ Not possible right now.");
@@ -752,23 +757,12 @@ async function handleModal(interaction, deal, kind) {
 
 /* Returns true when the interaction belongs to the middleman, so index.js stops there. */
 async function handleInteraction(interaction) {
-  const isCommand = interaction.isChatInputCommand?.() && interaction.commandName === "middleman";
   const id = interaction.customId;
-  const isOurs = isCommand || (typeof id === "string" && id.startsWith("mm:"));
-  if (!isOurs) return false;
+  if (typeof id !== "string" || !id.startsWith("mm:")) return false;
 
   try {
     if (!enabled) {
       await reply(interaction, "❌ The middleman is not configured yet (MM_SEED is missing).");
-      return true;
-    }
-
-    if (isCommand) {
-      if (!interaction.guild) {
-        await reply(interaction, "❌ Use this command in the server.");
-        return true;
-      }
-      await startDeal(interaction);
       return true;
     }
 
@@ -821,8 +815,9 @@ function init(discordClient, opts = {}) {
 }
 
 module.exports = {
-  commands,
   init,
+  openDeal,
+  blocksClose,
   handleInteraction,
   // exported for tests
   _test: { ltcToSat, satToLtc, initWallet, addressOf, isValidLtcAddress, buildSweepTx, LITECOIN, cfg, watcherTick, getStore: () => store },
