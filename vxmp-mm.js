@@ -394,7 +394,7 @@ const middleman = (() => {
     const staff = [];
     if (deal.frozen) staff.push(button("unfreeze", "Unfreeze (staff)", ButtonStyle.Secondary, "🧊"));
     if (s === "funded") staff.push(button("force_release", "Force release (staff)", ButtonStyle.Primary, "⚖️"));
-    if (s === "funded" || s === "released") staff.push(button("refund", "Refund sender (staff)", ButtonStyle.Danger, "↩️"));
+    if (s === "confirming" || s === "funded" || s === "released") staff.push(button("refund", "Refund sender (staff)", ButtonStyle.Danger, "↩️"));
     if (FINAL.has(s)) staff.push(button("close", "Close channel (staff)", ButtonStyle.Secondary, "🗑️"));
     if (staff.length) rows.push(new ActionRowBuilder().addComponents(staff));
     return rows;
@@ -685,7 +685,7 @@ const middleman = (() => {
 
       case "refund": {
         if (needStaff()) return;
-        if (!["funded", "released"].includes(deal.state)) return reply(interaction, "❌ Nothing to refund.");
+        if (!["confirming", "funded", "released"].includes(deal.state)) return reply(interaction, "❌ Nothing to refund.");
         return interaction.showModal(addressModal("mm:m:refund", "Refund address of the sender", "Sender's Litecoin address"));
       }
 
@@ -761,7 +761,7 @@ const middleman = (() => {
     await interaction.deferReply({ flags: ephemeral });
 
     const result = await withLock(deal.channelId, async () => {
-      const allowed = isRefund ? ["funded", "released"] : ["released"];
+      const allowed = isRefund ? ["confirming", "funded", "released"] : ["released"];
       if (!allowed.includes(deal.state) || (!isRefund && deal.frozen)) return { error: "This is not possible in the current state of the deal." };
       const previous = deal.state;
       deal.state = "paying"; // saved first so a restart never pays twice
