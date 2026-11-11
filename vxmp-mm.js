@@ -461,24 +461,24 @@ const middleman = (() => {
       case "roles": return block("🎭  Pick your roles", ["📤 The **sender** pays the LTC.", "📥 The **receiver** gets it when the deal is done."]);
       case "amount": return block("💰  Set the amount", [`${sender} type it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).`, "With a plain number, I ask which one you mean."]);
       case "amount_confirm": return block("🤝  Waiting for the receiver", [`${receiver} accept or decline on the **amount card** below.`, "🔒 Once confirmed, the LTC figure is locked."]);
-      case "awaiting_payment": return block("💳  Waiting for the payment", [`${sender} send the exact amount below.`, "The bot spots it by itself, nothing to click."]);
+      case "awaiting_payment": return block("💳  Waiting for the payment", [`${sender} send the exact amount shown in the **payment card** below.`, "The bot spots it by itself, nothing to click."]);
       case "confirming": return block("⏳  Payment spotted", ["The network is confirming it.", "This card updates by itself."]);
       case "funded": return block("🔒  Funds secured", [`📥 ${receiver} deliver what was agreed.`, `📤 ${sender} click **Release** only once you really received it.`]);
       case "released": return block("🔓  Funds released", [`📥 ${receiver} click **Enter my LTC address** to get paid.`]);
       case "paying": return block("📤  Sending the funds…");
       case "done": return block("🎉  Deal complete", ["Thank you both 💜"]);
       case "refunded": return block("↩️  Refunded", ["The funds went back to the sender."]);
-      case "cancelled": return block("✖️  Cancelled", ["Nothing was paid."]);
+      case "cancelled": return block("✖️  Cancelled", deal.address ? ["Do **not** send any LTC to the deposit address anymore."] : ["Nothing was paid."]);
       default: return "";
     }
   }
 
-  /* The deal card is several panels (embeds) in one message, so one edit refreshes them all:
-       1. header   : progress + what to do now
-       2. details  : sender, receiver, amount
-       3. payment  : exact amount, address, QR      (while waiting for the payment)
-       4. progress : confirmations, last check      (while waiting for the payment)
-       5. result   : payout or refund transaction   (when finished)            */
+  /* A step card: one message per step, several panels (embeds) in it:
+       1. header  : progress + what to do now
+       2. details : sender, receiver, amount (from the roles step on)
+       3. result  : payout or refund transaction (when finished)
+     Each new step posts a new card; the previous one folds into one line (see advance()).
+     The payment (address, QR, live confirmations) is its own message, see paymentEmbed(). */
   function dealEmbeds(deal) {
     const panels = [];
     const color = deal.frozen ? COLORS.bad : STATE_COLOR[deal.state] || COLORS.info;
@@ -491,17 +491,18 @@ const middleman = (() => {
         .setDescription(
           [
             deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide." : null,
+            deal.notice || null,
             stepper(deal) || null,
             stateText(deal) || null,
           ].filter(Boolean).join("\n\u200b\n")
         )
     );
 
-    // 2. details
+    // 2. details (from the roles step on)
     const amountLine = deal.amountSat
       ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}`
       : "*not set yet*";
-    panels.push(
+    if (deal.state !== "partner") panels.push(
       new EmbedBuilder()
         .setColor(0x4f545c)
         .setTitle("📋  Deal details")
@@ -512,35 +513,7 @@ const middleman = (() => {
         )
     );
 
-    if (deal.state === "awaiting_payment" || deal.state === "confirming") {
-      const confirming = deal.state === "confirming";
-      const checked = deal.lastCheck ? `\n🔄 Last check <t:${unix(deal.lastCheck)}:R>` : "";
-
-      // 3. payment
-      const payment = new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle("💳  Payment")
-        .addFields(
-          { name: "Send exactly", value: `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`` },
-          { name: "To this address (this deal only)", value: `\`\`\`${deal.address}\`\`\`` }
-        );
-      if (cfg.qr && deal.address) payment.setThumbnail(qrUrl(deal));
-      panels.push(payment);
-
-      // 4. progress
-      panels.push(
-        new EmbedBuilder()
-          .setColor(confirming ? 0xf57c00 : 0xfaa61a)
-          .setTitle("⏱️  Progress")
-          .setDescription(
-            confirming
-              ? `${bar(deal.confirmations, cfg.confirmations)}  **${Math.min(deal.confirmations, cfg.confirmations)}/${cfg.confirmations}** confirmations\nSeen: **${satToLtc(deal.seenSat)} LTC**${checked}`
-              : `${bar(0, cfg.confirmations)}  waiting for the payment\nNeeds ${cfg.confirmations} confirmation(s) after sending (about ${Math.round(cfg.confirmations * 2.5)} min)${checked}`
-          )
-      );
-    }
-
-    // 5. result
+    // 3. result
     if (deal.payoutTxid || deal.refundTxid) {
       const refund = Boolean(deal.refundTxid);
       panels.push(
@@ -559,6 +532,83 @@ const middleman = (() => {
 
     panels[panels.length - 1].setFooter({ text: "VXMP MM  ·  funds are held by the bot until release" }).setTimestamp();
     return panels;
+  }
+
+  /* The payment card is a message of its own, edited in place while the payment goes through:
+     instructions -> payment spotted (confirmations 1/2, 2/2) -> payment confirmed. */
+  function paymentEmbed(deal) {
+    const need = cfg.confirmations;
+    const live = deal.state === "awaiting_payment" || deal.state === "confirming";
+    const embed = new EmbedBuilder().setTimestamp();
+
+    if (deal.state === "cancelled") {
+      return embed.setColor(COLORS.grey).setTitle("✖️  Payment cancelled").setDescription("The deal was cancelled. Do **not** send any LTC to this address anymore.");
+    }
+    if (deal.state === "refunded") {
+      return embed.setColor(COLORS.grey).setTitle("↩️  Payment refunded").setDescription("The funds went back to the sender.");
+    }
+
+    if (live) {
+      const confirming = deal.state === "confirming";
+      const checked = deal.lastCheck ? `🔄 Last check <t:${unix(deal.lastCheck)}:R>` : null;
+      embed
+        .setColor(confirming ? 0xf57c00 : 0xfaa61a)
+        .setTitle(confirming ? "⏳  Payment spotted" : "💳  Payment instructions")
+        .setDescription(
+          [
+            deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide.\n\u200b" : null,
+            `📤 ${mention(deal.senderId)} send exactly`,
+            `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``,
+            "to this address",
+            `\`\`\`${deal.address}\`\`\``,
+            "🔒 The amount is **locked**, it will not change even if the price moves.",
+            "\u200b",
+            "### ⏱️  Confirmations",
+            confirming
+              ? `${bar(deal.confirmations, need)}  **${Math.min(deal.confirmations, need)}/${need}**  ·  seen **${satToLtc(deal.seenSat)} LTC**`
+              : `${bar(0, need)}  waiting for the payment\nNeeds ${need} confirmation(s) after sending (about ${Math.round(need * 2.5)} min)`,
+            checked,
+          ].filter(Boolean).join("\n")
+        );
+      if (cfg.qr && deal.address) embed.setThumbnail(qrUrl(deal));
+      return embed;
+    }
+
+    // funded, and everything after it
+    const txs = (deal.paymentTxids || []).map(txLink).join("   ");
+    return embed
+      .setColor(COLORS.ok)
+      .setTitle("✅  Payment confirmed")
+      .setDescription(
+        [
+          `**${satToLtc(deal.receivedSat || deal.amountSat)} LTC** received and confirmed.`,
+          `${bar(need, need)}  **${need}/${need}** confirmations`,
+          txs ? `🔗 ${txs}` : null,
+          "\u200b",
+          "The bot holds the funds until the deal is done.",
+        ].filter(Boolean).join("\n")
+      );
+  }
+
+  const paymentComponents = (deal) => (deal.state === "awaiting_payment" || deal.state === "confirming" ? dealComponents(deal) : []);
+
+  async function postPaymentCard(deal) {
+    const channel = await getChannel(deal);
+    if (!channel) return;
+    const message = await channel
+      .send({ content: mention(deal.senderId), embeds: [paymentEmbed(deal)], components: paymentComponents(deal), allowedMentions: { users: [deal.senderId] } })
+      .catch(() => null);
+    deal.payMsgId = message?.id || "";
+    saveStore();
+  }
+
+  /* Edits the payment card in place (an edit does not ping, the short notices below do). */
+  async function refreshPaymentCard(deal) {
+    if (!deal.payMsgId || !["awaiting_payment", "confirming", "funded", "cancelled", "refunded"].includes(deal.state)) return;
+    deal.lastRefresh = Date.now();
+    const channel = await getChannel(deal);
+    const message = await channel?.messages.fetch(deal.payMsgId).catch(() => null);
+    await message?.edit({ embeds: [paymentEmbed(deal)], components: paymentComponents(deal) }).catch(() => {});
   }
 
   function dealComponents(deal) {
@@ -597,27 +647,64 @@ const middleman = (() => {
     return client.channels.fetch(deal.channelId).catch(() => null);
   }
 
-  /* Updates the deal card after a click; a click from the private staff panel only gets a short "done". */
-  async function ack(interaction, deal) {
-    if (interaction.message?.id === deal.messageId) return interaction.update(render(deal));
-    await interaction.update({ content: "✅ Done.", components: [] });
-    return refreshMain(deal);
+  /* Acknowledges a click on a deal card (or on the private staff panel) and refreshes the live cards. */
+  async function ack(interaction, deal, refresh = true) {
+    const onCard = interaction.message?.id && [deal.messageId, deal.payMsgId].includes(interaction.message.id);
+    if (onCard) await interaction.deferUpdate();
+    else await interaction.update({ content: "✅ Done.", components: [] });
+    if (refresh) await refreshMain(deal);
   }
 
+  /* Re-draws the active step card (if any) and the payment card (if any). */
   async function refreshMain(deal) {
     deal.lastRefresh = Date.now();
     const channel = await getChannel(deal);
     if (!channel) return;
-    try {
-      const message = await channel.messages.fetch(deal.messageId);
-      await message.edit(render(deal));
-    } catch {
-      const message = await channel.send(render(deal)).catch(() => null);
-      if (message) {
-        deal.messageId = message.id;
-        saveStore();
+    if (deal.messageId) {
+      try {
+        const message = await channel.messages.fetch(deal.messageId);
+        await message.edit(render(deal));
+      } catch {
+        const message = await channel.send(render(deal)).catch(() => null);
+        if (message) {
+          deal.messageId = message.id;
+          saveStore();
+        }
       }
     }
+    await refreshPaymentCard(deal).catch(() => {});
+  }
+
+  /* ---------- step cards: every step is a NEW card at the bottom, the previous one folds into one line ---------- */
+
+  const foldedEmbed = (text) => new EmbedBuilder().setColor(0x4f545c).setDescription(text);
+
+  /* Folds the active step card into a one-line summary (buttons removed). */
+  async function foldStepCard(deal, text) {
+    if (!deal.messageId) return;
+    const channel = await getChannel(deal);
+    const message = await channel?.messages.fetch(deal.messageId).catch(() => null);
+    await message?.edit({ content: "", embeds: [foldedEmbed(text)], components: [] }).catch(() => {});
+    deal.messageId = "";
+  }
+
+  /* Posts the card of the current state at the bottom of the ticket (pings make it a notification too). */
+  async function postStepCard(deal, ping = []) {
+    const channel = await getChannel(deal);
+    if (!channel) return;
+    const users = ping.filter((id) => /^\d{15,25}$/.test(String(id)));
+    const message = await channel
+      .send({ content: users.map((id) => mention(id)).join(" ") || undefined, ...render(deal), allowedMentions: { users } })
+      .catch(() => null);
+    deal.messageId = message?.id || "";
+    saveStore();
+  }
+
+  /* Next step: fold the previous card, then post the new one. */
+  async function advance(deal, { summary, ping = [], notice = "" } = {}) {
+    await foldStepCard(deal, summary || "✅  **Done**");
+    deal.notice = notice;
+    await postStepCard(deal, ping);
   }
 
   /* A short coloured card (with pings) posted under the main deal card. */
@@ -693,7 +780,7 @@ const middleman = (() => {
     deal.quote = result.quote;
     deal.state = "amount_confirm";
     saveStore();
-    await refreshMain(deal);
+    await foldStepCard(deal, `💰  **Amount proposed**  ·  ${satToLtc(deal.amountSat)} LTC`);
     await postAmountCard(deal);
     return {};
   }
@@ -714,6 +801,7 @@ const middleman = (() => {
     if (!utxos.length) return;
     const tip = await getTipHeight();
 
+    deal.paymentTxids = [...new Set(utxos.map((u) => u.txid))];
     const seenSat = utxos.reduce((sum, u) => sum + u.value, 0);
     const confirmedUtxos = utxos.filter((u) => confirmationsOf(u, tip) >= cfg.confirmations);
     const confirmedSat = confirmedUtxos.reduce((sum, u) => sum + u.value, 0);
@@ -727,13 +815,8 @@ const middleman = (() => {
       deal.state = "funded";
       deal.receivedSat = confirmedSat;
       saveStore();
-      await refreshMain(deal);
-      await notify(deal, {
-        title: "✅  Funds secured",
-        body: `**${satToLtc(confirmedSat)} LTC** received and confirmed.\nThe bot holds them until the deal is done.\n\n📥 ${mention(deal.receiverId)} deliver what was agreed.\n📤 ${mention(deal.senderId)} click **Release** once you got it.`,
-        color: COLORS.ok,
-        ping: [deal.receiverId, deal.senderId],
-      });
+      await refreshPaymentCard(deal);
+      await advance(deal, { ping: [deal.receiverId, deal.senderId] });
       await logLine(`💰 Deal #${deal.n} funded: ${satToLtc(confirmedSat)} LTC (<#${deal.channelId}>).`);
       return;
     }
@@ -744,7 +827,7 @@ const middleman = (() => {
       await refreshMain(deal);
       await notify(deal, {
         title: "👀  Payment spotted",
-        body: `**${satToLtc(seenSat)} LTC** seen on the deposit address.\nWaiting for **${cfg.confirmations}** confirmation(s), about ${Math.round(cfg.confirmations * 2.5)} min.\n\nThe deal card above shows the live progress.`,
+        body: `**${satToLtc(seenSat)} LTC** seen on the deposit address.\nThe confirmations are tracked live in the **payment card** above.`,
         color: 0xf57c00,
         ping: [deal.senderId, deal.receiverId],
       });
@@ -781,7 +864,7 @@ const middleman = (() => {
         );
         // refresh the card now and then so "Last check" stays alive (about once a minute)
         if (["awaiting_payment", "confirming"].includes(deal.state) && Date.now() - (deal.lastRefresh || 0) > 55000) {
-          await refreshMain(deal).catch(() => {});
+          await refreshPaymentCard(deal).catch(() => {});
         }
       }
     } finally {
@@ -887,9 +970,12 @@ const middleman = (() => {
         if (deal[`${arg}Id`] && deal[`${arg}Id`] !== user.id) return reply(interaction, `❌ The ${arg} role is already taken by the other person.`);
         if (deal[`${other}Id`] === user.id) deal[`${other}Id`] = null;
         deal[`${arg}Id`] = user.id;
-        if (deal.senderId && deal.receiverId) deal.state = "amount";
+        const ready = Boolean(deal.senderId && deal.receiverId);
+        if (ready) deal.state = "amount";
         saveStore();
-        return interaction.update(render(deal));
+        if (!ready) return interaction.update(render(deal)); // still choosing: this card updates in place
+        await interaction.deferUpdate();
+        return advance(deal, { summary: `✅  **Roles**  ·  📤 ${mention(deal.senderId)}  ·  📥 ${mention(deal.receiverId)}`, ping: [deal.senderId] });
       }
 
       case "amount": {
@@ -911,21 +997,14 @@ const middleman = (() => {
         }
         deal.state = "awaiting_payment";
         saveStore();
-        if (interaction.message?.id === deal.messageId) {
-          await interaction.update(render(deal)); // old cards still carry the button on the main message
+        if (deal.messageId && interaction.message?.id === deal.messageId) {
+          await interaction.deferUpdate(); // an old card carried the button: fold it
+          await foldStepCard(deal, "✅  **Amount confirmed**");
         } else {
           deal.amountMsgId = "";
           await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
-          await refreshMain(deal);
         }
-        return notify(deal, {
-          title: "💳  Payment instructions",
-          body: `📤 ${mention(deal.senderId)} send exactly\n\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`to this address\n\`\`\`${deal.address}\`\`\`🔒 The amount is **locked** now, it will not change even if the price moves.\nThe bot announces it here as soon as it sees the transaction.`,
-          color: COLORS.wait,
-          ping: [deal.senderId],
-          thumbnail: cfg.qr ? qrUrl(deal) : undefined,
-          components: [new ActionRowBuilder().addComponents(button("copy", "Copy details (mobile)", ButtonStyle.Secondary, "📋"))],
-        });
+        return postPaymentCard(deal);
       }
 
       case "release": {
@@ -970,14 +1049,7 @@ const middleman = (() => {
         deal.amountMsgId = "";
         saveStore();
         await interaction.update({ embeds: [amountCard(declined, "declined", user.id)], components: [] });
-        await refreshMain(deal);
-        return notify(deal, {
-          title: "🔁  New amount needed",
-          body: `${mention(user.id)} declined the amount.\n\n📤 ${mention(deal.senderId)} propose another one with the button below.`,
-          color: COLORS.wait,
-          ping: [deal.senderId],
-          components: [new ActionRowBuilder().addComponents(button("amount", "Set a new amount", ButtonStyle.Primary, "💰"))],
-        });
+        return advance(deal, { ping: [deal.senderId], notice: `❌  ${mention(user.id)} declined the previous amount.` });
       }
 
       case "release_no":
@@ -989,13 +1061,7 @@ const middleman = (() => {
         deal.state = "released";
         saveStore();
         await interaction.update({ content: "✅ Released.", components: [] });
-        await refreshMain(deal);
-        return notify(deal, {
-          title: "🔓  Funds released",
-          body: `${mention(deal.senderId)} confirmed the delivery.\n\n📥 ${mention(deal.receiverId)} click **Enter my LTC address** to get paid.`,
-          color: 0x1abc9c,
-          ping: [deal.receiverId],
-        });
+        return advance(deal, { summary: `✅  **Delivery confirmed**  ·  ${mention(deal.senderId)} released the funds`, ping: [deal.receiverId] });
       }
 
       case "payout": {
@@ -1010,7 +1076,7 @@ const middleman = (() => {
         if (deal.frozen) return reply(interaction, "Already frozen.");
         deal.frozen = true;
         saveStore();
-        await interaction.update(render(deal));
+        await ack(interaction, deal);
         await notify(deal, {
           title: "🚨  Staff called",
           body: `${mention(user.id)} called staff on deal #${deal.n}.\nThe deal is **frozen** until staff decides.`,
@@ -1041,13 +1107,8 @@ const middleman = (() => {
         deal.state = "released";
         deal.frozen = false;
         saveStore();
-        await ack(interaction, deal);
-        await notify(deal, {
-          title: "⚖️  Released by staff",
-          body: `Staff (${mention(user.id)}) released the funds.\n\n📥 ${mention(deal.receiverId)} click **Enter my LTC address**.`,
-          color: 0x1abc9c,
-          ping: [deal.receiverId],
-        });
+        await ack(interaction, deal, false);
+        await advance(deal, { summary: `⚖️  **Released by staff**  ·  ${mention(user.id)}`, ping: [deal.receiverId] });
         return logLine(`⚖️ Deal #${deal.n} force-released by <@${user.id}>.`);
       }
 
@@ -1063,12 +1124,9 @@ const middleman = (() => {
         await closeAmountCard(deal, "superseded");
         deal.state = "cancelled";
         saveStore();
-        await interaction.update(render(deal));
-        return notify(deal, {
-          title: "✖️  Deal cancelled",
-          body: `Cancelled by ${mention(user.id)}.\nDo **not** send any LTC to the deposit address anymore.`,
-          color: COLORS.grey,
-        });
+        await ack(interaction, deal, false);
+        await refreshPaymentCard(deal);
+        return advance(deal, { summary: `✖️  **Cancelled**  ·  by ${mention(user.id)}` });
       }
 
       case "close": {
@@ -1108,13 +1166,7 @@ const middleman = (() => {
       deal.state = "roles";
       saveStore();
       await interaction.deferUpdate();
-      await refreshMain(deal);
-      return notify(deal, {
-        title: "➕  Partner added",
-        body: `${mention(id)} joined the ticket (added by ${mention(user.id)}).\n\n📤📥 ${mention(deal.userA)} ${mention(id)} each of you picks a role with the buttons above.`,
-        color: COLORS.info,
-        ping: [id],
-      });
+      return advance(deal, { summary: `✅  **Partner added**  ·  ${mention(id)}`, ping: [deal.userA, id] });
     }
 
     if (kind === "amount") {
@@ -1190,10 +1242,13 @@ const middleman = (() => {
 
     const { sent } = result;
     await interaction.editReply("✅ Funds sent.");
-    await refreshMain(deal);
-    await notify(deal, isRefund
-      ? { title: "↩️  Refund sent", body: `**${satToLtc(sent.outValue)} LTC** went back to the sender.\n${txLink(sent.txid)}`, color: COLORS.grey, ping: [deal.senderId] }
-      : { title: "🎉  Deal complete", body: `${mention(deal.receiverId)} received **${satToLtc(sent.outValue)} LTC**.\nNetwork fee: ${satToLtc(sent.fee)} LTC\n${txLink(sent.txid)}\n\nThank you both 💜`, color: COLORS.ok, ping: [deal.receiverId, deal.senderId] });
+    await refreshPaymentCard(deal);
+    await advance(deal, {
+      summary: isRefund
+        ? `↩️  **Refunded by staff**  ·  ${satToLtc(sent.outValue)} LTC`
+        : `🏦  **Payout address received**  ·  ${satToLtc(sent.outValue)} LTC sent`,
+      ping: isRefund ? [deal.senderId] : [deal.receiverId, deal.senderId],
+    });
     return logLine(`${isRefund ? "↩️ Refund" : "✅ Payout"} deal #${deal.n}: ${satToLtc(sent.outValue)} LTC, tx ${sent.txid}`);
   }
 
