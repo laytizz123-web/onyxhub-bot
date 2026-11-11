@@ -431,10 +431,12 @@ const middleman = (() => {
     done: 0x2ecc71, refunded: 0x747f8d, cancelled: 0x747f8d,
   };
 
+  /* "▰▰▰▰▰▱  Step 5 of 6 · Delivery" */
   const stepper = (deal) => {
     const current = STEP_OF[deal.state];
     if (current === undefined) return "";
-    return STEPS.map((label, i) => (i < current ? `✅ ${label}` : i === current ? `🔵 **${label}**` : `⚪ ${label}`)).join("  ›  ");
+    if (current >= STEPS.length) return `${bar(STEPS.length, STEPS.length, STEPS.length)}  **Complete**`;
+    return `${bar(current + 1, STEPS.length, STEPS.length)}  Step ${current + 1} of ${STEPS.length}  ·  **${STEPS[current]}**`;
   };
 
   const bar = (done, total, width = 10) => {
@@ -449,22 +451,24 @@ const middleman = (() => {
       `litecoin:${deal.address}?amount=${(deal.amountSat / SAT_PER_LTC).toFixed(8)}`
     )}`;
 
+  /* What is going on and who has to do what, as a heading plus a quoted block. */
   function stateText(deal) {
     const sender = mention(deal.senderId);
     const receiver = mention(deal.receiverId);
+    const block = (title, lines = []) => [`### ${title}`, ...lines.map((l) => `> ${l}`)].join("\n");
     switch (deal.state) {
-      case "partner": return "**Add the person you trade with.**\nClick the button below and send their @mention or user ID.";
-      case "roles": return "**Pick your roles.**\n📤 The *sender* pays the LTC.   📥 The *receiver* gets it when the deal is done.";
-      case "amount": return `**${sender}: set the amount.**\nType it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).\nWith a plain number, I ask which one you mean.`;
-      case "amount_confirm": return `**${receiver}: accept or decline the amount.**\nUse the buttons on the **amount card** below. Once confirmed, the LTC figure is locked.`;
-      case "awaiting_payment": return `**${sender}: send the exact amount below** from a wallet you control.\nThe bot spots the payment by itself, nothing to click.`;
-      case "confirming": return "**Payment spotted!**\nThe network is confirming it, this card updates by itself.";
-      case "funded": return `**Funds secured.**\n📥 ${receiver}: deliver what was agreed.\n📤 ${sender}: click **Release** only once you really received it.`;
-      case "released": return `**Funds released.**\n📥 ${receiver}: click **Enter my LTC address** to get paid.`;
-      case "paying": return "**Sending the funds…**";
-      case "done": return "**Deal complete.** Thank you both 💜";
-      case "refunded": return "**Refunded to the sender.**";
-      case "cancelled": return "**Deal cancelled.**";
+      case "partner": return block("➕  Add your partner", ["Click the button below and send their **@mention or user ID**."]);
+      case "roles": return block("🎭  Pick your roles", ["📤 The **sender** pays the LTC.", "📥 The **receiver** gets it when the deal is done."]);
+      case "amount": return block("💰  Set the amount", [`${sender} type it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).`, "With a plain number, I ask which one you mean."]);
+      case "amount_confirm": return block("🤝  Waiting for the receiver", [`${receiver} accept or decline on the **amount card** below.`, "🔒 Once confirmed, the LTC figure is locked."]);
+      case "awaiting_payment": return block("💳  Waiting for the payment", [`${sender} send the exact amount below.`, "The bot spots it by itself, nothing to click."]);
+      case "confirming": return block("⏳  Payment spotted", ["The network is confirming it.", "This card updates by itself."]);
+      case "funded": return block("🔒  Funds secured", [`📥 ${receiver} deliver what was agreed.`, `📤 ${sender} click **Release** only once you really received it.`]);
+      case "released": return block("🔓  Funds released", [`📥 ${receiver} click **Enter my LTC address** to get paid.`]);
+      case "paying": return block("📤  Sending the funds…");
+      case "done": return block("🎉  Deal complete", ["Thank you both 💜"]);
+      case "refunded": return block("↩️  Refunded", ["The funds went back to the sender."]);
+      case "cancelled": return block("✖️  Cancelled", ["Nothing was paid."]);
       default: return "";
     }
   }
@@ -478,7 +482,13 @@ const middleman = (() => {
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle(`💱  Litecoin Middleman  ·  Deal #${deal.n}`)
-      .setDescription([deal.frozen ? "🧊 **FROZEN: a dispute is open, staff will decide.**\n" : "", stepper(deal), "", stateText(deal)].filter((x) => x !== "").join("\n"))
+      .setDescription(
+        [
+          deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide." : null,
+          stepper(deal) || null,
+          stateText(deal) || null,
+        ].filter(Boolean).join("\n\u200b\n")
+      )
       .addFields(
         { name: "📤  Sender", value: deal.senderId ? mention(deal.senderId) : "*waiting…*", inline: true },
         { name: "📥  Receiver", value: deal.receiverId ? mention(deal.receiverId) : "*waiting…*", inline: true },
@@ -522,21 +532,34 @@ const middleman = (() => {
     if (s === "awaiting_payment" || s === "confirming") main.push(button("copy", "Copy details", ButtonStyle.Secondary, "📋"));
     if (["partner", "roles", "amount", "amount_confirm", "awaiting_payment"].includes(s)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
     if (["awaiting_payment", "confirming", "funded", "released"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
-    if (main.length) rows.push(new ActionRowBuilder().addComponents(main));
 
-    const staff = [];
-    if (deal.frozen) staff.push(button("unfreeze", "Unfreeze (staff)", ButtonStyle.Secondary, "🧊"));
-    if (s === "funded") staff.push(button("force_release", "Force release (staff)", ButtonStyle.Primary, "⚖️"));
-    if (s === "confirming" || s === "funded" || s === "released") staff.push(button("refund", "Refund sender (staff)", ButtonStyle.Danger, "↩️"));
-    if (FINAL.has(s)) staff.push(button("close", "Close channel (staff)", ButtonStyle.Secondary, "🗑️"));
-    if (staff.length) rows.push(new ActionRowBuilder().addComponents(staff));
+    if (staffComponents(deal).length) main.push(button("staff", "Staff tools", ButtonStyle.Secondary, "🛠️"));
+    if (main.length) rows.push(new ActionRowBuilder().addComponents(main));
     return rows;
+  }
+
+  /* Buttons shown only inside the private "Staff tools" panel. */
+  function staffComponents(deal) {
+    const s = deal.state;
+    const staff = [];
+    if (deal.frozen) staff.push(button("unfreeze", "Unfreeze", ButtonStyle.Secondary, "🧊"));
+    if (s === "funded") staff.push(button("force_release", "Force release", ButtonStyle.Primary, "⚖️"));
+    if (s === "confirming" || s === "funded" || s === "released") staff.push(button("refund", "Refund sender", ButtonStyle.Danger, "↩️"));
+    if (FINAL.has(s)) staff.push(button("close", "Close channel", ButtonStyle.Secondary, "🗑️"));
+    return staff.length ? [new ActionRowBuilder().addComponents(staff)] : [];
   }
 
   const render = (deal) => ({ embeds: [dealEmbed(deal)], components: dealComponents(deal) });
 
   async function getChannel(deal) {
     return client.channels.fetch(deal.channelId).catch(() => null);
+  }
+
+  /* Updates the deal card after a click; a click from the private staff panel only gets a short "done". */
+  async function ack(interaction, deal) {
+    if (interaction.message?.id === deal.messageId) return interaction.update(render(deal));
+    await interaction.update({ content: "✅ Done.", components: [] });
+    return refreshMain(deal);
   }
 
   async function refreshMain(deal) {
@@ -955,11 +978,18 @@ const middleman = (() => {
         return logLine(`🚨 Deal #${deal.n} frozen by <@${user.id}> (<#${deal.channelId}>).`);
       }
 
+      case "staff": {
+        if (needStaff()) return;
+        const rows = staffComponents(deal);
+        if (!rows.length) return reply(interaction, "Nothing to do for staff right now.");
+        return interaction.reply({ content: `🛠️ **Staff tools** · deal #${deal.n}`, components: rows, flags: ephemeral });
+      }
+
       case "unfreeze": {
         if (needStaff()) return;
         deal.frozen = false;
         saveStore();
-        await interaction.update(render(deal));
+        await ack(interaction, deal);
         return notify(deal, { title: "🧊  Deal unfrozen", body: `Unfrozen by ${mention(user.id)}. The deal can continue.`, color: COLORS.info });
       }
 
@@ -969,7 +999,7 @@ const middleman = (() => {
         deal.state = "released";
         deal.frozen = false;
         saveStore();
-        await interaction.update(render(deal));
+        await ack(interaction, deal);
         await notify(deal, {
           title: "⚖️  Released by staff",
           body: `Staff (${mention(user.id)}) released the funds.\n\n📥 ${mention(deal.receiverId)} click **Enter my LTC address**.`,
