@@ -1,3 +1,2 @@
 node_modules/
-.envmiddleman.json
-middleman.json.tmp
+.env

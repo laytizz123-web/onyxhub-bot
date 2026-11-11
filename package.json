@@ -12,13 +12,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "bip32": "^4.0.0",
-    "bip39": "^3.1.2",
-    "bitcoinjs-lib": "^6.1.10",
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.5",
-    "ecpair": "^2.1.0",
-    "openai": "^7.30.0",
-    "tiny-secp256k1": "^2.2.5"
+    "openai": "^7.30.0"
   }
 }

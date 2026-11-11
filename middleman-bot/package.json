@@ -1,0 +1,21 @@
+{
+  "name": "ltc-middleman-bot",
+  "version": "1.0.0",
+  "description": "Discord ticket bot: Litecoin middleman (escrow)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "new-seed": "node middleman.js new-seed"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "bip32": "^4.0.0",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^6.1.7",
+    "discord.js": "^14.27.0",
+    "dotenv": "^18.0.5",
+    "tiny-secp256k1": "^2.2.4"
+  }
+}

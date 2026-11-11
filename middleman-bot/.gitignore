@@ -1,0 +1,4 @@
+node_modules/
+.env
+middleman.json
+middleman.json.tmp

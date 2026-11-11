@@ -1,5 +1,4 @@
 require("dotenv").config();
-const middleman = require("./middleman");
 
 const {
   Client,
@@ -358,7 +357,6 @@ function ticketPanelEmbed() {
         "- 🛒 **Purchase:** Get help with purchases and orders.",
         "- 🛠️ **Support:** Ask questions or get assistance.",
         "- 🤝 **Partnership:** Submit partnership requests.",
-        "- 💱 **Middleman:** Safe Litecoin (LTC) trades, the bot holds the funds until the deal is done.",
         "",
         "🤖 **AI Support System**",
         "Our AI-powered support system helps answer questions and provide assistance faster, making your experience smoother and easier.",
@@ -487,9 +485,7 @@ async function createTicket(interaction, type) {
       ? "purchase"
       : type === "support"
         ? "support"
-        : type === "middleman"
-          ? "middleman"
-          : "partnership";
+        : "partnership";
 
   const channelName = `${prefix}-${safeName}`.slice(0, 90);
 
@@ -528,21 +524,6 @@ async function createTicket(interaction, type) {
       "Please explain your problem clearly and provide screenshots, error messages, or other useful information when possible.",
       "",
       "A staff member will assist you as soon as possible.",
-    ].join("\n");
-  } else if (type === "middleman") {
-    title = "💱 Middleman Ticket";
-    description = [
-      `Hello ${user}, welcome to your middleman ticket!`,
-      "",
-      "Safe Litecoin (LTC) trade, step by step:",
-      "1. Add the person you trade with",
-      "2. One of you is the **LTC sender**, the other the **LTC receiver**",
-      "3. The sender enters the amount, the receiver confirms it",
-      "4. The sender pays the address given by the bot, the bot confirms the payment",
-      "5. The receiver gives what was agreed, then the sender clicks **Release**",
-      "6. The receiver gives his LTC address and the bot sends the funds",
-      "",
-      "A staff member can step in at any time with the **Call staff** button.",
     ].join("\n");
   } else {
     title = "🤝 Partnership Ticket";
@@ -588,13 +569,6 @@ async function createTicket(interaction, type) {
       users: [user.id],
     },
   });
-
-  if (type === "middleman") {
-    await middleman.openDeal(ticketChannel, user).catch((error) => {
-      console.error("Middleman could not start:", error?.message || error);
-      return ticketChannel.send("❌ The middleman could not start. Staff has been pinged.").catch(() => {});
-    });
-  }
 
   if (type === "partnership") {
     partnershipTickets.set(ticketChannel.id, {
@@ -2157,7 +2131,6 @@ async function checkGiveaways() {
 client.once(Events.ClientReady, () => {
   setInterval(() => checkGiveaways().catch((e) => console.error("Giveaway check error:", e?.message || e)), 15000);
   startAutoMessages();
-  middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: OWNER_ROLE_ID, logChannelId: LOG_CHANNEL_ID });
 });
 
 /* =====================================================
@@ -2433,8 +2406,7 @@ client.on(Events.MessageCreate, async (message) => {
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("ticket_purchase").setLabel("Purchase").setEmoji("🛒").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("ticket_support").setLabel("Support").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("ticket_partnership").setLabel("Partnership").setEmoji("🤝").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("ticket_middleman").setLabel("Middleman").setEmoji("💱").setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId("ticket_partnership").setLabel("Partnership").setEmoji("🤝").setStyle(ButtonStyle.Success)
       );
       return await message.channel.send({ embeds: [embed], components: [buttons] });
     }
@@ -2540,10 +2512,6 @@ client.on(Events.MessageCreate, async (message) => {
       if (command === "close") {
         if (!isStaff(message) && message.author.id !== ticketOwnerId) {
           return await privateReply(message, "❌ Only the ticket owner or staff can close this ticket.");
-        }
-
-        if (middleman.blocksClose(channel.id)) {
-          return await privateReply(message, "❌ The middleman deal in this ticket still holds funds. Finish it or refund it first.");
         }
 
         claimedTickets.delete(channel.id);
@@ -2752,9 +2720,6 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // Litecoin middleman: handles its own /middleman command, buttons and modals.
-    if (await middleman.handleInteraction(interaction)) return;
-
     /* =================================================
        SLASH COMMANDS
     ================================================= */
@@ -2791,12 +2756,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setCustomId("ticket_partnership")
             .setLabel("Partnership")
             .setEmoji("🤝")
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId("ticket_middleman")
-            .setLabel("Middleman")
-            .setEmoji("💱")
-            .setStyle(ButtonStyle.Secondary)
+            .setStyle(ButtonStyle.Success)
         );
 
         await interaction.channel.send({
@@ -3383,10 +3343,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return createTicket(interaction, "partnership");
     }
 
-    if (interaction.customId === "ticket_middleman") {
-      return createTicket(interaction, "middleman");
-    }
-
     /* -----------------------------------------------
        CLAIM TICKET
     ----------------------------------------------- */
@@ -3552,13 +3508,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({
           content:
             "❌ Only the ticket owner or staff can close this ticket.",
-          ephemeral: true,
-        });
-      }
-
-      if (middleman.blocksClose(channel.id)) {
-        return interaction.reply({
-          content: "❌ The middleman deal in this ticket still holds funds. Finish it or refund it first.",
           ephemeral: true,
         });
       }

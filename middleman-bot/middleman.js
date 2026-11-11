@@ -5,7 +5,7 @@
   ---------------------------------------
   Node 18+ / discord.js v14 / bitcoinjs-lib v6.
 
-  Flow (everything happens inside a ticket opened with the "Middleman" button of the ticket panel):
+  Flow (everything happens inside a ticket opened with the "Open a middleman ticket" button of the panel):
     1. The person who opened the ticket adds the person he trades with (@mention or ID)
     2. Each person picks a role: LTC sender or LTC receiver
     3. The sender enters the amount, the receiver confirms it
@@ -511,6 +511,14 @@ async function openDeal(channel, user) {
   return true;
 }
 
+/* Forget a finished deal when its ticket is closed. */
+function forget(channelId) {
+  if (store.deals[channelId] && !blocksClose(channelId)) {
+    delete store.deals[channelId];
+    saveStore();
+  }
+}
+
 /* True while a deal still holds (or may hold) funds: the ticket must not be closed then. */
 function blocksClose(channelId) {
   const deal = store.deals[channelId];
@@ -818,6 +826,7 @@ module.exports = {
   init,
   openDeal,
   blocksClose,
+  forget,
   handleInteraction,
   // exported for tests
   _test: { ltcToSat, satToLtc, initWallet, addressOf, isValidLtcAddress, buildSweepTx, LITECOIN, cfg, watcherTick, getStore: () => store },
