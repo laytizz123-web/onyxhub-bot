@@ -387,7 +387,7 @@ const middleman = (() => {
      STORAGE
   ===================================================== */
 
-  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1, tiers: [], nextTier: 1, tiersReady: false };
+  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1, tiers: [], nextTier: 1, tiersReady: false, access: [] };
 
   function loadStore() {
     try {
@@ -502,7 +502,19 @@ const middleman = (() => {
   }
 
   /* Staff of ONE deal: general staff / administrators, or the holder of the role of the deal's amount range. */
-  const staffFor = (deal, member) => isStaff(member) || Boolean(dealTierRole(deal) && member?.roles?.cache?.has(dealTierRole(deal)));
+  const ltcAccess = () => (store.access = Array.isArray(store.access) ? store.access : []);
+  /* LTC tickets are private: only administrators and the roles given with /access count as staff there.
+     PayPal tickets keep the general staff role and the role of the range. */
+  const staffFor = (deal, member) => {
+    if (deal && !isPaypal(deal)) {
+      return Boolean(
+        member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+          (options.ownerRoleId && member?.roles?.cache?.has(options.ownerRoleId)) ||
+          ltcAccess().some((id) => member?.roles?.cache?.has(id))
+      );
+    }
+    return isStaff(member) || Boolean(dealTierRole(deal) && member?.roles?.cache?.has(dealTierRole(deal)));
+  };
 
   function button(id, label, style = ButtonStyle.Secondary, emoji) {
     const b = new ButtonBuilder().setCustomId(`mm:${id}`).setLabel(label).setStyle(style);
@@ -888,7 +900,6 @@ const middleman = (() => {
     if (isPaypal(deal)) {
       if (s === "awaiting_payment") {
         staff.push(button("mark_paid", T("Payment received", "Paiement reçu"), ButtonStyle.Success, "✅"));
-        if (!deal.paidClaimed && pickPaypal(deal.ppId)) staff.push(button("switch_pp", T("Switch PayPal account", "Changer de compte PayPal"), ButtonStyle.Secondary, "🔁"));
       }
       if (s === "funded") staff.push(button("force_release", T("Force release", "Forcer la libération"), ButtonStyle.Primary, "⚖️"));
       if (s === "payout_pending") staff.push(button("payout_sent", T("Payout sent", "Versement envoyé"), ButtonStyle.Success, "🏦"));
@@ -1085,6 +1096,7 @@ const middleman = (() => {
 
   /* The role to ping: the role of the range of the deal when it has one, otherwise the general staff role. */
   const staffPing = (deal) => {
+    if (deal && !isPaypal(deal)) return ltcAccess().length ? ltcAccess().map((id) => `<@&${id}>`).join(" ") : "An administrator";
     const id = dealTierRole(deal) || options.staffRoleId;
     return id ? `<@&${id}>` : "Staff";
   };
@@ -1290,6 +1302,58 @@ const middleman = (() => {
     if (interaction.isFromMessage?.()) await interaction.update(view);
     else await interaction.reply({ ...view, flags: ephemeral });
     return logLine(`🎚️ Range ${kind === "add" ? "added" : "changed"}: **${tierLabel(tier)}** (by <@${interaction.user.id}>).`);
+  }
+
+  /* ---------- /access: which roles can see and handle the (private) Litecoin tickets ---------- */
+  const OPEN_PERMS = { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true };
+
+  function accessView(note = "") {
+    const list = ltcAccess();
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("🔐  Litecoin ticket access")
+      .setDescription(
+        [
+          "A Litecoin ticket is **private**: only the person who opened it and the person they add can see it.",
+          "Pick below the roles that may also see and handle **every** Litecoin ticket (for example your owners). Administrators always can.",
+          "",
+          list.length ? `**Roles with access:** ${list.map((id) => `<@&${id}>`).join(" ")}` : "**Roles with access:** none (only administrators)",
+          note,
+        ].filter((x) => x !== "").join("\n")
+      );
+    const menu = new RoleSelectMenuBuilder().setCustomId("ac:roles").setPlaceholder("Roles that can see every Litecoin ticket").setMinValues(0).setMaxValues(10);
+    if (list.length) menu.setDefaultRoles(list.slice(0, 10));
+    return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] };
+  }
+
+  async function syncAccess(oldIds, newIds) {
+    let touched = 0;
+    for (const deal of Object.values(store.deals)) {
+      if (isPaypal(deal) || FINAL.has(deal.state)) continue;
+      const channel = await client.channels.fetch(deal.channelId).catch(() => null);
+      if (!channel?.permissionOverwrites) continue;
+      try {
+        for (const id of oldIds) if (!newIds.includes(id) && id !== options.staffRoleId) await channel.permissionOverwrites.delete(id);
+        for (const id of newIds) await channel.permissionOverwrites.edit(id, OPEN_PERMS);
+        touched++;
+      } catch (error) {
+        console.error(`⚠️ Could not update the access of ticket #${deal.n}:`, error?.message || error);
+      }
+    }
+    return touched;
+  }
+
+  async function handleAccessAdmin(interaction) {
+    if (!isAdmin(interaction.member)) return reply(interaction, "❌ Only administrators can change who sees the Litecoin tickets.");
+    if (interaction.isChatInputCommand?.()) return interaction.reply({ ...accessView(), flags: ephemeral });
+    if (interaction.customId !== "ac:roles") return;
+    const old = [...ltcAccess()];
+    const next = [...new Set(interaction.values || [])].filter((id) => id !== interaction.guild?.id);
+    store.access = next;
+    saveStore();
+    const touched = await syncAccess(old, next);
+    await interaction.update(accessView(touched ? `✅ Saved. ${touched} open ticket(s) updated.` : "✅ Saved."));
+    return logLine(`🔐 Litecoin ticket access set to ${next.length ? next.map((id) => `<@&${id}>`).join(" ") : "administrators only"} (by <@${interaction.user.id}>).`);
   }
 
   async function handleTiersAdmin(interaction) {
@@ -1815,7 +1879,8 @@ const middleman = (() => {
           deal.index = store.nextIndex++;
           deal.address = addressOf(deal.index);
         }
-        deal.state = isPaypal(deal) ? "choose_pp" : "awaiting_payment";
+        if (isPaypal(deal)) assignPaypal(deal, pickPaypal() || ppList()[0]); // no choosing step: the least busy present account
+        deal.state = "awaiting_payment";
         saveStore();
         if (deal.messageId && interaction.message?.id === deal.messageId) {
           await interaction.deferUpdate(); // an old card carried the button: fold it
@@ -1823,11 +1888,6 @@ const middleman = (() => {
         } else {
           deal.amountMsgId = "";
           await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
-        }
-        if (isPaypal(deal)) {
-          // a staff member now picks which PayPal account receives the payment
-          const holders = [...new Set(ppList().filter((a) => !a.away).map((a) => a.holderId).filter(Boolean))];
-          return advance(deal, { ping: [staffPing(deal), ...holders] });
         }
         return postPaymentCard(deal);
       }
@@ -2278,6 +2338,19 @@ const middleman = (() => {
       }
       return true;
     }
+    const isAccessCommand = Boolean(interaction.isChatInputCommand?.()) && interaction.commandName === "access";
+    if (isAccessCommand || (typeof id === "string" && id.startsWith("ac:"))) {
+      try {
+        if (!enabled) await reply(interaction, "❌ The middleman is not configured yet (MM_SEED is missing).");
+        else await handleAccessAdmin(interaction);
+      } catch (error) {
+        console.error("⚠️ Access error:", error?.message || error);
+        const message = "❌ Something went wrong. Check the bot console.";
+        if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, flags: ephemeral }).catch(() => {});
+        else await interaction.reply({ content: message, flags: ephemeral }).catch(() => {});
+      }
+      return true;
+    }
     const isTiersCommand = Boolean(interaction.isChatInputCommand?.()) && interaction.commandName === "tiers";
     if (isTiersCommand || (typeof id === "string" && id.startsWith("tr:"))) {
       try {
@@ -2408,7 +2481,7 @@ const middleman = (() => {
   /* Is this member staff for the ticket of that channel? (general staff, or the role of its amount range) */
   const isStaffFor = (channelId, member) => (store.deals[channelId] ? staffFor(store.deals[channelId], member) : isStaff(member));
 
-  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions, tierRole: tierRoleId, isStaffFor };
+  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions, tierRole: tierRoleId, isStaffFor, accessRoles: ltcAccess };
 })();
 
 /* =====================================================
@@ -2477,8 +2550,8 @@ async function postPanel(interaction) {
       .addFields(
         { name: "1️⃣  Open a ticket", value: "Add the person you trade with.", inline: true },
         { name: "2️⃣  Agree", value: "Pick payer and seller, set the amount.", inline: true },
-        { name: "3️⃣  Staff picks a PayPal", value: "A staff member chooses the account that receives the payment.", inline: true },
-        { name: "4️⃣  Pay & check", value: "The payer sends it with the **reference**, staff verifies it.", inline: true },
+        { name: "3️⃣  Pay", value: "The payer sends it to the account shown, with the **reference**.", inline: true },
+        { name: "4️⃣  Staff checks", value: "Staff verifies the payment on PayPal.", inline: true },
         { name: "5️⃣  Deliver & release", value: "The seller delivers, the payer releases.", inline: true },
         { name: "6️⃣  Payout", value: "Staff sends the money to the seller.", inline: true }
       )
@@ -2622,11 +2695,17 @@ async function openTicket(interaction, method, lang, tierId = "") {
       allow: [...allow, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles],
     },
   ];
-  if (STAFF_ROLE_ID && guild.roles.cache.has(STAFF_ROLE_ID)) overwrites.push({ id: STAFF_ROLE_ID, allow });
-  // the role of the amount range sees this ticket (and no other range's tickets)
-  const tierRoleId = tier ? middleman.tierRole(tier.value) : "";
-  if (tierRoleId && tierRoleId !== STAFF_ROLE_ID && guild.roles.cache.has(tierRoleId)) overwrites.push({ id: tierRoleId, allow });
-  const pingRoleId = tierRoleId && guild.roles.cache.has(tierRoleId) ? tierRoleId : STAFF_ROLE_ID;
+  let pingRoleId = "";
+  if (method === "paypal") {
+    if (STAFF_ROLE_ID && guild.roles.cache.has(STAFF_ROLE_ID)) overwrites.push({ id: STAFF_ROLE_ID, allow });
+    // the role of the amount range sees this ticket (and no other range's tickets)
+    const tierRoleId = tier ? middleman.tierRole(tier.value) : "";
+    if (tierRoleId && tierRoleId !== STAFF_ROLE_ID && guild.roles.cache.has(tierRoleId)) overwrites.push({ id: tierRoleId, allow });
+    pingRoleId = tierRoleId && guild.roles.cache.has(tierRoleId) ? tierRoleId : STAFF_ROLE_ID;
+  } else {
+    // Litecoin tickets are private: the opener, the person they add, and only the roles given with /access
+    for (const id of middleman.accessRoles()) if (guild.roles.cache.has(id)) overwrites.push({ id, allow });
+  }
 
   const parent = CATEGORY_ID ? await guild.channels.fetch(CATEGORY_ID).catch(() => null) : null;
   const safeName = user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
@@ -2679,7 +2758,7 @@ async function closeTicket(interaction) {
     return interaction.reply({ content: T("❌ This is not a middleman ticket.", "❌ Ce n'est pas un ticket middleman."), flags: ephemeral });
   }
   const ownerId = channel.topic.split(":")[1];
-  if (interaction.user.id !== ownerId && !isStaff(interaction.member) && !middleman.isStaffFor(channel.id, interaction.member)) {
+  if (interaction.user.id !== ownerId && !middleman.isStaffFor(channel.id, interaction.member)) {
     return interaction.reply({ content: T("❌ Only the ticket owner or staff can close this ticket.", "❌ Seul le propriétaire du ticket ou le staff peut fermer ce ticket."), flags: ephemeral });
   }
   if (middleman.blocksClose(channel.id)) {
@@ -2735,6 +2814,7 @@ client.on(Events.Invalidated, () => {
           )
           .toJSON(),
         new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").toJSON(),
+        new SlashCommandBuilder().setName("access").setDescription("Choose which roles can see the private Litecoin tickets").toJSON(),
         new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").toJSON(),
       ],
     });
