@@ -23,7 +23,8 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
   ---------------------------------------
   Node 18+ / discord.js v14 / bitcoinjs-lib v6.
 
-  Flow (everything happens inside a ticket opened with the "Open a middleman ticket" button of the panel):
+  Flow (everything happens inside a ticket opened with the button of a panel; the person first picks French or English
+  and the whole ticket then stays in that language):
     1. The person who opened the ticket adds the person he trades with (@mention or ID)
     2. Each person picks a role: LTC sender or LTC receiver
     3. The sender enters the amount, the receiver confirms it
@@ -253,20 +254,26 @@ const middleman = (() => {
   }
 
   /* Returns { sat, quote } where quote describes the conversion (null for plain LTC), or { error }. */
-  async function resolveAmount(text) {
+  async function resolveAmount(text, deal) {
     const parsed = parseAmountInput(text);
-    if (!parsed) return { error: "Invalid amount. Examples: `0.25` (LTC), `5$` (dollars), `5€` (euros)." };
+    if (!parsed) return { error: tr(deal, "Invalid amount. Examples: `0.25` (LTC), `5$` (dollars), `5€` (euros).", "Montant invalide. Exemples : `0.25` (LTC), `5$` (dollars), `5€` (euros).") };
 
     if (parsed.kind === "LTC") {
       const sat = ltcToSat(parsed.value);
-      if (!sat) return { error: "Invalid amount. Use at most 8 decimals, for example `0.25`." };
+      if (!sat) return { error: tr(deal, "Invalid amount. Use at most 8 decimals, for example `0.25`.", "Montant invalide. Utilise 8 décimales au maximum, par exemple `0.25`.") };
       const prices = await getLtcPrice().catch(() => null);
       return { sat, quote: prices ? { fiat: (sat / SAT_PER_LTC) * prices.usd, currency: "USD", price: prices.usd, indicative: true } : null };
     }
 
     const fiat = Number(parsed.value);
-    if (!(fiat > 0) || fiat > 1000000) return { error: "Invalid amount." };
-    const prices = await getLtcPrice();
+    if (!(fiat > 0) || fiat > 1000000) return { error: tr(deal, "Invalid amount.", "Montant invalide.") };
+    let prices;
+    try {
+      prices = await getLtcPrice();
+    } catch (error) {
+      if (isFr(deal)) return { error: "Impossible d'obtenir le cours du LTC pour l'instant. Réessaie dans un instant." };
+      throw error;
+    }
     const price = parsed.kind === "USD" ? prices.usd : prices.eur;
     return { sat: Math.round((fiat / price) * SAT_PER_LTC), quote: { fiat, currency: parsed.kind, price } };
   }
@@ -411,7 +418,12 @@ const middleman = (() => {
   };
   const FINAL = new Set(["done", "refunded", "cancelled"]);
 
-  const mention = (id) => (id ? `<@${id}>` : "*not chosen yet*");
+  /* ---------- language: every ticket is entirely in English or in French ---------- */
+  const isFr = (deal) => deal?.lang === "fr";
+  const tr = (deal, en, fr) => (isFr(deal) ? fr : en);
+  const frozenLine = (deal) => tr(deal, "🧊  **FROZEN**: a dispute is open, staff will decide.", "🧊  **GELÉ** : un litige est ouvert, le staff va décider.");
+
+  const mention = (id) => (id ? `<@${id}>` : "—");
   const txLink = (txid) => `[${txid.slice(0, 12)}…](${cfg.explorerTx}${txid})`;
   const isParticipant = (deal, id) => id === deal.userA || id === deal.userB;
 
@@ -419,12 +431,15 @@ const middleman = (() => {
   const isPaypal = (deal) => deal.method === "paypal";
   const CUR = { USD: "$", EUR: "€" };
   const fmtFiat = (cents, currency) => `${CUR[currency] || ""}${(cents / 100).toFixed(2)} ${currency}`;
-  const words = (deal) => (isPaypal(deal) ? { sender: "Payer", receiver: "Seller" } : { sender: "Sender", receiver: "Receiver" });
+  const words = (deal) =>
+    isPaypal(deal)
+      ? { sender: tr(deal, "Payer", "Payeur"), receiver: tr(deal, "Seller", "Vendeur") }
+      : { sender: tr(deal, "Sender", "Expéditeur"), receiver: tr(deal, "Receiver", "Destinataire") };
   const makeRef = (deal) => `MM${deal.n}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   /* "5", "5.50", "5$", "$5", "5 usd", "5€", "5 eur"  ->  { cents } in the PayPal currency, or { error } */
-  function parseFiatCents(text) {
+  function parseFiatCents(text, deal) {
     let raw = String(text || "").trim().toLowerCase().replace(",", ".").replace(/\s+/g, "");
     let currency = cfg.paypalCurrency;
     if (/\$|usd|dollars?/.test(raw)) {
@@ -435,17 +450,19 @@ const middleman = (() => {
       raw = raw.replace(/€|eur|euros?/g, "");
     }
     const example = `\`5${CUR[cfg.paypalCurrency]}\``;
-    if (!/^\d+(\.\d{1,2})?$/.test(raw)) return { error: `Invalid amount. Example: ${example}.` };
-    if (currency !== cfg.paypalCurrency) return { error: `This server takes PayPal in ${cfg.paypalCurrency}. Type for example ${example}.` };
+    if (!/^\d+(\.\d{1,2})?$/.test(raw)) return { error: tr(deal, `Invalid amount. Example: ${example}.`, `Montant invalide. Exemple : ${example}.`) };
+    if (currency !== cfg.paypalCurrency) {
+      return { error: tr(deal, `This server takes PayPal in ${cfg.paypalCurrency}. Type for example ${example}.`, `Ce serveur accepte PayPal en ${cfg.paypalCurrency}. Écris par exemple ${example}.`) };
+    }
     const cents = Math.round(Number(raw) * 100);
-    if (!(cents > 0) || cents > 100000000) return { error: "Invalid amount." };
+    if (!(cents > 0) || cents > 100000000) return { error: tr(deal, "Invalid amount.", "Montant invalide.") };
     return { cents };
   }
 
   const amountText = (deal) =>
     isPaypal(deal)
-      ? deal.amountCents ? `**${fmtFiat(deal.amountCents, deal.currency)}**` : "*not set yet*"
-      : deal.amountSat ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}` : "*not set yet*";
+      ? deal.amountCents ? `**${fmtFiat(deal.amountCents, deal.currency)}**` : tr(deal, "*not set yet*", "*pas encore fixé*")
+      : deal.amountSat ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}` : tr(deal, "*not set yet*", "*pas encore fixé*");
 
   function isStaff(member) {
     if (!member) return false;
@@ -465,6 +482,7 @@ const middleman = (() => {
   /* ---------- look & feel ---------- */
 
   const STEPS = ["Partner", "Roles", "Amount", "Payment", "Delivery", "Payout"];
+  const STEPS_FR = ["Partenaire", "Rôles", "Montant", "Paiement", "Livraison", "Versement"];
   const STEP_OF = { partner: 0, roles: 1, amount: 2, amount_confirm: 2, choose_pp: 3, awaiting_payment: 3, confirming: 3, funded: 4, released: 5, payout_pending: 5, paying: 5, done: 6 };
   const STATE_COLOR = {
     partner: 0x5865f2, roles: 0x5865f2, amount: 0x5865f2, amount_confirm: 0x5865f2, choose_pp: 0x0070ba,
@@ -476,8 +494,9 @@ const middleman = (() => {
   const stepper = (deal) => {
     const current = STEP_OF[deal.state];
     if (current === undefined) return "";
-    if (current >= STEPS.length) return `${bar(STEPS.length, STEPS.length, STEPS.length)}  **Complete**`;
-    return `${bar(current + 1, STEPS.length, STEPS.length)}  Step ${current + 1} of ${STEPS.length}  ·  **${STEPS[current]}**`;
+    if (current >= STEPS.length) return `${bar(STEPS.length, STEPS.length, STEPS.length)}  **${tr(deal, "Complete", "Terminé")}**`;
+    const name = tr(deal, STEPS, STEPS_FR)[current];
+    return `${bar(current + 1, STEPS.length, STEPS.length)}  ${tr(deal, `Step ${current + 1} of ${STEPS.length}`, `Étape ${current + 1} sur ${STEPS.length}`)}  ·  **${name}**`;
   };
 
   const bar = (done, total, width = 10) => {
@@ -495,45 +514,79 @@ const middleman = (() => {
   /* What is going on and who has to do what, as a heading plus a quoted block. */
   function stateText(deal) {
     const pp = isPaypal(deal);
+    const T = (en, fr) => tr(deal, en, fr);
     const sender = mention(deal.senderId);
     const receiver = mention(deal.receiverId);
     const block = (title, lines = []) => [`### ${title}`, ...lines.map((l) => `> ${l}`)].join("\n");
     switch (deal.state) {
-      case "partner": return block("➕  Add your partner", ["Click the button below and send their **@mention or user ID**."]);
+      case "partner":
+        return block(T("➕  Add your partner", "➕  Ajoute ton partenaire"), [T("Click the button below and send their **@mention or user ID**.", "Clique sur le bouton ci-dessous et envoie son **@mention ou son ID**.")]);
       case "roles":
         return pp
-          ? block("🎭  Pick your roles", ["📤 The **payer** sends the money.", "📥 The **seller** gets paid when the deal is done."])
-          : block("🎭  Pick your roles", ["📤 The **sender** pays the LTC.", "📥 The **receiver** gets it when the deal is done."]);
+          ? block(T("🎭  Pick your roles", "🎭  Choisissez vos rôles"), [T("📤 The **payer** sends the money.", "📤 Le **payeur** envoie l'argent."), T("📥 The **seller** gets paid when the deal is done.", "📥 Le **vendeur** est payé quand le deal est terminé.")])
+          : block(T("🎭  Pick your roles", "🎭  Choisissez vos rôles"), [T("📤 The **sender** pays the LTC.", "📤 L'**expéditeur** paie les LTC."), T("📥 The **receiver** gets it when the deal is done.", "📥 Le **destinataire** les reçoit quand le deal est terminé.")]);
       case "amount":
         return pp
-          ? block("💰  Set the amount", [`${sender} type it in ${cfg.paypalCurrency === "EUR" ? "euros" : "dollars"}, for example \`5${CUR[cfg.paypalCurrency]}\`.`])
-          : block("💰  Set the amount", [`${sender} type it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).`, "With a plain number, I ask which one you mean."]);
+          ? block(T("💰  Set the amount", "💰  Fixe le montant"), [
+              T(`${sender} type it in ${cfg.paypalCurrency === "EUR" ? "euros" : "dollars"}, for example \`5${CUR[cfg.paypalCurrency]}\`.`, `${sender} écris-le en ${cfg.paypalCurrency === "EUR" ? "euros" : "dollars"}, par exemple \`5${CUR[cfg.paypalCurrency]}\`.`),
+            ])
+          : block(T("💰  Set the amount", "💰  Fixe le montant"), [
+              T(`${sender} type it in money (\`5$\`, \`5€\`) or in LTC (\`0.25 ltc\`).`, `${sender} écris-le en argent (\`5$\`, \`5€\`) ou en LTC (\`0.25 ltc\`).`),
+              T("With a plain number, I ask which one you mean.", "Avec un nombre seul, je te demande ce que tu veux dire."),
+            ]);
       case "amount_confirm":
-        return block(pp ? "🤝  Waiting for the seller" : "🤝  Waiting for the receiver", [
-          `${receiver} accept or decline on the **amount card** below.`,
-          pp ? "🔒 Once confirmed, the amount is locked." : "🔒 Once confirmed, the LTC figure is locked.",
+        return block(pp ? T("🤝  Waiting for the seller", "🤝  En attente du vendeur") : T("🤝  Waiting for the receiver", "🤝  En attente du destinataire"), [
+          T(`${receiver} accept or decline on the **amount card** below.`, `${receiver} accepte ou refuse sur la **carte du montant** ci-dessous.`),
+          pp ? T("🔒 Once confirmed, the amount is locked.", "🔒 Une fois confirmé, le montant est verrouillé.") : T("🔒 Once confirmed, the LTC figure is locked.", "🔒 Une fois confirmé, le montant en LTC est verrouillé."),
         ]);
       case "choose_pp":
-        return block("💙  Choose the PayPal account", [`${staffPing()} pick the account that receives this payment.`, "Only staff can choose. The payer sees the account right after."]);
+        return block(T("💙  Choose the PayPal account", "💙  Choisissez le compte PayPal"), [
+          T(`${staffPing()} pick the account that receives this payment.`, `${staffPing()} choisissez le compte qui reçoit ce paiement.`),
+          T("Only staff can choose. The payer sees the account right after.", "Seul le staff peut choisir. Le payeur voit le compte juste après."),
+        ]);
       case "awaiting_payment":
         return pp
-          ? block("💳  Waiting for the PayPal payment", [
-              `${sender} pay as shown in the **payment card** below.`,
-              deal.paidClaimed ? "Staff is checking PayPal, this updates when it is verified." : "Then click **I've paid**, staff checks PayPal.",
+          ? block(T("💳  Waiting for the PayPal payment", "💳  En attente du paiement PayPal"), [
+              T(`${sender} pay as shown in the **payment card** below.`, `${sender} paie comme indiqué sur la **carte de paiement** ci-dessous.`),
+              deal.paidClaimed
+                ? T("Staff is checking PayPal, this updates when it is verified.", "Le staff vérifie PayPal, ça se met à jour dès que c'est validé.")
+                : T("Then click **I've paid**, staff checks PayPal.", "Clique ensuite sur **J'ai payé**, le staff vérifie PayPal."),
             ])
-          : block("💳  Waiting for the payment", [`${sender} send the exact amount shown in the **payment card** below.`, "The bot spots it by itself, nothing to click."]);
-      case "confirming": return block("⏳  Payment spotted", ["The network is confirming it.", "This card updates by itself."]);
+          : block(T("💳  Waiting for the payment", "💳  En attente du paiement"), [
+              T(`${sender} send the exact amount shown in the **payment card** below.`, `${sender} envoie le montant exact indiqué sur la **carte de paiement** ci-dessous.`),
+              T("The bot spots it by itself, nothing to click.", "Le bot le détecte tout seul, rien à cliquer."),
+            ]);
+      case "confirming":
+        return block(T("⏳  Payment spotted", "⏳  Paiement détecté"), [T("The network is confirming it.", "Le réseau le confirme."), T("This card updates by itself.", "Cette carte se met à jour toute seule.")]);
       case "funded":
-        return block(pp ? "🔒  Payment verified" : "🔒  Funds secured", [`📥 ${receiver} deliver what was agreed.`, `📤 ${sender} click **Release** only once you really received it.`]);
+        return block(pp ? T("🔒  Payment verified", "🔒  Paiement vérifié") : T("🔒  Funds secured", "🔒  Fonds sécurisés"), [
+          T(`📥 ${receiver} deliver what was agreed.`, `📥 ${receiver} livre ce qui a été convenu.`),
+          T(`📤 ${sender} click **Release** only once you really received it.`, `📤 ${sender} clique sur **Libérer** seulement quand tu as vraiment tout reçu.`),
+        ]);
       case "released":
-        return block("🔓  Funds released", [`📥 ${receiver} click **${pp ? "Enter my PayPal email" : "Enter my LTC address"}** to get paid.`]);
+        return block(T("🔓  Funds released", "🔓  Fonds libérés"), [
+          T(`📥 ${receiver} click **${pp ? "Enter my PayPal email" : "Enter my LTC address"}** to get paid.`, `📥 ${receiver} clique sur **${pp ? "Entrer mon email PayPal" : "Entrer mon adresse LTC"}** pour être payé.`),
+        ]);
       case "payout_pending":
-        return block("🏦  Staff is sending the money", [`Staff sends **${fmtFiat(deal.amountCents, deal.currency)}** to \`${deal.payoutPaypal}\`.`, "This card updates when it is done."]);
-      case "paying": return block("📤  Sending the funds…");
-      case "done": return block("🎉  Deal complete", ["Thank you both 💜"]);
-      case "refunded": return block("↩️  Refunded", [pp ? "The payment went back to the payer." : "The funds went back to the sender."]);
+        return block(T("🏦  Staff is sending the money", "🏦  Le staff envoie l'argent"), [
+          T(`Staff sends **${fmtFiat(deal.amountCents, deal.currency)}** to \`${deal.payoutPaypal}\`.`, `Le staff envoie **${fmtFiat(deal.amountCents, deal.currency)}** à \`${deal.payoutPaypal}\`.`),
+          T("This card updates when it is done.", "Cette carte se met à jour quand c'est fait."),
+        ]);
+      case "paying": return block(T("📤  Sending the funds…", "📤  Envoi des fonds…"));
+      case "done": return block(T("🎉  Deal complete", "🎉  Deal terminé"), [T("Thank you both 💜", "Merci à vous deux 💜")]);
+      case "refunded":
+        return block(T("↩️  Refunded", "↩️  Remboursé"), [
+          pp ? T("The payment went back to the payer.", "Le paiement est retourné au payeur.") : T("The funds went back to the sender.", "Les fonds sont retournés à l'expéditeur."),
+        ]);
       case "cancelled":
-        return block("✖️  Cancelled", deal.address ? ["Do **not** send any LTC to the deposit address anymore."] : deal.ref ? ["Do **not** send any money anymore."] : ["Nothing was paid."]);
+        return block(
+          T("✖️  Cancelled", "✖️  Annulé"),
+          deal.address
+            ? [T("Do **not** send any LTC to the deposit address anymore.", "N'envoie **plus** de LTC à l'adresse de dépôt.")]
+            : deal.ref
+              ? [T("Do **not** send any money anymore.", "N'envoie **plus** d'argent.")]
+              : [T("Nothing was paid.", "Rien n'a été payé.")]
+        );
       default: return "";
     }
   }
@@ -545,6 +598,7 @@ const middleman = (() => {
      Each new step posts a new card; the previous one folds into one line (see advance()).
      The payment (address, QR, live confirmations) is its own message, see paymentEmbed(). */
   function dealEmbeds(deal) {
+    const T = (en, fr) => tr(deal, en, fr);
     const panels = [];
     const color = deal.frozen ? COLORS.bad : STATE_COLOR[deal.state] || COLORS.info;
 
@@ -555,11 +609,11 @@ const middleman = (() => {
         .setTitle(isPaypal(deal) ? `💙  PayPal Middleman  ·  Deal #${deal.n}` : `💱  Litecoin Middleman  ·  Deal #${deal.n}`)
         .setDescription(
           [
-            deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide." : null,
+            deal.frozen ? frozenLine(deal) : null,
             deal.notice || null,
             stepper(deal) || null,
             stateText(deal) || null,
-          ].filter(Boolean).join("\n\u200b\n")
+          ].filter(Boolean).join("\n​\n")
         )
     );
 
@@ -568,11 +622,11 @@ const middleman = (() => {
     if (deal.state !== "partner") panels.push(
       new EmbedBuilder()
         .setColor(0x4f545c)
-        .setTitle("📋  Deal details")
+        .setTitle(T("📋  Deal details", "📋  Détails du deal"))
         .addFields(
-          { name: `📤  ${words(deal).sender}`, value: deal.senderId ? mention(deal.senderId) : "*waiting…*", inline: true },
-          { name: `📥  ${words(deal).receiver}`, value: deal.receiverId ? mention(deal.receiverId) : "*waiting…*", inline: true },
-          { name: "💰  Amount", value: amountLine, inline: true }
+          { name: `📤  ${words(deal).sender}`, value: deal.senderId ? mention(deal.senderId) : T("*waiting…*", "*en attente…*"), inline: true },
+          { name: `📥  ${words(deal).receiver}`, value: deal.receiverId ? mention(deal.receiverId) : T("*waiting…*", "*en attente…*"), inline: true },
+          { name: T("💰  Amount", "💰  Montant"), value: amountLine, inline: true }
         )
     );
 
@@ -582,11 +636,11 @@ const middleman = (() => {
       panels.push(
         new EmbedBuilder()
           .setColor(0x0070ba)
-          .setTitle("💙  PayPal accounts present")
+          .setTitle(T("💙  PayPal accounts present", "💙  Comptes PayPal présents"))
           .setDescription(
             present.length
-              ? present.map((a) => `🟢  **${a.label}**${a.holderId ? `  ·  <@${a.holderId}>` : ""}  ·  ${ppActiveDeals(a).length} deal(s) in progress`).join("\n")
-              : "*Nobody is present right now. Set an account present with `/paypal`.*"
+              ? present.map((a) => `🟢  **${a.label}**${a.holderId ? `  ·  <@${a.holderId}>` : ""}  ·  ${ppActiveDeals(a).length} ${T("deal(s) in progress", "deal(s) en cours")}`).join("\n")
+              : T("*Nobody is present right now. Set an account present with `/paypal`.*", "*Personne n'est présent pour l'instant. Passe un compte en présent avec `/paypal`.*")
           )
       );
     }
@@ -597,12 +651,12 @@ const middleman = (() => {
       panels.push(
         new EmbedBuilder()
           .setColor(refund ? COLORS.grey : COLORS.ok)
-          .setTitle(refund ? "↩️  Refund" : "🏦  Payout")
+          .setTitle(refund ? T("↩️  Refund", "↩️  Remboursement") : T("🏦  Payout", "🏦  Versement"))
           .setDescription(
             [
               `${txLink(refund ? deal.refundTxid : deal.payoutTxid)}`,
               `\`${refund ? deal.refundAddress : deal.payoutAddress}\``,
-              `🧾 Network fee: ${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)`,
+              T(`🧾 Network fee: ${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)`, `🧾 Frais réseau : ${satToLtc(deal.feeSat)} LTC (déduits du montant envoyé)`),
             ].join("\n")
           )
       );
@@ -614,10 +668,12 @@ const middleman = (() => {
       panels.push(
         new EmbedBuilder()
           .setColor(refund ? COLORS.grey : COLORS.ok)
-          .setTitle(refund ? "↩️  Refund" : "🏦  Payout")
+          .setTitle(refund ? T("↩️  Refund", "↩️  Remboursement") : T("🏦  Payout", "🏦  Versement"))
           .setDescription(
             [
-              refund ? "Refunded to the payer by staff." : `**${fmtFiat(deal.amountCents, deal.currency)}** sent to \`${deal.payoutPaypal}\` by staff.`,
+              refund
+                ? T("Refunded to the payer by staff.", "Remboursé au payeur par le staff.")
+                : T(`**${fmtFiat(deal.amountCents, deal.currency)}** sent to \`${deal.payoutPaypal}\` by staff.`, `**${fmtFiat(deal.amountCents, deal.currency)}** envoyés à \`${deal.payoutPaypal}\` par le staff.`),
               deal.resultNote ? `🧾 ${deal.resultNote}` : null,
             ].filter(Boolean).join("\n")
           )
@@ -625,7 +681,11 @@ const middleman = (() => {
     }
 
     panels[panels.length - 1]
-      .setFooter({ text: isPaypal(deal) ? "VXMP MM  ·  every PayPal payment is checked and sent by staff" : "VXMP MM  ·  funds are held by the bot until release" })
+      .setFooter({
+        text: isPaypal(deal)
+          ? T("VXMP MM  ·  every PayPal payment is checked and sent by staff", "VXMP MM  ·  chaque paiement PayPal est vérifié et envoyé par le staff")
+          : T("VXMP MM  ·  funds are held by the bot until release", "VXMP MM  ·  les fonds sont gardés par le bot jusqu'à la libération"),
+      })
       .setTimestamp();
     return panels;
   }
@@ -633,74 +693,86 @@ const middleman = (() => {
   /* The payment card is a message of its own, edited in place while the payment goes through:
      instructions -> payment spotted (confirmations 1/2, 2/2) -> payment confirmed. */
   function paypalPaymentEmbed(deal) {
+    const T = (en, fr) => tr(deal, en, fr);
     const embed = new EmbedBuilder().setTimestamp();
     if (deal.state === "cancelled") {
-      return embed.setColor(COLORS.grey).setTitle("✖️  Payment cancelled").setDescription("The deal was cancelled. Do **not** send any money anymore.");
+      return embed.setColor(COLORS.grey).setTitle(T("✖️  Payment cancelled", "✖️  Paiement annulé")).setDescription(T("The deal was cancelled. Do **not** send any money anymore.", "Le deal a été annulé. N'envoie **plus** d'argent."));
     }
     if (deal.state === "refunded") {
-      return embed.setColor(COLORS.grey).setTitle("↩️  Payment refunded").setDescription("The payment went back to the payer.");
+      return embed.setColor(COLORS.grey).setTitle(T("↩️  Payment refunded", "↩️  Paiement remboursé")).setDescription(T("The payment went back to the payer.", "Le paiement est retourné au payeur."));
     }
     if (deal.state !== "awaiting_payment") {
       return embed
         .setColor(COLORS.ok)
-        .setTitle("✅  Payment verified")
-        .setDescription([`**${fmtFiat(deal.amountCents, deal.currency)}** received and checked by staff.`, "​", "Staff holds the payment until the deal is done."].join("\n"));
+        .setTitle(T("✅  Payment verified", "✅  Paiement vérifié"))
+        .setDescription([
+          T(`**${fmtFiat(deal.amountCents, deal.currency)}** received and checked by staff.`, `**${fmtFiat(deal.amountCents, deal.currency)}** reçus et vérifiés par le staff.`),
+          "​",
+          T("Staff holds the payment until the deal is done.", "Le staff garde le paiement jusqu'à la fin du deal."),
+        ].join("\n"));
     }
     return embed
       .setColor(deal.paidClaimed ? 0xf57c00 : 0xfaa61a)
-      .setTitle(deal.paidClaimed ? "⏳  Waiting for staff to verify" : "💙  PayPal payment instructions")
+      .setTitle(deal.paidClaimed ? T("⏳  Waiting for staff to verify", "⏳  En attente de la vérification du staff") : T("💙  PayPal payment instructions", "💙  Instructions de paiement PayPal"))
       .setDescription(
         [
-          deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide.\n​" : null,
-          `📤 ${mention(deal.senderId)} send exactly`,
+          deal.frozen ? `${frozenLine(deal)}\n​` : null,
+          T(`📤 ${mention(deal.senderId)} send exactly`, `📤 ${mention(deal.senderId)} envoie exactement`),
           `\`\`\`${fmtFiat(deal.amountCents, deal.currency)}\`\`\``,
-          `to this PayPal account (**${deal.ppLabel}**)`,
+          T(`to this PayPal account (**${deal.ppLabel}**)`, `sur ce compte PayPal (**${deal.ppLabel}**)`),
           `\`\`\`${deal.ppEmail}\`\`\``,
-          "and write this **reference** in the PayPal note",
+          T("and write this **reference** in the PayPal note", "et écris cette **référence** dans la note PayPal"),
           `\`\`\`${deal.ref}\`\`\``,
           cfg.paypalNote ? `ℹ️ ${cfg.paypalNote}` : null,
-          "🔒 The amount is **locked**.",
+          T("🔒 The amount is **locked**.", "🔒 Le montant est **verrouillé**."),
           "​",
-          "### ⏱️  Status",
+          T("### ⏱️  Status", "### ⏱️  Statut"),
           deal.paidClaimed
-            ? "🔔 The payer says it is sent. Staff is checking PayPal."
-            : "⏳ Waiting for your payment. Once it is sent, click **I've paid**.",
+            ? T("🔔 The payer says it is sent. Staff is checking PayPal.", "🔔 Le payeur dit l'avoir envoyé. Le staff vérifie PayPal.")
+            : T("⏳ Waiting for your payment. Once it is sent, click **I've paid**.", "⏳ En attente de ton paiement. Une fois envoyé, clique sur **J'ai payé**."),
         ].filter(Boolean).join("\n")
       );
   }
 
   function paymentEmbed(deal) {
     if (isPaypal(deal)) return paypalPaymentEmbed(deal);
+    const T = (en, fr) => tr(deal, en, fr);
     const need = cfg.confirmations;
     const live = deal.state === "awaiting_payment" || deal.state === "confirming";
     const embed = new EmbedBuilder().setTimestamp();
 
     if (deal.state === "cancelled") {
-      return embed.setColor(COLORS.grey).setTitle("✖️  Payment cancelled").setDescription("The deal was cancelled. Do **not** send any LTC to this address anymore.");
+      return embed.setColor(COLORS.grey).setTitle(T("✖️  Payment cancelled", "✖️  Paiement annulé")).setDescription(T("The deal was cancelled. Do **not** send any LTC to this address anymore.", "Le deal a été annulé. N'envoie **plus** de LTC à cette adresse."));
     }
     if (deal.state === "refunded") {
-      return embed.setColor(COLORS.grey).setTitle("↩️  Payment refunded").setDescription("The funds went back to the sender.");
+      return embed.setColor(COLORS.grey).setTitle(T("↩️  Payment refunded", "↩️  Paiement remboursé")).setDescription(T("The funds went back to the sender.", "Les fonds sont retournés à l'expéditeur."));
     }
 
     if (live) {
       const confirming = deal.state === "confirming";
-      const checked = deal.lastCheck ? `🔄 Last check <t:${unix(deal.lastCheck)}:R>` : null;
+      const checked = deal.lastCheck ? T(`🔄 Last check <t:${unix(deal.lastCheck)}:R>`, `🔄 Dernière vérification <t:${unix(deal.lastCheck)}:R>`) : null;
       embed
         .setColor(confirming ? 0xf57c00 : 0xfaa61a)
-        .setTitle(confirming ? "⏳  Payment spotted" : "💳  Payment instructions")
+        .setTitle(confirming ? T("⏳  Payment spotted", "⏳  Paiement détecté") : T("💳  Payment instructions", "💳  Instructions de paiement"))
         .setDescription(
           [
-            deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide.\n\u200b" : null,
-            `📤 ${mention(deal.senderId)} send exactly`,
+            deal.frozen ? `${frozenLine(deal)}\n​` : null,
+            T(`📤 ${mention(deal.senderId)} send exactly`, `📤 ${mention(deal.senderId)} envoie exactement`),
             `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``,
-            "to this address",
+            T("to this address", "à cette adresse"),
             `\`\`\`${deal.address}\`\`\``,
-            "🔒 The amount is **locked**, it will not change even if the price moves.",
-            "\u200b",
+            T("🔒 The amount is **locked**, it will not change even if the price moves.", "🔒 Le montant est **verrouillé**, il ne changera pas même si le cours bouge."),
+            "​",
             "### ⏱️  Confirmations",
             confirming
-              ? `${bar(deal.confirmations, need)}  **${Math.min(deal.confirmations, need)}/${need}**  ·  seen **${satToLtc(deal.seenSat)} LTC**`
-              : `${bar(0, need)}  waiting for the payment\nNeeds ${need} confirmation(s) after sending (about ${Math.round(need * 2.5)} min)`,
+              ? T(
+                  `${bar(deal.confirmations, need)}  **${Math.min(deal.confirmations, need)}/${need}**  ·  seen **${satToLtc(deal.seenSat)} LTC**`,
+                  `${bar(deal.confirmations, need)}  **${Math.min(deal.confirmations, need)}/${need}**  ·  vus **${satToLtc(deal.seenSat)} LTC**`
+                )
+              : T(
+                  `${bar(0, need)}  waiting for the payment\nNeeds ${need} confirmation(s) after sending (about ${Math.round(need * 2.5)} min)`,
+                  `${bar(0, need)}  en attente du paiement\nIl faut ${need} confirmation(s) après l'envoi (environ ${Math.round(need * 2.5)} min)`
+                ),
             checked,
           ].filter(Boolean).join("\n")
         );
@@ -712,14 +784,14 @@ const middleman = (() => {
     const txs = (deal.paymentTxids || []).map(txLink).join("   ");
     return embed
       .setColor(COLORS.ok)
-      .setTitle("✅  Payment confirmed")
+      .setTitle(T("✅  Payment confirmed", "✅  Paiement confirmé"))
       .setDescription(
         [
-          `**${satToLtc(deal.receivedSat || deal.amountSat)} LTC** received and confirmed.`,
+          T(`**${satToLtc(deal.receivedSat || deal.amountSat)} LTC** received and confirmed.`, `**${satToLtc(deal.receivedSat || deal.amountSat)} LTC** reçus et confirmés.`),
           `${bar(need, need)}  **${need}/${need}** confirmations`,
           txs ? `🔗 ${txs}` : null,
-          "\u200b",
-          "The bot holds the funds until the deal is done.",
+          "​",
+          T("The bot holds the funds until the deal is done.", "Le bot garde les fonds jusqu'à la fin du deal."),
         ].filter(Boolean).join("\n")
       );
   }
@@ -746,47 +818,54 @@ const middleman = (() => {
   }
 
   function dealComponents(deal) {
+    const T = (en, fr) => tr(deal, en, fr);
     const rows = [];
     const s = deal.state;
     const main = [];
 
-    if (s === "partner") main.push(button("partner", "Add the other person", ButtonStyle.Primary, "➕"));
+    if (s === "partner") main.push(button("partner", T("Add the other person", "Ajouter l'autre personne"), ButtonStyle.Primary, "➕"));
     const pp = isPaypal(deal);
-    if (s === "roles") main.push(button("role:sender", pp ? "I pay" : "I send the LTC", ButtonStyle.Primary, "📤"), button("role:receiver", pp ? "I get paid" : "I receive the LTC", ButtonStyle.Success, "📥"));
-    if (s === "amount") main.push(button("amount", "Set the amount", ButtonStyle.Primary, "💰"));
+    if (s === "roles") {
+      main.push(
+        button("role:sender", pp ? T("I pay", "Je paie") : T("I send the LTC", "J'envoie les LTC"), ButtonStyle.Primary, "📤"),
+        button("role:receiver", pp ? T("I get paid", "Je suis payé") : T("I receive the LTC", "Je reçois les LTC"), ButtonStyle.Success, "📥")
+      );
+    }
+    if (s === "amount") main.push(button("amount", T("Set the amount", "Fixer le montant"), ButtonStyle.Primary, "💰"));
     if (s === "choose_pp") {
       for (const account of ppList().filter((a) => !a.away).slice(0, 4)) main.push(button(`ppick:${account.id}`, account.label.slice(0, 80), ButtonStyle.Primary, "💙"));
     }
-      if (s === "funded") main.push(button("release", "Release the funds", ButtonStyle.Success, "🔓"));
-    if (s === "released") main.push(button("payout", pp ? "Enter my PayPal email" : "Enter my LTC address", ButtonStyle.Success, "🏦"));
-    if (s === "awaiting_payment" || s === "confirming") main.push(button("copy", "Copy details", ButtonStyle.Secondary, "📋"));
-    if (pp && s === "awaiting_payment" && !deal.paidClaimed) main.push(button("paid", "I've paid", ButtonStyle.Success, "💸"));
-    if (["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(s) && !(pp && deal.paidClaimed)) main.push(button("cancel", "Cancel", ButtonStyle.Danger, "✖️"));
-    if (["awaiting_payment", "confirming", "funded", "released", "payout_pending"].includes(s) && !deal.frozen) main.push(button("dispute", "Call staff", ButtonStyle.Danger, "🚨"));
+    if (s === "funded") main.push(button("release", T("Release the funds", "Libérer les fonds"), ButtonStyle.Success, "🔓"));
+    if (s === "released") main.push(button("payout", pp ? T("Enter my PayPal email", "Entrer mon email PayPal") : T("Enter my LTC address", "Entrer mon adresse LTC"), ButtonStyle.Success, "🏦"));
+    if (s === "awaiting_payment" || s === "confirming") main.push(button("copy", T("Copy details", "Copier les infos"), ButtonStyle.Secondary, "📋"));
+    if (pp && s === "awaiting_payment" && !deal.paidClaimed) main.push(button("paid", T("I've paid", "J'ai payé"), ButtonStyle.Success, "💸"));
+    if (["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(s) && !(pp && deal.paidClaimed)) main.push(button("cancel", T("Cancel", "Annuler"), ButtonStyle.Danger, "✖️"));
+    if (["awaiting_payment", "confirming", "funded", "released", "payout_pending"].includes(s) && !deal.frozen) main.push(button("dispute", T("Call staff", "Appeler le staff"), ButtonStyle.Danger, "🚨"));
 
-    if (staffComponents(deal).length) main.push(button("staff", "Staff tools", ButtonStyle.Secondary, "🛠️"));
+    if (staffComponents(deal).length) main.push(button("staff", T("Staff tools", "Outils staff"), ButtonStyle.Secondary, "🛠️"));
     if (main.length) rows.push(new ActionRowBuilder().addComponents(main));
     return rows;
   }
 
   /* Buttons shown only inside the private "Staff tools" panel. */
   function staffComponents(deal) {
+    const T = (en, fr) => tr(deal, en, fr);
     const s = deal.state;
     const staff = [];
-    if (deal.frozen) staff.push(button("unfreeze", "Unfreeze", ButtonStyle.Secondary, "🧊"));
+    if (deal.frozen) staff.push(button("unfreeze", T("Unfreeze", "Dégeler"), ButtonStyle.Secondary, "🧊"));
     if (isPaypal(deal)) {
       if (s === "awaiting_payment") {
-        staff.push(button("mark_paid", "Payment received", ButtonStyle.Success, "✅"));
-        if (!deal.paidClaimed && pickPaypal(deal.ppId)) staff.push(button("switch_pp", "Switch PayPal account", ButtonStyle.Secondary, "🔁"));
+        staff.push(button("mark_paid", T("Payment received", "Paiement reçu"), ButtonStyle.Success, "✅"));
+        if (!deal.paidClaimed && pickPaypal(deal.ppId)) staff.push(button("switch_pp", T("Switch PayPal account", "Changer de compte PayPal"), ButtonStyle.Secondary, "🔁"));
       }
-      if (s === "funded") staff.push(button("force_release", "Force release", ButtonStyle.Primary, "⚖️"));
-      if (s === "payout_pending") staff.push(button("payout_sent", "Payout sent", ButtonStyle.Success, "🏦"));
-      if (["funded", "released", "payout_pending"].includes(s)) staff.push(button("refund", "Refund payer", ButtonStyle.Danger, "↩️"));
+      if (s === "funded") staff.push(button("force_release", T("Force release", "Forcer la libération"), ButtonStyle.Primary, "⚖️"));
+      if (s === "payout_pending") staff.push(button("payout_sent", T("Payout sent", "Versement envoyé"), ButtonStyle.Success, "🏦"));
+      if (["funded", "released", "payout_pending"].includes(s)) staff.push(button("refund", T("Refund payer", "Rembourser le payeur"), ButtonStyle.Danger, "↩️"));
     } else {
-      if (s === "funded") staff.push(button("force_release", "Force release", ButtonStyle.Primary, "⚖️"));
-      if (s === "confirming" || s === "funded" || s === "released") staff.push(button("refund", "Refund sender", ButtonStyle.Danger, "↩️"));
+      if (s === "funded") staff.push(button("force_release", T("Force release", "Forcer la libération"), ButtonStyle.Primary, "⚖️"));
+      if (s === "confirming" || s === "funded" || s === "released") staff.push(button("refund", T("Refund sender", "Rembourser l'expéditeur"), ButtonStyle.Danger, "↩️"));
     }
-    if (FINAL.has(s)) staff.push(button("close", "Close channel", ButtonStyle.Secondary, "🗑️"));
+    if (FINAL.has(s)) staff.push(button("close", T("Close channel", "Fermer le salon"), ButtonStyle.Secondary, "🗑️"));
     return staff.length ? [new ActionRowBuilder().addComponents(staff)] : [];
   }
 
@@ -800,7 +879,7 @@ const middleman = (() => {
   async function ack(interaction, deal, refresh = true) {
     const onCard = interaction.message?.id && [deal.messageId, deal.payMsgId].includes(interaction.message.id);
     if (onCard) await interaction.deferUpdate();
-    else await interaction.update({ content: "✅ Done.", components: [] });
+    else await interaction.update({ content: tr(deal, "✅ Done.", "✅ Fait."), components: [] });
     if (refresh) await refreshMain(deal);
   }
 
@@ -854,7 +933,7 @@ const middleman = (() => {
 
   /* Next step: fold the previous card, then post the new one. */
   async function advance(deal, { summary, ping = [], notice = "" } = {}) {
-    await foldStepCard(deal, summary || "✅  **Done**");
+    await foldStepCard(deal, summary || tr(deal, "✅  **Done**", "✅  **Fait**"));
     deal.notice = notice;
     await postStepCard(deal, ping);
   }
@@ -873,33 +952,39 @@ const middleman = (() => {
 
   /* ---------- the amount card: it carries its own Confirm / Decline buttons ---------- */
 
-  const AMOUNT_CARD = {
-    pending: { title: "💰  Amount to confirm", color: COLORS.wait },
-    confirmed: { title: "✅  Amount confirmed", color: COLORS.ok },
-    declined: { title: "❌  Amount declined", color: COLORS.grey },
-    superseded: { title: "↪️  Amount replaced", color: COLORS.grey },
-  };
+  const AMOUNT_CARD = (deal) => ({
+    pending: { title: tr(deal, "💰  Amount to confirm", "💰  Montant à confirmer"), color: COLORS.wait },
+    confirmed: { title: tr(deal, "✅  Amount confirmed", "✅  Montant confirmé"), color: COLORS.ok },
+    declined: { title: tr(deal, "❌  Amount declined", "❌  Montant refusé"), color: COLORS.grey },
+    superseded: { title: tr(deal, "↪️  Amount replaced", "↪️  Montant remplacé"), color: COLORS.grey },
+  });
 
   function amountCard(deal, status = "pending", by = null) {
-    const info = AMOUNT_CARD[status];
+    const T = (en, fr) => tr(deal, en, fr);
+    const info = AMOUNT_CARD(deal)[status];
     const pp = isPaypal(deal);
     const lines = [
-      `${mention(deal.senderId)} set the amount to`,
+      T(`${mention(deal.senderId)} set the amount to`, `${mention(deal.senderId)} a fixé le montant à`),
       pp ? `\`\`\`${fmtFiat(deal.amountCents, deal.currency)}\`\`\`` : `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``,
       !pp && deal.quote ? quoteText(deal.quote) : "",
       "",
     ];
-    if (status === "pending") lines.push(`📥 ${mention(deal.receiverId)} do you accept this amount?`, pp ? "🔒 Once you confirm, the amount is locked." : "🔒 Once you confirm, the LTC figure is locked.");
-    if (status === "confirmed") lines.push(`Confirmed by ${mention(by)}. The amount is locked.`);
-    if (status === "declined") lines.push(`Declined by ${mention(by)}.`);
-    if (status === "superseded") lines.push("A new amount was proposed, or the deal was cancelled.");
+    if (status === "pending") {
+      lines.push(
+        T(`📥 ${mention(deal.receiverId)} do you accept this amount?`, `📥 ${mention(deal.receiverId)} acceptes-tu ce montant ?`),
+        pp ? T("🔒 Once you confirm, the amount is locked.", "🔒 Une fois confirmé, le montant est verrouillé.") : T("🔒 Once you confirm, the LTC figure is locked.", "🔒 Une fois confirmé, le montant en LTC est verrouillé.")
+      );
+    }
+    if (status === "confirmed") lines.push(T(`Confirmed by ${mention(by)}. The amount is locked.`, `Confirmé par ${mention(by)}. Le montant est verrouillé.`));
+    if (status === "declined") lines.push(T(`Declined by ${mention(by)}.`, `Refusé par ${mention(by)}.`));
+    if (status === "superseded") lines.push(T("A new amount was proposed, or the deal was cancelled.", "Un nouveau montant a été proposé, ou le deal a été annulé."));
     return new EmbedBuilder().setColor(info.color).setTitle(info.title).setDescription(lines.join("\n")).setTimestamp();
   }
 
-  const amountButtons = () => [
+  const amountButtons = (deal) => [
     new ActionRowBuilder().addComponents(
-      button("confirm_amount", "Confirm", ButtonStyle.Success, "✅"),
-      button("decline_amount", "Decline", ButtonStyle.Danger, "❌")
+      button("confirm_amount", tr(deal, "Confirm", "Confirmer"), ButtonStyle.Success, "✅"),
+      button("decline_amount", tr(deal, "Decline", "Refuser"), ButtonStyle.Danger, "❌")
     ),
   ];
 
@@ -907,7 +992,7 @@ const middleman = (() => {
     const channel = await getChannel(deal);
     if (!channel) return;
     const message = await channel
-      .send({ content: mention(deal.receiverId), embeds: [amountCard(deal)], components: amountButtons(), allowedMentions: { users: [deal.receiverId] } })
+      .send({ content: mention(deal.receiverId), embeds: [amountCard(deal)], components: amountButtons(deal), allowedMentions: { users: [deal.receiverId] } })
       .catch(() => null);
     deal.amountMsgId = message?.id || "";
     saveStore();
@@ -924,31 +1009,34 @@ const middleman = (() => {
 
   /* Validates an amount typed by the sender, stores it and posts the Confirm / Decline card. */
   async function setDealAmount(deal, text) {
-    if (!["amount", "amount_confirm"].includes(deal.state)) return { error: "The amount can no longer be changed." };
+    const T = (en, fr) => tr(deal, en, fr);
+    if (!["amount", "amount_confirm"].includes(deal.state)) return { error: T("The amount can no longer be changed.", "Le montant ne peut plus être modifié.") };
 
     if (isPaypal(deal)) {
-      const parsed = parseFiatCents(text);
+      const parsed = parseFiatCents(text, deal);
       if (parsed.error) return { error: parsed.error };
-      if (parsed.cents < cfg.paypalMinCents) return { error: `Minimum deal: ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.` };
+      if (parsed.cents < cfg.paypalMinCents) return { error: T(`Minimum deal: ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`, `Deal minimum : ${fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency)}.`) };
       await closeAmountCard(deal, "superseded");
       deal.amountCents = parsed.cents;
       deal.currency = cfg.paypalCurrency;
       deal.state = "amount_confirm";
       saveStore();
-      await foldStepCard(deal, `💰  **Amount proposed**  ·  ${fmtFiat(deal.amountCents, deal.currency)}`);
+      await foldStepCard(deal, T(`💰  **Amount proposed**  ·  ${fmtFiat(deal.amountCents, deal.currency)}`, `💰  **Montant proposé**  ·  ${fmtFiat(deal.amountCents, deal.currency)}`));
       await postAmountCard(deal);
       return {};
     }
 
-    const result = await resolveAmount(text).catch((error) => ({ error: error?.message || String(error) }));
+    const result = await resolveAmount(text, deal).catch((error) => ({ error: error?.message || String(error) }));
     if (result.error) return { error: result.error };
-    if (result.sat < cfg.minSat) return { error: `That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.` };
+    if (result.sat < cfg.minSat) {
+      return { error: T(`That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.`, `Ça ne fait que ${satToLtc(result.sat)} LTC. Deal minimum : ${satToLtc(cfg.minSat)} LTC.`) };
+    }
     await closeAmountCard(deal, "superseded"); // a previous, still pending card is replaced
     deal.amountSat = result.sat;
     deal.quote = result.quote;
     deal.state = "amount_confirm";
     saveStore();
-    await foldStepCard(deal, `💰  **Amount proposed**  ·  ${satToLtc(deal.amountSat)} LTC`);
+    await foldStepCard(deal, T(`💰  **Amount proposed**  ·  ${satToLtc(deal.amountSat)} LTC`, `💰  **Montant proposé**  ·  ${satToLtc(deal.amountSat)} LTC`));
     await postAmountCard(deal);
     return {};
   }
@@ -1176,8 +1264,12 @@ const middleman = (() => {
       saveStore();
       await refreshMain(deal);
       await notify(deal, {
-        title: "👀  Payment spotted",
-        body: `**${satToLtc(seenSat)} LTC** seen on the deposit address.\nThe confirmations are tracked live in the **payment card** above.`,
+        title: tr(deal, "👀  Payment spotted", "👀  Paiement détecté"),
+        body: tr(
+          deal,
+          `**${satToLtc(seenSat)} LTC** seen on the deposit address.\nThe confirmations are tracked live in the **payment card** above.`,
+          `**${satToLtc(seenSat)} LTC** vus sur l'adresse de dépôt.\nLes confirmations sont suivies en direct sur la **carte de paiement** au-dessus.`
+        ),
         color: 0xf57c00,
         ping: [deal.senderId, deal.receiverId],
       });
@@ -1193,8 +1285,12 @@ const middleman = (() => {
       deal.shortWarned = true;
       saveStore();
       await notify(deal, {
-        title: "⚠️  Payment too small",
-        body: `The confirmed payment is **${satToLtc(confirmedSat)} LTC** but the deal is **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} send the missing **${satToLtc(deal.amountSat - confirmedSat)} LTC** to the same address,\nor ${staffPing()} can refund it.`,
+        title: tr(deal, "⚠️  Payment too small", "⚠️  Paiement trop faible"),
+        body: tr(
+          deal,
+          `The confirmed payment is **${satToLtc(confirmedSat)} LTC** but the deal is **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} send the missing **${satToLtc(deal.amountSat - confirmedSat)} LTC** to the same address,\nor ${staffPing()} can refund it.`,
+          `Le paiement confirmé est de **${satToLtc(confirmedSat)} LTC** mais le deal est de **${satToLtc(deal.amountSat)} LTC**.\n\n📤 ${mention(deal.senderId)} envoie les **${satToLtc(deal.amountSat - confirmedSat)} LTC** manquants à la même adresse,\nou ${staffPing()} peut rembourser.`
+        ),
         color: COLORS.bad,
         ping: [deal.senderId],
       });
@@ -1236,16 +1332,17 @@ const middleman = (() => {
   /* ---------- interactions ---------- */
 
   /* Called by index.js right after a "middleman" ticket channel was created. */
-  async function openDeal(channel, user, method = "ltc") {
+  async function openDeal(channel, user, method = "ltc", lang = "en") {
+    const L = { lang: lang === "fr" ? "fr" : "en" };
     if (!enabled) {
-      await channel.send("❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.");
+      await channel.send(tr(L, "❌ The middleman is not configured yet (MM_SEED is missing). Staff has been notified in this ticket.", "❌ Le middleman n'est pas encore configuré (MM_SEED manque). Le staff est prévenu dans ce ticket."));
       return false;
     }
     if (method === "paypal" && !paypalStatus().available) {
       await channel.send(
         paypalStatus().configured
-          ? "❌ No PayPal account is available right now (everyone is absent). Staff has been notified in this ticket."
-          : "❌ PayPal is not set up yet: an administrator adds an account with `/paypal`. Staff has been notified in this ticket."
+          ? tr(L, "❌ No PayPal account is available right now (everyone is absent). Staff has been notified in this ticket.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Le staff est prévenu dans ce ticket.")
+          : tr(L, "❌ PayPal is not set up yet: an administrator adds an account with `/paypal`. Staff has been notified in this ticket.", "❌ PayPal n'est pas encore configuré : un administrateur ajoute un compte avec `/paypal`. Le staff est prévenu dans ce ticket.")
       );
       return false;
     }
@@ -1257,6 +1354,7 @@ const middleman = (() => {
       messageId: "",
       userA: user.id,
       userB: null,
+      lang: L.lang,
       method: method === "paypal" ? "paypal" : "ltc",
       amountCents: 0,
       currency: "",
@@ -1302,33 +1400,46 @@ const middleman = (() => {
     return deal.state === "awaiting_payment" && (deal.seenSat > 0 || Boolean(deal.paidClaimed));
   }
 
+  /* Error texts that come from the Litecoin code, in the language of the ticket. */
+  function errText(deal, message) {
+    const m = String(message || "");
+    if (!isFr(deal)) return m;
+    if (/Network fee too high/.test(m)) return "Frais réseau trop élevés. Réessaie plus tard.";
+    if (/too small to be sent/.test(m)) return "Le montant est trop petit pour être envoyé après les frais réseau.";
+    if (/No funds to send/.test(m)) return "Aucun fonds à envoyer.";
+    return m;
+  }
+
   async function handleButton(interaction, deal, action, arg, extra) {
+    const T = (en, fr) => tr(deal, en, fr);
     const user = interaction.user;
     const staff = isStaff(interaction.member);
     const participant = isParticipant(deal, user.id);
 
-    const needParticipant = () => !participant && !staff && (reply(interaction, "❌ You are not part of this deal."), true);
-    const needStaff = () => !staff && (reply(interaction, "❌ Staff only."), true);
-    const frozenBlock = () => deal.frozen && (reply(interaction, "🧊 This deal is frozen. Wait for staff."), true);
+    const needParticipant = () => !participant && !staff && (reply(interaction, T("❌ You are not part of this deal.", "❌ Tu ne fais pas partie de ce deal.")), true);
+    const needStaff = () => !staff && (reply(interaction, T("❌ Staff only.", "❌ Réservé au staff.")), true);
+    const frozenBlock = () => deal.frozen && (reply(interaction, T("🧊 This deal is frozen. Wait for staff.", "🧊 Ce deal est gelé. Attends le staff.")), true);
 
     switch (action) {
       case "partner": {
-        if (user.id !== deal.userA) return reply(interaction, "❌ Only the person who opened the ticket can add the other person.");
-        if (deal.state !== "partner") return reply(interaction, "❌ The other person was already added.");
+        if (user.id !== deal.userA) return reply(interaction, T("❌ Only the person who opened the ticket can add the other person.", "❌ Seule la personne qui a ouvert le ticket peut ajouter l'autre personne."));
+        if (deal.state !== "partner") return reply(interaction, T("❌ The other person was already added.", "❌ L'autre personne a déjà été ajoutée."));
         return interaction.showModal(
-          new ModalBuilder().setCustomId("mm:m:partner").setTitle("Who do you trade with?").addComponents(
+          new ModalBuilder().setCustomId("mm:m:partner").setTitle(T("Who do you trade with?", "Avec qui échanges-tu ?")).addComponents(
             new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId("value").setLabel("@mention or user ID").setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(60)
+              new TextInputBuilder().setCustomId("value").setLabel(T("@mention or user ID", "@mention ou ID de l'utilisateur")).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(60)
             )
           )
         );
       }
 
       case "role": {
-        if (!participant) return reply(interaction, "❌ You are not part of this deal.");
-        if (deal.state !== "roles") return reply(interaction, "❌ Roles are already set.");
+        if (!participant) return reply(interaction, T("❌ You are not part of this deal.", "❌ Tu ne fais pas partie de ce deal."));
+        if (deal.state !== "roles") return reply(interaction, T("❌ Roles are already set.", "❌ Les rôles sont déjà choisis."));
         const other = arg === "sender" ? "receiver" : "sender";
-        if (deal[`${arg}Id`] && deal[`${arg}Id`] !== user.id) return reply(interaction, `❌ The ${arg} role is already taken by the other person.`);
+        if (deal[`${arg}Id`] && deal[`${arg}Id`] !== user.id) {
+          return reply(interaction, T(`❌ The ${arg} role is already taken by the other person.`, `❌ Le rôle ${words(deal)[arg].toLowerCase()} est déjà pris par l'autre personne.`));
+        }
         if (deal[`${other}Id`] === user.id) deal[`${other}Id`] = null;
         deal[`${arg}Id`] = user.id;
         const ready = Boolean(deal.senderId && deal.receiverId);
@@ -1336,30 +1447,33 @@ const middleman = (() => {
         saveStore();
         if (!ready) return interaction.update(render(deal)); // still choosing: this card updates in place
         await interaction.deferUpdate();
-        return advance(deal, { summary: `✅  **Roles**  ·  📤 ${mention(deal.senderId)}  ·  📥 ${mention(deal.receiverId)}`, ping: [deal.senderId] });
+        return advance(deal, { summary: T(`✅  **Roles**  ·  📤 ${mention(deal.senderId)}  ·  📥 ${mention(deal.receiverId)}`, `✅  **Rôles**  ·  📤 ${mention(deal.senderId)}  ·  📥 ${mention(deal.receiverId)}`), ping: [deal.senderId] });
       }
 
       case "amount": {
-        if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ The amount can no longer be changed.");
-        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender sets the amount.");
-        const modal = new ModalBuilder().setCustomId("mm:m:amount").setTitle("Amount to send")
+        if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, T("❌ The amount can no longer be changed.", "❌ Le montant ne peut plus être modifié."));
+        if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the LTC sender sets the amount.", "❌ Seul l'expéditeur des LTC fixe le montant."));
+        const modal = new ModalBuilder().setCustomId("mm:m:amount").setTitle(T("Amount to send", "Montant à envoyer"))
           .addComponents(new ActionRowBuilder().addComponents(
             isPaypal(deal)
-              ? new TextInputBuilder().setCustomId("value").setLabel(`Amount in ${deal.currency || cfg.paypalCurrency}`).setPlaceholder(`5${CUR[cfg.paypalCurrency]}`).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
-              : new TextInputBuilder().setCustomId("value").setLabel("Amount: 5$ / 5€ / 0.25 LTC").setPlaceholder("0.01   (I will ask: dollars or LTC?)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
+              ? new TextInputBuilder().setCustomId("value").setLabel(T(`Amount in ${deal.currency || cfg.paypalCurrency}`, `Montant en ${deal.currency || cfg.paypalCurrency}`)).setPlaceholder(`5${CUR[cfg.paypalCurrency]}`).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
+              : new TextInputBuilder().setCustomId("value").setLabel(T("Amount: 5$ / 5€ / 0.25 LTC", "Montant : 5$ / 5€ / 0.25 LTC")).setPlaceholder(T("0.01   (I will ask: dollars or LTC?)", "0.01   (je demanderai : dollars ou LTC ?)")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
           ));
         return interaction.showModal(modal);
       }
 
       case "confirm_amount": {
-        if (deal.state !== "amount_confirm") return reply(interaction, "❌ Nothing to confirm right now.");
-        if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver confirms the amount.");
+        if (deal.state !== "amount_confirm") return reply(interaction, T("❌ Nothing to confirm right now.", "❌ Rien à confirmer pour le moment."));
+        if (user.id !== deal.receiverId) return reply(interaction, T("❌ Only the LTC receiver confirms the amount.", "❌ Seul le destinataire des LTC confirme le montant."));
         if (isPaypal(deal)) {
           if (!ppList().some((a) => !a.away)) {
-            await reply(interaction, "❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.");
+            await reply(interaction, T("❌ No PayPal account is available right now (everyone is absent). Staff was pinged, try again in a moment.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Le staff est prévenu, réessaie dans un instant."));
             return notify(deal, {
-              title: "⚠️  No PayPal available",
-              body: `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
+              title: T("⚠️  No PayPal available", "⚠️  Aucun PayPal disponible"),
+              body: T(
+                `The seller wants to confirm the amount but every PayPal account is absent.\n\n${staffPing()} set an account present with \`/paypal\`.`,
+                `Le vendeur veut confirmer le montant mais tous les comptes PayPal sont absents.\n\n${staffPing()} passez un compte en présent avec \`/paypal\`.`
+              ),
               color: COLORS.bad,
               ping: [staffPing()],
             });
@@ -1373,7 +1487,7 @@ const middleman = (() => {
         saveStore();
         if (deal.messageId && interaction.message?.id === deal.messageId) {
           await interaction.deferUpdate(); // an old card carried the button: fold it
-          await foldStepCard(deal, "✅  **Amount confirmed**");
+          await foldStepCard(deal, T("✅  **Amount confirmed**", "✅  **Montant confirmé**"));
         } else {
           deal.amountMsgId = "";
           await interaction.update({ embeds: [amountCard(deal, "confirmed", user.id)], components: [] });
@@ -1387,34 +1501,40 @@ const middleman = (() => {
       }
 
       case "release": {
-        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender can release the funds.");
-        if (deal.state !== "funded") return reply(interaction, "❌ The funds are not ready to be released.");
+        if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the LTC sender can release the funds.", "❌ Seul l'expéditeur des LTC peut libérer les fonds."));
+        if (deal.state !== "funded") return reply(interaction, T("❌ The funds are not ready to be released.", "❌ Les fonds ne sont pas prêts à être libérés."));
         if (frozenBlock()) return;
         return interaction.reply({
           flags: ephemeral,
-          content: "⚠️ Release the funds **only if you received what was agreed**. This cannot be undone.",
-          components: [new ActionRowBuilder().addComponents(button("release_yes", "Yes, I received it", ButtonStyle.Success), button("release_no", "No", ButtonStyle.Secondary))],
+          content: T("⚠️ Release the funds **only if you received what was agreed**. This cannot be undone.", "⚠️ Libère les fonds **seulement si tu as bien reçu ce qui était convenu**. C'est irréversible."),
+          components: [new ActionRowBuilder().addComponents(button("release_yes", T("Yes, I received it", "Oui, j'ai tout reçu"), ButtonStyle.Success), button("release_no", T("No", "Non"), ButtonStyle.Secondary))],
         });
       }
 
       case "pick": {
-        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender sets the amount.");
-        if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ The amount can no longer be changed.");
-        if ((arg !== "usd" && arg !== "ltc") || !parseAmountInput(extra)?.bare) return reply(interaction, "❌ Invalid choice.");
-        await interaction.update({ content: "⏳ Setting the amount…", components: [] });
+        if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the LTC sender sets the amount.", "❌ Seul l'expéditeur des LTC fixe le montant."));
+        if (!["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, T("❌ The amount can no longer be changed.", "❌ Le montant ne peut plus être modifié."));
+        if ((arg !== "usd" && arg !== "ltc") || !parseAmountInput(extra)?.bare) return reply(interaction, T("❌ Invalid choice.", "❌ Choix invalide."));
+        await interaction.update({ content: T("⏳ Setting the amount…", "⏳ Enregistrement du montant…"), components: [] });
         const outcome = await withLock(deal.channelId, () => setDealAmount(deal, arg === "usd" ? `${extra}$` : `${extra} ltc`));
-        return interaction.editReply({ content: outcome.error ? `❌ ${outcome.error}` : "✅ Sent to the receiver for confirmation.", components: [] });
+        return interaction.editReply({
+          content: outcome.error ? `❌ ${outcome.error}` : T("✅ Sent to the receiver for confirmation.", "✅ Envoyé au destinataire pour confirmation."),
+          components: [],
+        });
       }
 
       case "copy": {
-        if (user.id !== deal.senderId && !staff) return reply(interaction, "❌ Only the sender needs the payment details.");
-        if (!["awaiting_payment", "confirming"].includes(deal.state)) return reply(interaction, "❌ There is nothing to pay right now.");
+        if (user.id !== deal.senderId && !staff) return reply(interaction, T("❌ Only the sender needs the payment details.", "❌ Seul l'expéditeur a besoin des infos de paiement."));
+        if (!["awaiting_payment", "confirming"].includes(deal.state)) return reply(interaction, T("❌ There is nothing to pay right now.", "❌ Il n'y a rien à payer pour le moment."));
         if (isPaypal(deal)) {
           await interaction.reply({ content: deal.ppEmail, flags: ephemeral });
           await interaction.followUp({ content: (deal.amountCents / 100).toFixed(2), flags: ephemeral });
           await interaction.followUp({ content: deal.ref, flags: ephemeral });
           return interaction.followUp({
-            content: `📋 **Tap and hold** a message above, then **Copy Text**.\n1️⃣ the **PayPal email**   2️⃣ the **amount** (${deal.currency})   3️⃣ the **reference** to write in the PayPal note`,
+            content: T(
+              `📋 **Tap and hold** a message above, then **Copy Text**.\n1️⃣ the **PayPal email**   2️⃣ the **amount** (${deal.currency})   3️⃣ the **reference** to write in the PayPal note`,
+              `📋 **Appuie longuement** sur un message ci-dessus, puis **Copier le texte**.\n1️⃣ l'**email PayPal**   2️⃣ le **montant** (${deal.currency})   3️⃣ la **référence** à écrire dans la note PayPal`
+            ),
             flags: ephemeral,
           });
         }
@@ -1422,14 +1542,17 @@ const middleman = (() => {
         await interaction.reply({ content: deal.address, flags: ephemeral });
         await interaction.followUp({ content: satToLtc(deal.amountSat), flags: ephemeral });
         return interaction.followUp({
-          content: "📋 **Tap and hold** a message above, then **Copy Text**.\n1️⃣ the **address**   2️⃣ the **amount** in LTC\nSend exactly that amount to that address.",
+          content: T(
+            "📋 **Tap and hold** a message above, then **Copy Text**.\n1️⃣ the **address**   2️⃣ the **amount** in LTC\nSend exactly that amount to that address.",
+            "📋 **Appuie longuement** sur un message ci-dessus, puis **Copier le texte**.\n1️⃣ l'**adresse**   2️⃣ le **montant** en LTC\nEnvoie exactement ce montant à cette adresse."
+          ),
           flags: ephemeral,
         });
       }
 
       case "decline_amount": {
-        if (deal.state !== "amount_confirm") return reply(interaction, "❌ Nothing to decline right now.");
-        if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver can decline the amount.");
+        if (deal.state !== "amount_confirm") return reply(interaction, T("❌ Nothing to decline right now.", "❌ Rien à refuser pour le moment."));
+        if (user.id !== deal.receiverId) return reply(interaction, T("❌ Only the LTC receiver can decline the amount.", "❌ Seul le destinataire des LTC peut refuser le montant."));
         const declined = { ...deal };
         deal.state = "amount";
         deal.amountSat = 0;
@@ -1437,20 +1560,23 @@ const middleman = (() => {
         deal.amountMsgId = "";
         saveStore();
         await interaction.update({ embeds: [amountCard(declined, "declined", user.id)], components: [] });
-        return advance(deal, { ping: [deal.senderId], notice: `❌  ${mention(user.id)} declined the previous amount.` });
+        return advance(deal, { ping: [deal.senderId], notice: T(`❌  ${mention(user.id)} declined the previous amount.`, `❌  ${mention(user.id)} a refusé le montant précédent.`) });
       }
 
       case "paid": {
-        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, "❌ Nothing to confirm right now.");
-        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the payer can say the payment was sent.");
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, T("❌ Nothing to confirm right now.", "❌ Rien à confirmer pour le moment."));
+        if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the payer can say the payment was sent.", "❌ Seul le payeur peut dire que le paiement est envoyé."));
         if (frozenBlock()) return;
-        if (deal.paidClaimed) return reply(interaction, "Staff was already notified.");
+        if (deal.paidClaimed) return reply(interaction, T("Staff was already notified.", "Le staff a déjà été prévenu."));
         deal.paidClaimed = true;
         saveStore();
         await ack(interaction, deal);
         await notify(deal, {
-          title: "💸  Payment sent?",
-          body: `${mention(user.id)} says the PayPal payment is sent.\n\n${staffPing()} check PayPal for **${fmtFiat(deal.amountCents, deal.currency)}** with the reference \`${deal.ref}\`, then open **Staff tools → Payment received**.`,
+          title: T("💸  Payment sent?", "💸  Paiement envoyé ?"),
+          body: T(
+            `${mention(user.id)} says the PayPal payment is sent.\n\n${staffPing()} check PayPal for **${fmtFiat(deal.amountCents, deal.currency)}** with the reference \`${deal.ref}\`, then open **Staff tools → Payment received**.`,
+            `${mention(user.id)} dit que le paiement PayPal est envoyé.\n\n${staffPing()} vérifiez PayPal : **${fmtFiat(deal.amountCents, deal.currency)}** avec la référence \`${deal.ref}\`, puis ouvrez **Outils staff → Paiement reçu**.`
+          ),
           color: 0xf57c00,
           ping: [staffPing(), deal.ppHolder],
         });
@@ -1459,7 +1585,7 @@ const middleman = (() => {
 
       case "mark_paid": {
         if (needStaff()) return;
-        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, "❌ Nothing to confirm right now.");
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, T("❌ Nothing to confirm right now.", "❌ Rien à confirmer pour le moment."));
         deal.state = "funded";
         saveStore();
         await ack(interaction, deal, false);
@@ -1470,29 +1596,29 @@ const middleman = (() => {
 
       case "ppick": {
         if (needStaff()) return;
-        if (!isPaypal(deal) || deal.state !== "choose_pp") return reply(interaction, "❌ Nothing to choose right now.");
+        if (!isPaypal(deal) || deal.state !== "choose_pp") return reply(interaction, T("❌ Nothing to choose right now.", "❌ Rien à choisir pour le moment."));
         const account = ppList().find((a) => a.id === arg);
         if (!account || account.away) {
-          await reply(interaction, "❌ This PayPal account is no longer available. The list was refreshed.");
+          await reply(interaction, T("❌ This PayPal account is no longer available. The list was refreshed.", "❌ Ce compte PayPal n'est plus disponible. La liste a été actualisée."));
           return refreshMain(deal);
         }
         assignPaypal(deal, account);
         deal.state = "awaiting_payment";
         saveStore();
         await interaction.deferUpdate();
-        await foldStepCard(deal, `✅  **PayPal account**  ·  **${account.label}** chosen by ${mention(user.id)}`);
+        await foldStepCard(deal, T(`✅  **PayPal account**  ·  **${account.label}** chosen by ${mention(user.id)}`, `✅  **Compte PayPal**  ·  **${account.label}** choisi par ${mention(user.id)}`));
         await postPaymentCard(deal);
         return logLine(`💙 Deal #${deal.n}: PayPal account ${account.label} chosen by <@${user.id}>.`);
       }
 
       case "switch_pp": {
         if (needStaff()) return;
-        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, "❌ Nothing to change right now.");
-        if (deal.paidClaimed) return reply(interaction, "❌ The payer says it is already paid: check PayPal first.");
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return reply(interaction, T("❌ Nothing to change right now.", "❌ Rien à changer pour le moment."));
+        if (deal.paidClaimed) return reply(interaction, T("❌ The payer says it is already paid: check PayPal first.", "❌ Le payeur dit avoir déjà payé : vérifie d'abord PayPal."));
         const others = ppList().filter((a) => !a.away && a.id !== deal.ppId).slice(0, 4);
-        if (!others.length) return reply(interaction, "❌ No other PayPal account is available.");
+        if (!others.length) return reply(interaction, T("❌ No other PayPal account is available.", "❌ Aucun autre compte PayPal n'est disponible."));
         return interaction.reply({
-          content: "🔁 Which PayPal account should this deal use instead?",
+          content: T("🔁 Which PayPal account should this deal use instead?", "🔁 Quel compte PayPal ce deal doit-il utiliser à la place ?"),
           components: [new ActionRowBuilder().addComponents(others.map((a) => button(`ppswitch:${a.id}`, a.label.slice(0, 80), ButtonStyle.Primary, "💙")))],
           flags: ephemeral,
         });
@@ -1500,17 +1626,20 @@ const middleman = (() => {
 
       case "ppswitch": {
         if (needStaff()) return;
-        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return interaction.update({ content: "❌ Nothing to change right now.", components: [] });
-        if (deal.paidClaimed) return interaction.update({ content: "❌ The payer says it is already paid: check PayPal first.", components: [] });
+        if (!isPaypal(deal) || deal.state !== "awaiting_payment") return interaction.update({ content: T("❌ Nothing to change right now.", "❌ Rien à changer pour le moment."), components: [] });
+        if (deal.paidClaimed) return interaction.update({ content: T("❌ The payer says it is already paid: check PayPal first.", "❌ Le payeur dit avoir déjà payé : vérifie d'abord PayPal."), components: [] });
         const account = ppList().find((a) => a.id === arg);
-        if (!account || account.away || account.id === deal.ppId) return interaction.update({ content: "❌ This PayPal account is not available.", components: [] });
+        if (!account || account.away || account.id === deal.ppId) return interaction.update({ content: T("❌ This PayPal account is not available.", "❌ Ce compte PayPal n'est pas disponible."), components: [] });
         assignPaypal(deal, account);
         saveStore();
-        await interaction.update({ content: `✅ This deal now uses **${account.label}**.`, components: [] });
+        await interaction.update({ content: T(`✅ This deal now uses **${account.label}**.`, `✅ Ce deal utilise maintenant **${account.label}**.`), components: [] });
         await refreshPaymentCard(deal);
         return notify(deal, {
-          title: "🔁  PayPal account changed",
-          body: `Please pay to the **new** account shown in the payment card: **${account.label}**.\nDo not use the previous one.`,
+          title: T("🔁  PayPal account changed", "🔁  Compte PayPal changé"),
+          body: T(
+            `Please pay to the **new** account shown in the payment card: **${account.label}**.\nDo not use the previous one.`,
+            `Paie sur le **nouveau** compte indiqué sur la carte de paiement : **${account.label}**.\nN'utilise pas l'ancien.`
+          ),
           color: 0xf57c00,
           ping: [deal.senderId],
         });
@@ -1518,38 +1647,46 @@ const middleman = (() => {
 
       case "payout_sent": {
         if (needStaff()) return;
-        if (!isPaypal(deal) || deal.state !== "payout_pending") return reply(interaction, "❌ Nothing to confirm right now.");
-        return interaction.showModal(noteModal("mm:m:payout_sent", "Payout sent", "PayPal transaction ID (optional)"));
+        if (!isPaypal(deal) || deal.state !== "payout_pending") return reply(interaction, T("❌ Nothing to confirm right now.", "❌ Rien à confirmer pour le moment."));
+        return interaction.showModal(noteModal("mm:m:payout_sent", T("Payout sent", "Versement envoyé"), T("PayPal transaction ID (optional)", "ID de transaction PayPal (facultatif)")));
       }
 
       case "release_no":
-        return interaction.update({ content: "Cancelled, nothing was released.", components: [] });
+        return interaction.update({ content: T("Cancelled, nothing was released.", "Annulé, rien n'a été libéré."), components: [] });
 
       case "release_yes": {
-        if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender can release the funds.");
-        if (deal.state !== "funded" || deal.frozen) return interaction.update({ content: "❌ Not possible right now.", components: [] });
+        if (user.id !== deal.senderId) return reply(interaction, T("❌ Only the LTC sender can release the funds.", "❌ Seul l'expéditeur des LTC peut libérer les fonds."));
+        if (deal.state !== "funded" || deal.frozen) return interaction.update({ content: T("❌ Not possible right now.", "❌ Impossible pour le moment."), components: [] });
         deal.state = "released";
         saveStore();
-        await interaction.update({ content: "✅ Released.", components: [] });
-        return advance(deal, { summary: `✅  **Delivery confirmed**  ·  ${mention(deal.senderId)} released the funds`, ping: [deal.receiverId] });
+        await interaction.update({ content: T("✅ Released.", "✅ Libéré."), components: [] });
+        return advance(deal, {
+          summary: T(`✅  **Delivery confirmed**  ·  ${mention(deal.senderId)} released the funds`, `✅  **Livraison confirmée**  ·  ${mention(deal.senderId)} a libéré les fonds`),
+          ping: [deal.receiverId],
+        });
       }
 
       case "payout": {
-        if (user.id !== deal.receiverId) return reply(interaction, "❌ Only the LTC receiver can enter the payout address.");
-        if (deal.state !== "released") return reply(interaction, "❌ The funds were not released yet.");
+        if (user.id !== deal.receiverId) return reply(interaction, T("❌ Only the LTC receiver can enter the payout address.", "❌ Seul le destinataire des LTC peut entrer l'adresse de versement."));
+        if (deal.state !== "released") return reply(interaction, T("❌ The funds were not released yet.", "❌ Les fonds n'ont pas encore été libérés."));
         if (frozenBlock()) return;
-        return interaction.showModal(isPaypal(deal) ? emailModal() : addressModal("mm:m:payout", "Where should we send the LTC?", "Your Litecoin address"));
+        return interaction.showModal(
+          isPaypal(deal) ? emailModal(deal) : addressModal("mm:m:payout", T("Where should we send the LTC?", "Où envoyer les LTC ?"), T("Your Litecoin address", "Ton adresse Litecoin"))
+        );
       }
 
       case "dispute": {
         if (needParticipant()) return;
-        if (deal.frozen) return reply(interaction, "Already frozen.");
+        if (deal.frozen) return reply(interaction, T("Already frozen.", "Déjà gelé."));
         deal.frozen = true;
         saveStore();
         await ack(interaction, deal);
         await notify(deal, {
-          title: "🚨  Staff called",
-          body: `${mention(user.id)} called staff on deal #${deal.n}.\nThe deal is **frozen** until staff decides.`,
+          title: T("🚨  Staff called", "🚨  Staff appelé"),
+          body: T(
+            `${mention(user.id)} called staff on deal #${deal.n}.\nThe deal is **frozen** until staff decides.`,
+            `${mention(user.id)} a appelé le staff sur le deal #${deal.n}.\nLe deal est **gelé** jusqu'à la décision du staff.`
+          ),
           color: COLORS.bad,
           ping: [staffPing()],
         });
@@ -1559,8 +1696,8 @@ const middleman = (() => {
       case "staff": {
         if (needStaff()) return;
         const rows = staffComponents(deal);
-        if (!rows.length) return reply(interaction, "Nothing to do for staff right now.");
-        return interaction.reply({ content: `🛠️ **Staff tools** · deal #${deal.n}`, components: rows, flags: ephemeral });
+        if (!rows.length) return reply(interaction, T("Nothing to do for staff right now.", "Rien à faire pour le staff pour le moment."));
+        return interaction.reply({ content: T(`🛠️ **Staff tools** · deal #${deal.n}`, `🛠️ **Outils staff** · deal #${deal.n}`), components: rows, flags: ephemeral });
       }
 
       case "unfreeze": {
@@ -1568,45 +1705,51 @@ const middleman = (() => {
         deal.frozen = false;
         saveStore();
         await ack(interaction, deal);
-        return notify(deal, { title: "🧊  Deal unfrozen", body: `Unfrozen by ${mention(user.id)}. The deal can continue.`, color: COLORS.info });
+        return notify(deal, {
+          title: T("🧊  Deal unfrozen", "🧊  Deal dégelé"),
+          body: T(`Unfrozen by ${mention(user.id)}. The deal can continue.`, `Dégelé par ${mention(user.id)}. Le deal peut continuer.`),
+          color: COLORS.info,
+        });
       }
 
       case "force_release": {
         if (needStaff()) return;
-        if (deal.state !== "funded") return reply(interaction, "❌ Funds are not in a releasable state.");
+        if (deal.state !== "funded") return reply(interaction, T("❌ Funds are not in a releasable state.", "❌ Les fonds ne sont pas dans un état libérable."));
         deal.state = "released";
         deal.frozen = false;
         saveStore();
         await ack(interaction, deal, false);
-        await advance(deal, { summary: `⚖️  **Released by staff**  ·  ${mention(user.id)}`, ping: [deal.receiverId] });
+        await advance(deal, { summary: T(`⚖️  **Released by staff**  ·  ${mention(user.id)}`, `⚖️  **Libéré par le staff**  ·  ${mention(user.id)}`), ping: [deal.receiverId] });
         return logLine(`⚖️ Deal #${deal.n} force-released by <@${user.id}>.`);
       }
 
       case "refund": {
         if (needStaff()) return;
         if (isPaypal(deal)) {
-          if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, "❌ Nothing to refund.");
-          return interaction.showModal(noteModal("mm:m:refund_pp", "Refund the payer", "PayPal refund transaction ID (optional)"));
+          if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, T("❌ Nothing to refund.", "❌ Rien à rembourser."));
+          return interaction.showModal(noteModal("mm:m:refund_pp", T("Refund the payer", "Rembourser le payeur"), T("PayPal refund transaction ID (optional)", "ID du remboursement PayPal (facultatif)")));
         }
-        if (!["confirming", "funded", "released"].includes(deal.state)) return reply(interaction, "❌ Nothing to refund.");
-        return interaction.showModal(addressModal("mm:m:refund", "Refund address of the sender", "Sender's Litecoin address"));
+        if (!["confirming", "funded", "released"].includes(deal.state)) return reply(interaction, T("❌ Nothing to refund.", "❌ Rien à rembourser."));
+        return interaction.showModal(addressModal("mm:m:refund", T("Refund address of the sender", "Adresse de remboursement de l'expéditeur"), T("Sender's Litecoin address", "Adresse Litecoin de l'expéditeur")));
       }
 
       case "cancel": {
         if (needParticipant()) return;
-        if (!["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(deal.state) || (isPaypal(deal) && deal.paidClaimed)) return reply(interaction, "❌ This deal can no longer be cancelled here. Call staff.");
+        if (!["partner", "roles", "amount", "amount_confirm", "choose_pp", "awaiting_payment"].includes(deal.state) || (isPaypal(deal) && deal.paidClaimed)) {
+          return reply(interaction, T("❌ This deal can no longer be cancelled here. Call staff.", "❌ Ce deal ne peut plus être annulé ici. Appelle le staff."));
+        }
         await closeAmountCard(deal, "superseded");
         deal.state = "cancelled";
         saveStore();
         await ack(interaction, deal, false);
         await refreshPaymentCard(deal);
-        return advance(deal, { summary: `✖️  **Cancelled**  ·  by ${mention(user.id)}` });
+        return advance(deal, { summary: T(`✖️  **Cancelled**  ·  by ${mention(user.id)}`, `✖️  **Annulé**  ·  par ${mention(user.id)}`) });
       }
 
       case "close": {
         if (needStaff()) return;
-        if (!FINAL.has(deal.state)) return reply(interaction, "❌ The deal is not finished.");
-        await reply(interaction, "🗑️ Closing the channel...");
+        if (!FINAL.has(deal.state)) return reply(interaction, T("❌ The deal is not finished.", "❌ Le deal n'est pas terminé."));
+        await reply(interaction, T("🗑️ Closing the channel...", "🗑️ Fermeture du salon..."));
         delete store.deals[deal.channelId];
         saveStore();
         return setTimeout(() => interaction.channel?.delete().catch(() => {}), 3000);
@@ -1614,10 +1757,10 @@ const middleman = (() => {
     }
   }
 
-  const emailModal = () =>
-    new ModalBuilder().setCustomId("mm:m:payout").setTitle("Where should staff pay you?").addComponents(
+  const emailModal = (deal) =>
+    new ModalBuilder().setCustomId("mm:m:payout").setTitle(tr(deal, "Where should staff pay you?", "Où le staff doit-il te payer ?")).addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("value").setLabel("Your PayPal email").setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(100)
+        new TextInputBuilder().setCustomId("value").setLabel(tr(deal, "Your PayPal email", "Ton email PayPal")).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(5).setMaxLength(100)
       )
     );
 
@@ -1637,16 +1780,19 @@ const middleman = (() => {
   }
 
   async function handleModal(interaction, deal, kind) {
+    const T = (en, fr) => tr(deal, en, fr);
     const user = interaction.user;
     const value = interaction.fields.getTextInputValue("value").trim();
 
     if (kind === "partner") {
-      if (user.id !== deal.userA || deal.state !== "partner") return reply(interaction, "❌ Not possible right now.");
+      if (user.id !== deal.userA || deal.state !== "partner") return reply(interaction, T("❌ Not possible right now.", "❌ Impossible pour le moment."));
       const id = value.match(/\d{15,25}/)?.[0];
-      if (!id) return reply(interaction, "❌ Send an @mention or the numeric user ID.");
-      if (id === user.id) return reply(interaction, "❌ You cannot trade with yourself.");
+      if (!id) return reply(interaction, T("❌ Send an @mention or the numeric user ID.", "❌ Envoie une @mention ou l'ID numérique de l'utilisateur."));
+      if (id === user.id) return reply(interaction, T("❌ You cannot trade with yourself.", "❌ Tu ne peux pas échanger avec toi-même."));
       const member = await interaction.guild.members.fetch(id).catch(() => null);
-      if (!member || member.user.bot) return reply(interaction, "❌ I could not find that person in this server (bots are not allowed).");
+      if (!member || member.user.bot) {
+        return reply(interaction, T("❌ I could not find that person in this server (bots are not allowed).", "❌ Je ne trouve pas cette personne sur ce serveur (les bots ne sont pas autorisés)."));
+      }
       await interaction.channel.permissionOverwrites.edit(id, {
         ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true,
       });
@@ -1654,13 +1800,15 @@ const middleman = (() => {
       deal.state = "roles";
       saveStore();
       await interaction.deferUpdate();
-      return advance(deal, { summary: `✅  **Partner added**  ·  ${mention(id)}`, ping: [deal.userA, id] });
+      return advance(deal, { summary: T(`✅  **Partner added**  ·  ${mention(id)}`, `✅  **Partenaire ajouté**  ·  ${mention(id)}`), ping: [deal.userA, id] });
     }
 
     if (kind === "amount") {
-      if (user.id !== deal.senderId || !["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ Not possible right now.");
+      if (user.id !== deal.senderId || !["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, T("❌ Not possible right now.", "❌ Impossible pour le moment."));
       const parsed = isPaypal(deal) ? null : parseAmountInput(value);
-      if (!isPaypal(deal) && !parsed) return reply(interaction, "❌ Invalid amount. Examples: `5$` (dollars), `5€` (euros), `0.25 ltc`.");
+      if (!isPaypal(deal) && !parsed) {
+        return reply(interaction, T("❌ Invalid amount. Examples: `5$` (dollars), `5€` (euros), `0.25 ltc`.", "❌ Montant invalide. Exemples : `5$` (dollars), `5€` (euros), `0.25 ltc`."));
+      }
 
       if (parsed?.bare) {
         // "0.01" alone is ambiguous: show both readings side by side and let the sender pick
@@ -1668,10 +1816,15 @@ const middleman = (() => {
         const prices = await getLtcPrice().catch(() => null);
         const asLtc = ltcToSat(parsed.value);
         const dollarSat = prices ? Math.round((Number(parsed.value) / prices.usd) * SAT_PER_LTC) : 0;
-        const dollarLabel = prices ? `$${parsed.value}  =  ${satToLtc(dollarSat)} LTC` : `$${parsed.value} (price unavailable)`;
-        const ltcLabel = asLtc ? `${parsed.value} LTC${prices ? `  (≈ $${fmtMoney((asLtc / SAT_PER_LTC) * prices.usd)})` : ""}` : "invalid LTC amount";
+        const dollarLabel = prices ? `$${parsed.value}  =  ${satToLtc(dollarSat)} LTC` : `$${parsed.value} ${T("(price unavailable)", "(cours indisponible)")}`;
+        const ltcLabel = asLtc
+          ? `${parsed.value} LTC${prices ? `  (≈ $${fmtMoney((asLtc / SAT_PER_LTC) * prices.usd)})` : ""}`
+          : T("invalid LTC amount", "montant LTC invalide");
         return interaction.editReply({
-          content: `**${parsed.value}** what do you mean?\nPick one, the receiver then confirms it.`,
+          content: T(
+            `**${parsed.value}** what do you mean?\nPick one, the receiver then confirms it.`,
+            `**${parsed.value}** qu'est-ce que tu veux dire ?\nChoisis, le destinataire confirmera ensuite.`
+          ),
           components: [
             new ActionRowBuilder().addComponents(
               button(`pick:usd:${parsed.value}`, dollarLabel.slice(0, 80), ButtonStyle.Primary, "💵").setDisabled(!prices || dollarSat < 1),
@@ -1688,51 +1841,53 @@ const middleman = (() => {
     }
 
     if (isPaypal(deal) && kind === "payout") {
-      if (user.id !== deal.receiverId) return reply(interaction, "❌ Not allowed.");
-      if (deal.state !== "released" || deal.frozen) return reply(interaction, "❌ This is not possible in the current state of the deal.");
-      if (!EMAIL.test(value)) return reply(interaction, "❌ That is not a valid PayPal email address.");
+      if (user.id !== deal.receiverId) return reply(interaction, T("❌ Not allowed.", "❌ Non autorisé."));
+      if (deal.state !== "released" || deal.frozen) return reply(interaction, T("❌ This is not possible in the current state of the deal.", "❌ Impossible dans l'état actuel du deal."));
+      if (!EMAIL.test(value)) return reply(interaction, T("❌ That is not a valid PayPal email address.", "❌ Ce n'est pas une adresse email PayPal valide."));
       deal.payoutPaypal = value;
       deal.state = "payout_pending";
       saveStore();
-      await reply(interaction, "✅ Sent to staff. They pay you and mark the deal as done.");
-      await advance(deal, { summary: "🏦  **PayPal email received**", ping: [staffPing(), deal.senderId] });
+      await reply(interaction, T("✅ Sent to staff. They pay you and mark the deal as done.", "✅ Envoyé au staff. Il te paie puis marque le deal comme terminé."));
+      await advance(deal, { summary: T("🏦  **PayPal email received**", "🏦  **Email PayPal reçu**"), ping: [staffPing(), deal.senderId] });
       return logLine(`🏦 Deal #${deal.n}: pay ${fmtFiat(deal.amountCents, deal.currency)} to ${value} (<#${deal.channelId}>).`);
     }
 
     if (isPaypal(deal) && kind === "payout_sent") {
-      if (!isStaff(interaction.member)) return reply(interaction, "❌ Staff only.");
-      if (deal.state !== "payout_pending") return reply(interaction, "❌ This is not possible in the current state of the deal.");
+      if (!isStaff(interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
+      if (deal.state !== "payout_pending") return reply(interaction, T("❌ This is not possible in the current state of the deal.", "❌ Impossible dans l'état actuel du deal."));
       deal.resultNote = value;
       deal.state = "done";
       saveStore();
-      await reply(interaction, "✅ Deal marked as done.");
-      await advance(deal, { summary: `🏦  **Payout sent by staff**  ·  ${mention(user.id)}`, ping: [deal.receiverId, deal.senderId] });
+      await reply(interaction, T("✅ Deal marked as done.", "✅ Deal marqué comme terminé."));
+      await advance(deal, { summary: T(`🏦  **Payout sent by staff**  ·  ${mention(user.id)}`, `🏦  **Versement envoyé par le staff**  ·  ${mention(user.id)}`), ping: [deal.receiverId, deal.senderId] });
       return logLine(`✅ Deal #${deal.n}: PayPal payout sent by <@${user.id}>.`);
     }
 
     if (isPaypal(deal) && kind === "refund_pp") {
-      if (!isStaff(interaction.member)) return reply(interaction, "❌ Staff only.");
-      if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, "❌ Nothing to refund.");
+      if (!isStaff(interaction.member)) return reply(interaction, T("❌ Staff only.", "❌ Réservé au staff."));
+      if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, T("❌ Nothing to refund.", "❌ Rien à rembourser."));
       deal.resultNote = value;
       deal.state = "refunded";
       saveStore();
-      await reply(interaction, "✅ Deal marked as refunded.");
+      await reply(interaction, T("✅ Deal marked as refunded.", "✅ Deal marqué comme remboursé."));
       await refreshPaymentCard(deal);
-      await advance(deal, { summary: `↩️  **Refunded by staff**  ·  ${mention(user.id)}`, ping: [deal.senderId] });
+      await advance(deal, { summary: T(`↩️  **Refunded by staff**  ·  ${mention(user.id)}`, `↩️  **Remboursé par le staff**  ·  ${mention(user.id)}`), ping: [deal.senderId] });
       return logLine(`↩️ Deal #${deal.n}: PayPal payment refunded by <@${user.id}>.`);
     }
 
     // payout / refund: both send the whole balance of the deal address
     const isRefund = kind === "refund";
-    if (isRefund ? !isStaff(interaction.member) : user.id !== deal.receiverId) return reply(interaction, "❌ Not allowed.");
-    if (!isValidLtcAddress(value)) return reply(interaction, "❌ That is not a valid Litecoin address.");
-    if (value === deal.address) return reply(interaction, "❌ You cannot send the funds back to the deposit address.");
+    if (isRefund ? !isStaff(interaction.member) : user.id !== deal.receiverId) return reply(interaction, T("❌ Not allowed.", "❌ Non autorisé."));
+    if (!isValidLtcAddress(value)) return reply(interaction, T("❌ That is not a valid Litecoin address.", "❌ Ce n'est pas une adresse Litecoin valide."));
+    if (value === deal.address) return reply(interaction, T("❌ You cannot send the funds back to the deposit address.", "❌ Tu ne peux pas renvoyer les fonds vers l'adresse de dépôt."));
 
     await interaction.deferReply({ flags: ephemeral });
 
     const result = await withLock(deal.channelId, async () => {
       const allowed = isRefund ? ["confirming", "funded", "released"] : ["released"];
-      if (!allowed.includes(deal.state) || (!isRefund && deal.frozen)) return { error: "This is not possible in the current state of the deal." };
+      if (!allowed.includes(deal.state) || (!isRefund && deal.frozen)) {
+        return { error: T("This is not possible in the current state of the deal.", "Impossible dans l'état actuel du deal.") };
+      }
       const previous = deal.state;
       deal.state = "paying"; // saved first so a restart never pays twice
       saveStore();
@@ -1754,22 +1909,22 @@ const middleman = (() => {
       } catch (error) {
         deal.state = previous;
         saveStore();
-        return { error: error?.message || String(error) };
+        return { error: errText(deal, error?.message || String(error)) };
       }
     });
 
     if (result.error) {
       console.error(`⚠️ Middleman: ${isRefund ? "refund" : "payout"} failed for deal #${deal.n}:`, result.error);
-      return interaction.editReply(`❌ Could not send the funds: ${result.error}\nNothing was lost, you can try again.`);
+      return interaction.editReply(T(`❌ Could not send the funds: ${result.error}\nNothing was lost, you can try again.`, `❌ Impossible d'envoyer les fonds : ${result.error}\nRien n'est perdu, tu peux réessayer.`));
     }
 
     const { sent } = result;
-    await interaction.editReply("✅ Funds sent.");
+    await interaction.editReply(T("✅ Funds sent.", "✅ Fonds envoyés."));
     await refreshPaymentCard(deal);
     await advance(deal, {
       summary: isRefund
-        ? `↩️  **Refunded by staff**  ·  ${satToLtc(sent.outValue)} LTC`
-        : `🏦  **Payout address received**  ·  ${satToLtc(sent.outValue)} LTC sent`,
+        ? T(`↩️  **Refunded by staff**  ·  ${satToLtc(sent.outValue)} LTC`, `↩️  **Remboursé par le staff**  ·  ${satToLtc(sent.outValue)} LTC`)
+        : T(`🏦  **Payout address received**  ·  ${satToLtc(sent.outValue)} LTC sent`, `🏦  **Adresse de versement reçue**  ·  ${satToLtc(sent.outValue)} LTC envoyés`),
       ping: isRefund ? [deal.senderId] : [deal.receiverId, deal.senderId],
     });
     return logLine(`${isRefund ? "↩️ Refund" : "✅ Payout"} deal #${deal.n}: ${satToLtc(sent.outValue)} LTC, tx ${sent.txid}`);
@@ -1793,24 +1948,27 @@ const middleman = (() => {
     }
     if (typeof id !== "string" || !id.startsWith("mm:")) return false;
 
+    // the language of the ticket also tells how to answer when the deal itself is gone
+    const L = { lang: /:fr$/.test(interaction.channel?.topic || "") ? "fr" : "en" };
     try {
       if (!enabled) {
-        await reply(interaction, "❌ The middleman is not configured yet (MM_SEED is missing).");
+        await reply(interaction, tr(L, "❌ The middleman is not configured yet (MM_SEED is missing).", "❌ Le middleman n'est pas encore configuré (MM_SEED manque)."));
         return true;
       }
 
       const deal = store.deals[interaction.channelId];
       if (!deal) {
-        await reply(interaction, "❌ This deal no longer exists.");
+        await reply(interaction, tr(L, "❌ This deal no longer exists.", "❌ Ce deal n'existe plus."));
         return true;
       }
+      L.lang = deal.lang === "fr" ? "fr" : "en";
 
       const parts = id.split(":"); // mm:action[:arg]  |  mm:m:kind
       if (interaction.isModalSubmit()) await handleModal(interaction, deal, parts[2]);
       else if (interaction.isButton()) await handleButton(interaction, deal, parts[1], parts[2], parts[3]);
     } catch (error) {
       console.error("⚠️ Middleman error:", error?.message || error);
-      const message = "❌ Something went wrong. Check the bot console.";
+      const message = tr(L, "❌ Something went wrong. Check the bot console.", "❌ Une erreur est survenue. Regarde la console du bot.");
       if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, flags: ephemeral }).catch(() => {});
       else await interaction.reply({ content: message, flags: ephemeral }).catch(() => {});
     }
@@ -1973,7 +2131,7 @@ async function postPanel(interaction) {
         { name: "5️⃣  Deliver & release", value: "The seller delivers, the payer releases.", inline: true },
         { name: "6️⃣  Payout", value: "Staff sends the money to the seller.", inline: true }
       )
-      .setFooter({ text: "Always write the reference in the PayPal note  ·  every payment is checked by staff" });
+      .setFooter({ text: "Always write the reference in the PayPal note  ·  every payment is checked by staff  ·  🇫🇷 / 🇬🇧" });
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("open_ticket:paypal").setLabel("Open a PayPal ticket").setEmoji("💙").setStyle(ButtonStyle.Success)
     );
@@ -1990,7 +2148,7 @@ async function postPanel(interaction) {
         { name: "5️⃣  Release", value: "The sender confirms, the bot pays the receiver.", inline: true },
         { name: "🛟  Problem?", value: "**Call staff** freezes the deal at any time.", inline: true }
       )
-      .setFooter({ text: "Amounts can be typed in LTC, $ or €  ·  small network fee applies" });
+      .setFooter({ text: "Amounts can be typed in LTC, $ or €  ·  small network fee applies  ·  🇫🇷 / 🇬🇧" });
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("open_ticket:ltc").setLabel("Open a Litecoin ticket").setEmoji("💱").setStyle(ButtonStyle.Primary)
     );
@@ -2001,20 +2159,62 @@ async function postPanel(interaction) {
 
 /* ---------- tickets ---------- */
 
-async function openTicket(interaction) {
-  const method = interaction.customId === "open_ticket:paypal" ? "paypal" : "ltc"; // an older panel button is just "open_ticket"
+/* Before a language is chosen, the texts follow the Discord language of the person. */
+const userIsFrench = (interaction) => String(interaction.locale || "").toLowerCase().startsWith("fr");
+const byUser = (interaction, en, fr) => (userIsFrench(interaction) ? fr : en);
+const byLang = (lang, en, fr) => (lang === "fr" ? fr : en);
+const topicLang = (channel) => (/:fr$/.test(channel?.topic || "") ? "fr" : "en");
+
+const methodOf = (customId) => (String(customId).split(":")[1] === "paypal" ? "paypal" : "ltc"); // an older panel button is just "open_ticket"
+
+const findOpenTicket = (guild, userId, method) =>
+  guild.channels.cache.find(
+    (c) => c.type === ChannelType.GuildText && (c.topic?.startsWith(`mm-ticket:${userId}:${method}`) || (method === "ltc" && c.topic === `mm-ticket:${userId}`))
+  );
+
+/* Step 1: the person clicked a panel button, ask French or English. */
+async function askLanguage(interaction) {
+  const method = methodOf(interaction.customId);
   if (method === "paypal") {
     const status = middleman.paypalStatus();
-    if (!status.configured) return interaction.reply({ content: "❌ PayPal tickets are not available right now.", flags: ephemeral });
-    if (!status.available) return interaction.reply({ content: "❌ No PayPal account is available right now (everyone is absent). Please try again later.", flags: ephemeral });
+    if (!status.configured) return interaction.reply({ content: byUser(interaction, "❌ PayPal tickets are not available right now.", "❌ Les tickets PayPal ne sont pas disponibles pour le moment."), flags: ephemeral });
+    if (!status.available) {
+      return interaction.reply({
+        content: byUser(interaction, "❌ No PayPal account is available right now (everyone is absent). Please try again later.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Réessaie plus tard."),
+        flags: ephemeral,
+      });
+    }
   }
-  await interaction.deferReply({ flags: ephemeral });
+  const existing = findOpenTicket(interaction.guild, interaction.user.id, method);
+  if (existing) return interaction.reply({ content: byUser(interaction, `❌ You already have an open ticket: ${existing}`, `❌ Tu as déjà un ticket ouvert : ${existing}`), flags: ephemeral });
+
+  const fr = userIsFrench(interaction);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`ticket_lang:${method}:fr`).setLabel(fr ? "Français" : "French").setEmoji("🇫🇷").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`ticket_lang:${method}:en`).setLabel(fr ? "Anglais" : "English").setEmoji("🇬🇧").setStyle(ButtonStyle.Primary)
+  );
+  return interaction.reply({
+    content: fr ? "🌍 **Choisis la langue de ton ticket**\nFrançais ou anglais ?" : "🌍 **Choose the language of your ticket**\nFrench or English?",
+    components: [row],
+    flags: ephemeral,
+  });
+}
+
+/* Step 2: the language is chosen, create the ticket, entirely in that language. */
+async function openTicket(interaction) {
+  const [, rawMethod, rawLang] = String(interaction.customId).split(":"); // ticket_lang:<method>:<fr|en>
+  const method = rawMethod === "paypal" ? "paypal" : "ltc";
+  const lang = rawLang === "fr" ? "fr" : "en";
+  const T = (en, fr) => byLang(lang, en, fr);
+
+  await interaction.update({ content: T("⏳ Creating your ticket…", "⏳ Création de ton ticket…"), components: [] });
   const { guild, user } = interaction;
 
-  const existing = guild.channels.cache.find(
-    (c) => c.type === ChannelType.GuildText && (c.topic === `mm-ticket:${user.id}:${method}` || (method === "ltc" && c.topic === `mm-ticket:${user.id}`))
-  );
-  if (existing) return interaction.editReply(`❌ You already have an open ticket: ${existing}`);
+  if (method === "paypal" && !middleman.paypalStatus().available) {
+    return interaction.editReply(T("❌ No PayPal account is available right now (everyone is absent). Please try again later.", "❌ Aucun compte PayPal n'est disponible pour le moment (tout le monde est absent). Réessaie plus tard."));
+  }
+  const existing = findOpenTicket(guild, user.id, method);
+  if (existing) return interaction.editReply(T(`❌ You already have an open ticket: ${existing}`, `❌ Tu as déjà un ticket ouvert : ${existing}`));
 
   const allow = [
     PermissionFlagsBits.ViewChannel,
@@ -2039,16 +2239,25 @@ async function openTicket(interaction) {
     name: `${method === "paypal" ? "paypal" : "ltc"}-${safeName}`,
     type: ChannelType.GuildText,
     parent: parent?.type === ChannelType.GuildCategory ? parent.id : undefined,
-    topic: `mm-ticket:${user.id}:${method}`,
+    topic: `mm-ticket:${user.id}:${method}:${lang}`,
     permissionOverwrites: overwrites,
   });
 
   const welcome = new EmbedBuilder()
     .setColor(method === "paypal" ? 0x0070ba : 0x5865f2)
-    .setTitle(method === "paypal" ? "💙  Your PayPal middleman ticket" : "💱  Your Litecoin middleman ticket")
-    .setDescription(`Welcome ${user}!\nFollow the **deal card** below, it guides you step by step and updates by itself.\n\n🚨 Anything wrong? **Call staff** on the card, the deal is frozen until staff decides.`);
+    .setTitle(
+      method === "paypal"
+        ? T("💙  Your PayPal middleman ticket", "💙  Ton ticket middleman PayPal")
+        : T("💱  Your Litecoin middleman ticket", "💱  Ton ticket middleman Litecoin")
+    )
+    .setDescription(
+      T(
+        `Welcome ${user}!\nFollow the **deal card** below, it guides you step by step and updates by itself.\n\n🚨 Anything wrong? **Call staff** on the card, the deal is frozen until staff decides.`,
+        `Bienvenue ${user} !\nSuis la **carte du deal** ci-dessous, elle te guide étape par étape et se met à jour toute seule.\n\n🚨 Un problème ? **Appelle le staff** sur la carte, le deal est gelé jusqu'à la décision du staff.`
+      )
+    );
   const close = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("ticket_close").setLabel("Close ticket").setEmoji("🔒").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("ticket_close").setLabel(T("Close ticket", "Fermer le ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
   );
   await channel.send({
     content: STAFF_ROLE_ID ? `<@&${STAFF_ROLE_ID}> ${user}` : `${user}`,
@@ -2057,28 +2266,30 @@ async function openTicket(interaction) {
     allowedMentions: { roles: STAFF_ROLE_ID ? [STAFF_ROLE_ID] : [], users: [user.id] },
   });
 
-  await middleman.openDeal(channel, user, method).catch((error) => {
+  await middleman.openDeal(channel, user, method, lang).catch((error) => {
     console.error("Middleman could not start:", error?.message || error);
-    return channel.send("❌ The middleman could not start. Staff has been pinged.").catch(() => {});
+    return channel.send(T("❌ The middleman could not start. Staff has been pinged.", "❌ Le middleman n'a pas pu démarrer. Le staff est prévenu.")).catch(() => {});
   });
 
-  return interaction.editReply(`✅ Ticket created: ${channel}`);
+  return interaction.editReply(T(`✅ Ticket created: ${channel}`, `✅ Ticket créé : ${channel}`));
 }
 
 async function closeTicket(interaction) {
   const channel = interaction.channel;
+  const lang = topicLang(channel);
+  const T = (en, fr) => byLang(lang, en, fr);
   if (!channel?.topic?.startsWith("mm-ticket:")) {
-    return interaction.reply({ content: "❌ This is not a middleman ticket.", flags: ephemeral });
+    return interaction.reply({ content: T("❌ This is not a middleman ticket.", "❌ Ce n'est pas un ticket middleman."), flags: ephemeral });
   }
   const ownerId = channel.topic.split(":")[1];
   if (interaction.user.id !== ownerId && !isStaff(interaction.member)) {
-    return interaction.reply({ content: "❌ Only the ticket owner or staff can close this ticket.", flags: ephemeral });
+    return interaction.reply({ content: T("❌ Only the ticket owner or staff can close this ticket.", "❌ Seul le propriétaire du ticket ou le staff peut fermer ce ticket."), flags: ephemeral });
   }
   if (middleman.blocksClose(channel.id)) {
-    return interaction.reply({ content: "❌ The deal in this ticket still holds funds. Finish it or refund it first.", flags: ephemeral });
+    return interaction.reply({ content: T("❌ The deal in this ticket still holds funds. Finish it or refund it first.", "❌ Le deal de ce ticket garde encore des fonds. Termine-le ou rembourse-le d'abord."), flags: ephemeral });
   }
   middleman.forget(channel.id);
-  await interaction.reply("🔒 Ticket closed. This channel will be deleted in 5 seconds.");
+  await interaction.reply(T("🔒 Ticket closed. This channel will be deleted in 5 seconds.", "🔒 Ticket fermé. Ce salon sera supprimé dans 5 secondes."));
   setTimeout(() => channel.delete("middleman ticket closed").catch(() => {}), 5000);
 }
 
@@ -2089,7 +2300,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (await middleman.handleInteraction(interaction)) return;
 
     if (interaction.isChatInputCommand() && interaction.commandName === "panel") return await postPanel(interaction);
-    if (interaction.isButton() && (interaction.customId === "open_ticket" || interaction.customId.startsWith("open_ticket:"))) return await openTicket(interaction);
+    if (interaction.isButton() && (interaction.customId === "open_ticket" || interaction.customId.startsWith("open_ticket:"))) return await askLanguage(interaction);
+    if (interaction.isButton() && interaction.customId.startsWith("ticket_lang:")) return await openTicket(interaction);
     if (interaction.isButton() && interaction.customId === "ticket_close") return await closeTicket(interaction);
   } catch (error) {
     console.error("Interaction error:", error?.message || error);
