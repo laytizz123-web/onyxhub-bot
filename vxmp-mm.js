@@ -2907,24 +2907,24 @@ const tools = (() => {
     }
   }
 
-  /* The ladder of level roles the bot can create: [level, French name, English name, colour]. */
+  /* The ladder of level roles the bot can create: [level, name, colour]. Always in English. */
   const LADDER = [
-    [1, "🥚 Nouveau", "🥚 Newbie", 0x95a5a6],
-    [5, "🧠 Brainrot Débutant", "🧠 Brainrot Rookie", 0x2ecc71],
-    [10, "🔥 Voleur de Brainrot", "🔥 Brainrot Thief", 0x3498db],
-    [15, "💎 Collectionneur", "💎 Collector", 0x1abc9c],
-    [20, "⚡ Sigma", "⚡ Sigma", 0x9b59b6],
-    [30, "👑 Roi du Brainrot", "👑 Brainrot King", 0xf1c40f],
-    [40, "🌌 Légende", "🌌 Legend", 0xe67e22],
-    [50, "🏆 Dieu du Brainrot", "🏆 Brainrot God", 0xed4245],
+    [1, "Newcomer", 0x95a5a6],
+    [5, "Member", 0x3498db],
+    [10, "Active", 0x1abc9c],
+    [15, "Regular", 0x2ecc71],
+    [20, "Veteran", 0x9b59b6],
+    [30, "Elite", 0xe91e63],
+    [40, "Master", 0xe67e22],
+    [50, "Legend", 0xf1c40f],
   ];
 
   /* Creates the level roles, remembers them, and connects them to the levels. Returns how many. */
   async function createLevelRoles(guild) {
     if (db.setup.levelRoles.length) return 0;
     let made = 0;
-    for (const [level, fr, en, color] of LADDER) {
-      const role = await guild.roles.create({ name: FR ? fr : en, color, hoist: false, mentionable: false, reason: "level roles" });
+    for (const [level, name, color] of LADDER) {
+      const role = await guild.roles.create({ name, color, hoist: false, mentionable: false, reason: "level roles" });
       db.setup.levelRoles.push(role.id);
       db.cfg.levels.rewards = db.cfg.levels.rewards.filter((r) => r.level !== level);
       db.cfg.levels.rewards.push({ level, roleId: role.id });
