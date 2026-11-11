@@ -38,7 +38,7 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
   Setup (.env):
     MM_SEED=twelve word mnemonic ...       required, run `node middleman.js new-seed` to make one
     MM_CONFIRMATIONS=2                     confirmations needed (default 2)
-    MM_MIN_LTC=0.001                       smallest deal accepted
+    MM_MIN_LTC=0.0001                      smallest deal accepted (about 0.005 USD)
     MM_CATEGORY_ID=...                     category where the deal channels are created (optional)
     LTC_API_URL=https://litecoinspace.org/api    Esplora-compatible API (default)
     LTC_EXPLORER_TX_URL=https://litecoinspace.org/tx/
@@ -124,7 +124,7 @@ const middleman = (() => {
     confirmations: Math.max(1, Number(process.env.MM_CONFIRMATIONS) || 2),
     pollMs: Math.max(10, Number(process.env.MM_POLL_SECONDS) || 30) * 1000,
     minFeeRate: Math.max(1, Number(process.env.MM_MIN_FEE_RATE) || 2),
-    minSat: ltcToSat(process.env.MM_MIN_LTC || "0.001") || 100000,
+    minSat: ltcToSat(process.env.MM_MIN_LTC || "0.0001") || 10000,
     categoryId: process.env.MM_CATEGORY_ID || "",
   };
 
@@ -180,6 +180,86 @@ const middleman = (() => {
   }
 
   const apiJson = async (pathname) => JSON.parse(await api(pathname));
+
+  /* ---------- amounts typed as money: "0.01$", "$5", "5 usd", "5€", "5 eur" (or plain LTC: "0.25", "0.25 ltc") ---------- */
+
+  async function fetchJson(url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  let priceCache = { at: 0, usd: 0, eur: 0 };
+
+  /* Current LTC price in USD and EUR (cached 60 s). Two public sources, no key needed. */
+  async function getLtcPrice() {
+    if (priceCache.usd && Date.now() - priceCache.at < 60000) return priceCache;
+    const sources = [
+      async () => {
+        const [usd, eur] = await Promise.all(
+          ["USD", "EUR"].map(async (c) => Number((await fetchJson(`https://api.coinbase.com/v2/prices/LTC-${c}/spot`)).data.amount))
+        );
+        return { usd, eur };
+      },
+      async () => {
+        const j = await fetchJson("https://api.coingecko.com/api/v3/simple/price?ids=litecoin&vs_currencies=usd,eur");
+        return { usd: Number(j.litecoin.usd), eur: Number(j.litecoin.eur) };
+      },
+    ];
+    let lastError = null;
+    for (const source of sources) {
+      try {
+        const price = await source();
+        const ok = (n) => Number.isFinite(n) && n > 1 && n < 100000; // sanity check
+        if (ok(price.usd) && ok(price.eur)) {
+          priceCache = { at: Date.now(), ...price };
+          return priceCache;
+        }
+        lastError = new Error("implausible price");
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error(`Could not get the LTC price (${lastError?.message || "unknown error"}).`);
+  }
+
+  /* "0.25" / "0.25 ltc" -> LTC; "0.01$" "$0.01" "0.01 usd" -> dollars; "0.01€" "0.01 eur" -> euros. */
+  function parseAmountInput(text) {
+    const raw = String(text || "").trim().toLowerCase().replace(",", ".");
+    const number = raw.match(/\d+(?:\.\d+)?/)?.[0];
+    if (!number) return null;
+    const rest = raw.replace(number, "").replace(/\s+/g, "");
+    if (/^(\$|usd|dollars?)?$/.test(rest) && /[$]|usd|dollar/.test(rest)) return { kind: "USD", value: number };
+    if (/^(€|eur|euros?)$/.test(rest)) return { kind: "EUR", value: number };
+    if (/^(ltc)?$/.test(rest)) return { kind: "LTC", value: number };
+    return null;
+  }
+
+  /* Returns { sat, quote } where quote describes the conversion (null for plain LTC), or { error }. */
+  async function resolveAmount(text) {
+    const parsed = parseAmountInput(text);
+    if (!parsed) return { error: "Invalid amount. Examples: `0.25` (LTC), `5$` (dollars), `5€` (euros)." };
+
+    if (parsed.kind === "LTC") {
+      const sat = ltcToSat(parsed.value);
+      if (!sat) return { error: "Invalid amount. Use at most 8 decimals, for example `0.25`." };
+      return { sat, quote: null };
+    }
+
+    const fiat = Number(parsed.value);
+    if (!(fiat > 0) || fiat > 1000000) return { error: "Invalid amount." };
+    const prices = await getLtcPrice();
+    const price = parsed.kind === "USD" ? prices.usd : prices.eur;
+    return { sat: Math.round((fiat / price) * SAT_PER_LTC), quote: { fiat, currency: parsed.kind, price } };
+  }
+
+  const quoteText = (q) => (q ? `≈ ${q.fiat} ${q.currency} (1 LTC = ${q.price} ${q.currency}, rate fixed now)` : "");
 
   async function getTipHeight() {
     const height = parseInt(await api("/blocks/tip/height"), 10);
@@ -342,7 +422,7 @@ const middleman = (() => {
       .addFields(
         { name: "LTC sender", value: mention(deal.senderId), inline: true },
         { name: "LTC receiver", value: mention(deal.receiverId), inline: true },
-        { name: "Amount", value: deal.amountSat ? `**${satToLtc(deal.amountSat)} LTC**` : "*not set*", inline: true },
+        { name: "Amount", value: deal.amountSat ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}` : "*not set*", inline: true },
         { name: "Status", value: `${deal.frozen ? "🧊 **FROZEN (dispute)** — " : ""}${STATE_TEXT[deal.state] || deal.state}` }
       );
 
@@ -605,7 +685,7 @@ const middleman = (() => {
         if (user.id !== deal.senderId) return reply(interaction, "❌ Only the LTC sender sets the amount.");
         const modal = new ModalBuilder().setCustomId("mm:m:amount").setTitle("Amount to send")
           .addComponents(new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("value").setLabel("Amount in LTC (example: 0.25)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(20)
+            new TextInputBuilder().setCustomId("value").setLabel("Amount: 0.25 (LTC) / 5$ / 5€").setPlaceholder("0.25   or   0.01$   or   5€").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(24)
           ));
         return interaction.showModal(modal);
       }
@@ -741,15 +821,19 @@ const middleman = (() => {
 
     if (kind === "amount") {
       if (user.id !== deal.senderId || !["amount", "amount_confirm"].includes(deal.state)) return reply(interaction, "❌ Not possible right now.");
-      const sat = ltcToSat(value);
-      if (!sat) return reply(interaction, "❌ Invalid amount. Use a number like `0.25` (max 8 decimals).");
-      if (sat < cfg.minSat) return reply(interaction, `❌ Minimum deal: ${satToLtc(cfg.minSat)} LTC.`);
-      deal.amountSat = sat;
+      if (!parseAmountInput(value)) return reply(interaction, "❌ Invalid amount. Examples: `0.25` (LTC), `5$` (dollars), `5€` (euros).");
+      await interaction.deferUpdate(); // the price lookup can take a moment
+      const result = await resolveAmount(value).catch((error) => ({ error: error?.message || String(error) }));
+      if (result.error) return interaction.followUp({ content: `❌ ${result.error}`, flags: ephemeral });
+      if (result.sat < cfg.minSat) {
+        return interaction.followUp({ content: `❌ That is only ${satToLtc(result.sat)} LTC. Minimum deal: ${satToLtc(cfg.minSat)} LTC.`, flags: ephemeral });
+      }
+      deal.amountSat = result.sat;
+      deal.quote = result.quote;
       deal.state = "amount_confirm";
       saveStore();
-      await interaction.deferUpdate();
       await refreshMain(deal);
-      return say(deal, `💰 ${mention(deal.senderId)} set the amount to **${satToLtc(sat)} LTC**. ${mention(deal.receiverId)}: confirm it with the button above.`);
+      return say(deal, `💰 ${mention(deal.senderId)} set the amount to **${satToLtc(result.sat)} LTC**${result.quote ? ` ${quoteText(result.quote)}` : ""}.\n${mention(deal.receiverId)}: confirm it with the button above. The amount to pay is the LTC figure, it will not change.`);
     }
 
     // payout / refund: both send the whole balance of the deal address
