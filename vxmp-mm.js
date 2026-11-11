@@ -2826,9 +2826,9 @@ const tools = (() => {
     warns: {},
     polls: {},
     giveaways: {},
-    setup: { items: [] },
+    setup: { items: [], levelRoles: [] },
     cfg: {
-      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50 },
+      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
@@ -2892,12 +2892,70 @@ const tools = (() => {
 
   const cooldown = new Map();
   async function giveRewards(member, level) {
-    const roles = db.cfg.levels.rewards.filter((r) => r.level <= level).map((r) => r.roleId);
-    for (const roleId of roles) {
+    const cfg = db.cfg.levels;
+    const eligible = cfg.rewards.filter((r) => r.level <= level);
+    if (!eligible.length || !member?.roles) return;
+    const keep = cfg.stack ? eligible.map((r) => r.roleId) : [eligible[eligible.length - 1].roleId];
+    for (const roleId of keep) {
       if (member.roles.cache.has(roleId)) continue;
       await member.roles.add(roleId, "level reward").catch(() => {});
     }
+    if (!cfg.stack) {
+      for (const r of cfg.rewards) {
+        if (!keep.includes(r.roleId) && member.roles.cache.has(r.roleId)) await member.roles.remove(r.roleId, "higher level role").catch(() => {});
+      }
+    }
   }
+
+  /* The ladder of level roles the bot can create: [level, French name, English name, colour]. */
+  const LADDER = [
+    [1, "🥚 Nouveau", "🥚 Newbie", 0x95a5a6],
+    [5, "🧠 Brainrot Débutant", "🧠 Brainrot Rookie", 0x2ecc71],
+    [10, "🔥 Voleur de Brainrot", "🔥 Brainrot Thief", 0x3498db],
+    [15, "💎 Collectionneur", "💎 Collector", 0x1abc9c],
+    [20, "⚡ Sigma", "⚡ Sigma", 0x9b59b6],
+    [30, "👑 Roi du Brainrot", "👑 Brainrot King", 0xf1c40f],
+    [40, "🌌 Légende", "🌌 Legend", 0xe67e22],
+    [50, "🏆 Dieu du Brainrot", "🏆 Brainrot God", 0xed4245],
+  ];
+
+  /* Creates the level roles, remembers them, and connects them to the levels. Returns how many. */
+  async function createLevelRoles(guild) {
+    if (db.setup.levelRoles.length) return 0;
+    let made = 0;
+    for (const [level, fr, en, color] of LADDER) {
+      const role = await guild.roles.create({ name: FR ? fr : en, color, hoist: false, mentionable: false, reason: "level roles" });
+      db.setup.levelRoles.push(role.id);
+      db.cfg.levels.rewards = db.cfg.levels.rewards.filter((r) => r.level !== level);
+      db.cfg.levels.rewards.push({ level, roleId: role.id });
+      made++;
+    }
+    db.cfg.levels.rewards.sort((a, b) => a.level - b.level);
+    save(true);
+    return made;
+  }
+
+  /* Deletes only the roles the bot created, and the rewards that pointed to them. Returns how many. */
+  async function removeLevelRoles(guild) {
+    let removed = 0;
+    const ids = new Set(db.setup.levelRoles);
+    for (const id of [...db.setup.levelRoles]) {
+      const role = await Promise.resolve(guild.roles.fetch?.(id)).catch(() => null);
+      if (role) {
+        try {
+          await role.delete("level roles removed");
+          removed++;
+        } catch {
+          /* the role stays in Discord, forget it anyway */
+        }
+      }
+    }
+    db.cfg.levels.rewards = db.cfg.levels.rewards.filter((r) => !ids.has(r.roleId));
+    db.setup.levelRoles = [];
+    save(true);
+    return removed;
+  }
+
   const cardLabel = () => ({ level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), title: t("CLASSEMENT", "LEADERBOARD"), up: t("NIVEAU SUPERIEUR !", "LEVEL UP!") });
   const picture = (name, buffer) => ({ file: new AttachmentBuilder(buffer, { name }), url: `attachment://${name}` });
 
@@ -2927,10 +2985,8 @@ const tools = (() => {
     db.xp[member.id] = (db.xp[member.id] || 0) + amount;
     const after = levelOf(db.xp[member.id]).level;
     save();
-    if (after > before) {
-      await giveRewards(member, after);
-      if (db.cfg.levels.announce) await announceLevel(member, after, fallbackChannel);
-    }
+    await giveRewards(member, after);
+    if (after > before && db.cfg.levels.announce) await announceLevel(member, after, fallbackChannel);
   }
 
   async function onXp(message) {
@@ -3009,6 +3065,9 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("reward-remove").setDescription(t("Retirer la récompense d'un niveau", "Remove the reward of a level")).addIntegerOption((o) => o.setName("niveau").setDescription("Niveau").setRequired(true)))
           .addSubcommand((s) => s.setName("rewards").setDescription(t("Voir les récompenses", "List the rewards")))
+          .addSubcommand((s) => s.setName("roles-create").setDescription(t("Créer les rôles de niveau (Nouveau, Sigma, Roi...)", "Create the level roles (Newbie, Sigma, King...)")))
+          .addSubcommand((s) => s.setName("roles-delete").setDescription(t("Supprimer les rôles de niveau créés par le bot", "Delete the level roles the bot created")))
+          .addSubcommand((s) => s.setName("stack").setDescription(t("Garder tous les rôles de niveau, ou seulement le plus haut", "Keep every level role, or only the highest")))
           .addSubcommand((s) => s.setName("ignore").setDescription(t("Ne pas gagner d'XP dans ce salon (ou l'inverse)", "No XP in this channel (toggle)")))
           .addSubcommand((s) =>
             s
@@ -3214,6 +3273,31 @@ const tools = (() => {
       cfg.quizXp = i.options.getInteger("montant");
       save();
       return reply(i, ok(t(`Une bonne réponse au quiz rapporte ${cfg.quizXp} XP.`, `A right quiz answer wins ${cfg.quizXp} XP.`)));
+    }
+    if (sub === "roles-create") {
+      if (need_perm(i, P.ManageRoles)) return;
+      if (db.setup.levelRoles.length) return reply(i, no(t("Les rôles de niveau existent déjà. `/levels roles-delete` d'abord pour les refaire.", "The level roles already exist. `/levels roles-delete` first to remake them.")));
+      await i.deferReply({ flags: ephemeral });
+      try {
+        const n = await createLevelRoles(i.guild);
+        return i.editReply(ok(t(`${n} rôles créés et branchés : ${db.cfg.levels.rewards.filter((r) => db.setup.levelRoles.includes(r.roleId)).map((r) => `niveau ${r.level} → <@&${r.roleId}>`).join(", ")}.\nIls sont donnés automatiquement, et le plus haut remplace le précédent.`, `${n} roles created and connected: ${db.cfg.levels.rewards.filter((r) => db.setup.levelRoles.includes(r.roleId)).map((r) => `level ${r.level} → <@&${r.roleId}>`).join(", ")}.\nThey are given automatically, and the highest replaces the previous one.`)));
+      } catch (error) {
+        save(true);
+        console.error("⚠️ Level roles error:", error?.message || error);
+        return i.editReply(no(t("Je n'ai pas pu tout créer (il me faut la permission « Gérer les rôles »). `/levels roles-delete` supprime ce qui a été créé.", "I could not create everything (I need the Manage Roles permission). `/levels roles-delete` removes what was created.")));
+      }
+    }
+    if (sub === "roles-delete") {
+      if (need_perm(i, P.ManageRoles)) return;
+      if (!db.setup.levelRoles.length) return reply(i, no(t("Le bot n'a créé aucun rôle de niveau.", "The bot created no level roles.")));
+      await i.deferReply({ flags: ephemeral });
+      const n = await removeLevelRoles(i.guild);
+      return i.editReply(ok(t(`${n} rôle(s) de niveau supprimé(s).`, `${n} level role(s) deleted.`)));
+    }
+    if (sub === "stack") {
+      cfg.stack = !cfg.stack;
+      save();
+      return reply(i, ok(cfg.stack ? t("Tous les rôles de niveau sont gardés.", "Every level role is kept.") : t("Seul le rôle de niveau le plus haut est gardé.", "Only the highest level role is kept.")));
     }
     if (sub === "ignore") {
       const has = cfg.ignored.includes(i.channelId);
@@ -3923,6 +4007,17 @@ const tools = (() => {
     if (made.rules) {
       await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
     }
+    let levelRolesNote = "";
+    if (modelKey !== "minimal" && !db.setup.levelRoles.length) {
+      try {
+        const n = await createLevelRoles(guild);
+        levelRolesNote = t(`\n🏅 ${n} rôles de niveau créés (donnés automatiquement).`, `\n🏅 ${n} level roles created (given automatically).`);
+      } catch (error) {
+        save(true);
+        console.error("⚠️ Level roles error:", error?.message || error);
+        levelRolesNote = t("\n⚠️ Rôles de niveau non créés (il faut la permission « Gérer les rôles »). Essaie `/levels roles-create` ensuite.", "\n⚠️ Level roles not created (the Manage Roles permission is needed). Try `/levels roles-create` afterwards.");
+      }
+    }
     if (modelKey === "brainrot") {
       if (made.rules) {
         await made.rules.send({ embeds: [embed(0xf1c40f).setTitle(t("📜 Règlement : Steal a Brainrot", "📜 Rules: Steal a Brainrot")).setDescription(t(
@@ -3942,7 +4037,7 @@ const tools = (() => {
     }
     save(true);
     const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
-    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs, les niveaux et les suggestions sont déjà branchés.${made.middleman ? ` Va dans <#${made.middleman.id}> et tape \`/panel\` pour poster le middleman.` : ""} Pour tout enlever : \`/setup delete\`.`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.`)));
+    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs, les niveaux et les suggestions sont déjà branchés.${made.middleman ? ` Va dans <#${made.middleman.id}> et tape \`/panel\` pour poster le middleman.` : ""} Pour tout enlever : \`/setup delete\`.${levelRolesNote}`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.${levelRolesNote}`)));
   }
 
   H.setup = async (i) => {
@@ -3954,14 +4049,14 @@ const tools = (() => {
       return reply(i, list ? t(`Salons créés par le bot : ${list}`, `Channels created by the bot: ${list}`) : t("Le bot n'a créé aucun salon.", "The bot created no channels."));
     }
     if (sub === "delete") {
-      if (!db.setup.items.length) return reply(i, no(t("Le bot n'a créé aucun salon.", "The bot created no channels.")));
+      if (!db.setup.items.length && !db.setup.levelRoles.length) return reply(i, no(t("Le bot n'a créé aucun salon.", "The bot created no channels.")));
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("tl:setup:yes").setLabel(t("Oui, tout supprimer", "Yes, delete everything")).setEmoji("🗑️").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("tl:setup:no").setLabel(t("Annuler", "Cancel")).setStyle(ButtonStyle.Secondary)
       );
       return i.reply({
         flags: ephemeral,
-        content: t(`⚠️ Je vais supprimer **${db.setup.items.length}** élément(s) créés par moi (salons et catégories). Seuls ceux-là, rien d'autre. C'est irréversible.`, `⚠️ I will delete **${db.setup.items.length}** item(s) I created (channels and categories). Only those, nothing else. This cannot be undone.`),
+        content: t(`⚠️ Je vais supprimer **${db.setup.items.length}** salon(s)/catégorie(s) et **${db.setup.levelRoles.length}** rôle(s) de niveau créés par moi. Seulement ceux-là, rien d'autre. C'est irréversible.`, `⚠️ I will delete **${db.setup.items.length}** channel(s)/category(ies) and **${db.setup.levelRoles.length}** level role(s) I created. Only those, nothing else. This cannot be undone.`),
         components: [row],
       });
     }
@@ -3991,8 +4086,9 @@ const tools = (() => {
     if (ids.has(db.cfg.autoquiz.channelId)) Object.assign(db.cfg.autoquiz, { on: false, channelId: "", nextAt: 0 });
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
     db.setup.items = [];
+    const rolesRemoved = db.setup.levelRoles.length ? await removeLevelRoles(i.guild) : 0;
     save(true);
-    return i.editReply({ content: ok(t(`${removed} salon(s) et catégorie(s) supprimé(s).`, `${removed} channel(s) and category(ies) deleted.`)), components: [] });
+    return i.editReply({ content: ok(t(`${removed} salon(s) et catégorie(s) supprimé(s)${rolesRemoved ? `, ${rolesRemoved} rôle(s) de niveau` : ""}.`, `${removed} channel(s) and category(ies) deleted${rolesRemoved ? `, ${rolesRemoved} level role(s)` : ""}.`)), components: [] });
   }
 
   H.help = (i) =>
@@ -4138,7 +4234,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
