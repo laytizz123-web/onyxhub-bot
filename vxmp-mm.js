@@ -52,6 +52,9 @@ require("dotenv").config({ override: true, quiet: true }); // the .env wins over
                                            administrator add, edit, remove them and give each one a staff role.
                                            The amount typed in the ticket must fit its range. "off" starts without ranges
     MM_TIER_CURRENCY=USD                   USD or EUR, the currency of those ranges
+    TOOLS=off                              switch the multitools off (levels, moderation, welcome, roles, fun, logs, security)
+    TOOLS_LANG=fr                          fr (default) or en: language of the multitools
+    (multitools need "Message Content Intent" and "Server Members Intent" switched on in the Developer Portal, Bot tab)
     MM_STAFF_ROLE_ID=...                   sees and handles EVERY ticket (a range role only sees the tickets of its range)
     MM_CATEGORY_ID=...                     category where the deal channels are created (optional)
     LTC_API_URL=https://litecoinspace.org/api    Esplora-compatible API (default)
@@ -2523,6 +2526,903 @@ const middleman = (() => {
 })();
 
 /* =====================================================
+   PART 3: MULTITOOLS (levels, moderation, welcome, roles, fun, logs, security)
+   Separate from the middleman: its own file (tools.json), switched off with TOOLS=off.
+===================================================== */
+
+const tools = (() => {
+  const fs = require("fs");
+  const path = require("path");
+  const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder,
+    Events,
+    MessageFlags,
+    PermissionFlagsBits: P,
+    SlashCommandBuilder,
+  } = require("discord.js");
+
+  const ON = !/^(off|no|false|0)$/i.test(String(process.env.TOOLS || "on").trim());
+  const FR = String(process.env.TOOLS_LANG || "fr").trim().toLowerCase() !== "en";
+  const t = (fr, en) => (FR ? fr : en);
+  const ephemeral = MessageFlags.Ephemeral;
+  const FILE = path.join(process.env.DATA_DIR || __dirname, "tools.json");
+
+  /* ---------- storage ---------- */
+  let db = {
+    xp: {},
+    warns: {},
+    polls: {},
+    giveaways: {},
+    cfg: {
+      levels: { on: true, rewards: [], announce: true, ignored: [] },
+      welcome: { channelId: "", message: "", leave: "", autorole: "" },
+      logs: { channelId: "" },
+      suggest: { channelId: "" },
+      security: { antiSpam: false, antiLink: "off", antiRaid: false },
+    },
+  };
+  let saveTimer = null;
+  function load() {
+    try {
+      const raw = JSON.parse(fs.readFileSync(FILE, "utf8"));
+      db = { ...db, ...raw, cfg: { ...db.cfg, ...(raw.cfg || {}) } };
+      for (const k of Object.keys(db.cfg)) db.cfg[k] = { ...db.cfg[k], ...((raw.cfg || {})[k] || {}) };
+    } catch {
+      /* first start */
+    }
+  }
+  function save(now = false) {
+    const write = () => {
+      saveTimer = null;
+      try {
+        fs.writeFileSync(`${FILE}.tmp`, JSON.stringify(db));
+        fs.renameSync(`${FILE}.tmp`, FILE);
+      } catch (error) {
+        console.error("⚠️ Tools: could not save tools.json:", error?.message || error);
+      }
+    };
+    if (now) {
+      if (saveTimer) clearTimeout(saveTimer);
+      return write();
+    }
+    if (!saveTimer) saveTimer = setTimeout(write, 2000);
+  }
+
+  let client = null;
+  const reply = (i, content) => i.reply({ content, flags: ephemeral });
+  const ok = (text) => `✅ ${text}`;
+  const no = (text) => `❌ ${text}`;
+  const embed = (color = 0x5865f2) => new EmbedBuilder().setColor(color);
+
+  /* ---------- levels ---------- */
+  const need = (level) => 5 * level * level + 50 * level + 100; // xp to go from `level` to `level + 1`
+  function levelOf(xp) {
+    let level = 0;
+    let rest = Math.max(0, xp | 0);
+    while (rest >= need(level)) {
+      rest -= need(level);
+      level++;
+    }
+    return { level, into: rest, need: need(level) };
+  }
+  const bar = (part, whole, size = 12) => {
+    const filled = Math.max(0, Math.min(size, Math.round((part / whole) * size)));
+    return "▰".repeat(filled) + "▱".repeat(size - filled);
+  };
+  const rankOf = (userId) => {
+    const sorted = Object.entries(db.xp).sort((a, b) => b[1] - a[1]);
+    const index = sorted.findIndex(([id]) => id === userId);
+    return index < 0 ? sorted.length + 1 : index + 1;
+  };
+
+  const cooldown = new Map();
+  async function giveRewards(member, level) {
+    const roles = db.cfg.levels.rewards.filter((r) => r.level <= level).map((r) => r.roleId);
+    for (const roleId of roles) {
+      if (member.roles.cache.has(roleId)) continue;
+      await member.roles.add(roleId, "level reward").catch(() => {});
+    }
+  }
+  async function onXp(message) {
+    const cfg = db.cfg.levels;
+    if (!cfg.on || message.author.bot || !message.guild || !message.member) return;
+    if (cfg.ignored.includes(message.channelId)) return;
+    const now = Date.now();
+    if (now - (cooldown.get(message.author.id) || 0) < 60_000) return;
+    cooldown.set(message.author.id, now);
+    const before = levelOf(db.xp[message.author.id] || 0).level;
+    db.xp[message.author.id] = (db.xp[message.author.id] || 0) + 15 + Math.floor(Math.random() * 11);
+    const after = levelOf(db.xp[message.author.id]).level;
+    save();
+    if (after > before) {
+      await giveRewards(message.member, after);
+      if (cfg.announce) {
+        await message.channel
+          .send({ content: t(`🎉 ${message.author} passe **niveau ${after}** !`, `🎉 ${message.author} reached **level ${after}**!`), allowedMentions: { users: [message.author.id] } })
+          .catch(() => {});
+      }
+    }
+  }
+
+  /* ---------- logs ---------- */
+  async function log(guild, text, color = 0x747f8d) {
+    const id = db.cfg.logs.channelId;
+    if (!id) return;
+    const channel = await Promise.resolve((guild?.channels || client?.channels)?.fetch?.(id)).catch(() => null);
+    if (channel?.isTextBased?.()) await channel.send({ embeds: [embed(color).setDescription(String(text).slice(0, 3900)).setTimestamp()], allowedMentions: { parse: [] } }).catch(() => {});
+  }
+
+  /* ---------- helpers ---------- */
+  const need_perm = (i, flag) => {
+    if (i.memberPermissions?.has?.(flag) || i.member?.permissions?.has?.(flag)) return false;
+    reply(i, no(t("Tu n'as pas la permission pour ça.", "You do not have the permission for that.")));
+    return true;
+  };
+  const canAct = (i, target) => {
+    // the target must be below the moderator and below the bot
+    const me = i.guild?.members?.me;
+    if (!target) return null;
+    if (target.id === i.user.id) return t("Tu ne peux pas faire ça sur toi-même.", "You cannot do that to yourself.");
+    if (target.id === i.guild?.ownerId) return t("Impossible sur le propriétaire du serveur.", "Not possible on the server owner.");
+    if (me && target.roles?.highest && me.roles.highest.comparePositionTo(target.roles.highest) <= 0) return t("Mon rôle est trop bas pour cette personne.", "My role is too low for this person.");
+    if (i.guild?.ownerId !== i.user.id && i.member?.roles?.highest && target.roles?.highest && i.member.roles.highest.comparePositionTo(target.roles.highest) <= 0) return t("Cette personne est au-dessus de toi.", "This person is above you.");
+    return null;
+  };
+  function parseDuration(text) {
+    const m = String(text || "").trim().toLowerCase().match(/^(\d+)\s*(s|sec|m|min|h|j|d)?$/);
+    if (!m) return 0;
+    const n = Number(m[1]);
+    const unit = m[2] || "m";
+    const mult = { s: 1000, sec: 1000, m: 60_000, min: 60_000, h: 3_600_000, j: 86_400_000, d: 86_400_000 }[unit];
+    return n * mult;
+  }
+  const fmtDuration = (ms) => {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.round(s / 60)} min`;
+    if (s < 86400) return `${Math.round(s / 3600)} h`;
+    return `${Math.round(s / 86400)} ${t("j", "d")}`;
+  };
+
+  /* ---------- slash commands ---------- */
+  const cmd = (name, description) => new SlashCommandBuilder().setName(name).setDescription(description.slice(0, 100));
+  const userOpt = (b, required = true, name = "membre", description = "Le membre") => b.addUserOption((o) => o.setName(name).setDescription(description).setRequired(required));
+  const strOpt = (b, name, description, required = false, max = 500) => b.addStringOption((o) => o.setName(name).setDescription(description).setRequired(required).setMaxLength(max));
+
+  function commands() {
+    if (!ON) return [];
+    const D = (flag, b) => b.setDefaultMemberPermissions(flag);
+    const list = [
+      // levels
+      userOpt(cmd("rank", t("Affiche ton niveau et ton XP", "Show your level and XP")), false),
+      cmd("leaderboard", t("Classement des niveaux du serveur", "Server level leaderboard")),
+      D(
+        P.ManageGuild,
+        cmd("levels", t("Réglages des niveaux", "Level settings"))
+          .addSubcommand((s) => s.setName("toggle").setDescription(t("Activer ou couper les niveaux", "Turn levels on or off")))
+          .addSubcommand((s) => s.setName("announce").setDescription(t("Activer ou couper l'annonce de niveau", "Turn level-up messages on or off")))
+          .addSubcommand((s) =>
+            s
+              .setName("reward-add")
+              .setDescription(t("Donner un rôle à un niveau", "Give a role at a level"))
+              .addIntegerOption((o) => o.setName("niveau").setDescription("Niveau").setMinValue(1).setMaxValue(200).setRequired(true))
+              .addRoleOption((o) => o.setName("role").setDescription("Rôle").setRequired(true))
+          )
+          .addSubcommand((s) => s.setName("reward-remove").setDescription(t("Retirer la récompense d'un niveau", "Remove the reward of a level")).addIntegerOption((o) => o.setName("niveau").setDescription("Niveau").setRequired(true)))
+          .addSubcommand((s) => s.setName("rewards").setDescription(t("Voir les récompenses", "List the rewards")))
+          .addSubcommand((s) => s.setName("ignore").setDescription(t("Ne pas gagner d'XP dans ce salon (ou l'inverse)", "No XP in this channel (toggle)")))
+      ),
+      D(
+        P.ManageGuild,
+        cmd("xp", t("Modifier l'XP d'un membre", "Change a member's XP"))
+          .addSubcommand((s) => userOpt(s.setName("add").setDescription(t("Ajouter de l'XP", "Add XP")), true).addIntegerOption((o) => o.setName("montant").setDescription("XP").setMinValue(1).setRequired(true)))
+          .addSubcommand((s) => userOpt(s.setName("remove").setDescription(t("Retirer de l'XP", "Remove XP")), true).addIntegerOption((o) => o.setName("montant").setDescription("XP").setMinValue(1).setRequired(true)))
+          .addSubcommand((s) => userOpt(s.setName("reset").setDescription(t("Remettre à zéro", "Reset to zero")), true))
+      ),
+      // moderation
+      D(P.BanMembers, strOpt(userOpt(cmd("ban", t("Bannir un membre", "Ban a member"))), "raison", t("Raison", "Reason"))),
+      D(P.BanMembers, strOpt(cmd("unban", t("Débannir (ID de l'utilisateur)", "Unban (user ID)")), "id", "ID", true, 30)),
+      D(P.KickMembers, strOpt(userOpt(cmd("kick", t("Expulser un membre", "Kick a member"))), "raison", t("Raison", "Reason"))),
+      D(
+        P.ModerateMembers,
+        strOpt(userOpt(cmd("timeout", t("Mettre un membre en sourdine", "Time a member out"))).addStringOption((o) => o.setName("duree").setDescription("10m, 2h, 1j").setRequired(true)), "raison", t("Raison", "Reason"))
+      ),
+      D(P.ModerateMembers, userOpt(cmd("untimeout", t("Retirer la sourdine", "Remove the timeout")))),
+      D(P.ModerateMembers, strOpt(userOpt(cmd("warn", t("Avertir un membre", "Warn a member"))), "raison", t("Raison", "Reason"), true)),
+      D(P.ModerateMembers, userOpt(cmd("warnings", t("Voir les avertissements d'un membre", "See a member's warnings")))),
+      D(P.ModerateMembers, userOpt(cmd("clearwarns", t("Effacer les avertissements d'un membre", "Clear a member's warnings")))),
+      D(P.ManageMessages, userOpt(cmd("clear", t("Supprimer des messages", "Delete messages")).addIntegerOption((o) => o.setName("nombre").setDescription("1-100").setMinValue(1).setMaxValue(100).setRequired(true)), false, "membre", t("Seulement ce membre", "Only this member"))),
+      // welcome and roles
+      D(
+        P.ManageGuild,
+        cmd("welcome", t("Messages de bienvenue et rôle automatique", "Welcome messages and auto role"))
+          .addSubcommand((s) => s.setName("channel").setDescription(t("Salon de bienvenue (celui-ci)", "Welcome channel (this one)")))
+          .addSubcommand((s) => s.setName("message").setDescription(t("Texte de bienvenue : {user} {server} {count}", "Welcome text: {user} {server} {count}")).addStringOption((o) => o.setName("texte").setDescription("{user} {server} {count}").setRequired(true).setMaxLength(1000)))
+          .addSubcommand((s) => s.setName("leave").setDescription(t("Texte de départ : {user} {server}", "Leave text: {user} {server}")).addStringOption((o) => o.setName("texte").setDescription("{user} {server}").setRequired(true).setMaxLength(1000)))
+          .addSubcommand((s) => s.setName("autorole").setDescription(t("Rôle donné aux nouveaux", "Role given to new members")).addRoleOption((o) => o.setName("role").setDescription("Rôle (vide = aucun)")))
+          .addSubcommand((s) => s.setName("off").setDescription(t("Tout couper", "Turn everything off")))
+          .addSubcommand((s) => s.setName("test").setDescription(t("Tester le message", "Test the message")))
+      ),
+      D(
+        P.ManageRoles,
+        (() => {
+          let b = cmd("rolepanel", t("Poster un panneau de rôles à boutons", "Post a button role panel")).addStringOption((o) => o.setName("titre").setDescription("Titre").setRequired(true).setMaxLength(100));
+          b = b.addRoleOption((o) => o.setName("role1").setDescription("Rôle 1").setRequired(true));
+          for (let n = 2; n <= 5; n++) b = b.addRoleOption((o) => o.setName(`role${n}`).setDescription(`Rôle ${n}`));
+          return b;
+        })()
+      ),
+      // fun and utilities
+      (() => {
+        let b = cmd("poll", t("Créer un sondage", "Create a poll")).addStringOption((o) => o.setName("question").setDescription("Question").setRequired(true).setMaxLength(200));
+        for (let n = 1; n <= 5; n++) b = b.addStringOption((o) => o.setName(`choix${n}`).setDescription(`Choix ${n}`).setRequired(n <= 2).setMaxLength(60));
+        return b;
+      })(),
+      D(
+        P.ManageGuild,
+        cmd("giveaway", t("Concours", "Giveaways"))
+          .addSubcommand((s) =>
+            s
+              .setName("start")
+              .setDescription(t("Lancer un concours", "Start a giveaway"))
+              .addStringOption((o) => o.setName("lot").setDescription(t("Le lot", "The prize")).setRequired(true).setMaxLength(100))
+              .addStringOption((o) => o.setName("duree").setDescription("10m, 2h, 1j").setRequired(true))
+              .addIntegerOption((o) => o.setName("gagnants").setDescription("1-10").setMinValue(1).setMaxValue(10))
+          )
+          .addSubcommand((s) => s.setName("end").setDescription(t("Terminer maintenant", "End now")).addStringOption((o) => o.setName("message_id").setDescription(t("ID du message du concours", "Giveaway message ID")).setRequired(true)))
+          .addSubcommand((s) => s.setName("reroll").setDescription(t("Retirer au sort", "Draw again")).addStringOption((o) => o.setName("message_id").setDescription(t("ID du message du concours", "Giveaway message ID")).setRequired(true)))
+      ),
+      strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
+      D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
+      strOpt(cmd("8ball", t("Pose une question à la boule magique", "Ask the magic 8-ball")), "question", "Question", true, 200),
+      cmd("coinflip", t("Pile ou face", "Flip a coin")),
+      cmd("dice", t("Lance un dé (1-100 faces)", "Roll a die")).addIntegerOption((o) => o.setName("faces").setDescription("6").setMinValue(2).setMaxValue(100)),
+      userOpt(cmd("avatar", t("Affiche l'avatar", "Show the avatar")), false),
+      userOpt(cmd("userinfo", t("Infos sur un membre", "Member info")), false),
+      cmd("serverinfo", t("Infos sur le serveur", "Server info")),
+      cmd("ping", t("Latence du bot", "Bot latency")),
+      cmd("help", t("Liste des commandes", "Command list")),
+      // logs and security
+      D(
+        P.ManageGuild,
+        cmd("logs", t("Salon des logs (messages, arrivées, bans)", "Logs channel (messages, joins, bans)"))
+          .addSubcommand((s) => s.setName("here").setDescription(t("Utiliser ce salon", "Use this channel")))
+          .addSubcommand((s) => s.setName("off").setDescription(t("Couper les logs", "Turn logs off")))
+      ),
+      D(
+        P.ManageGuild,
+        cmd("security", t("Anti-spam, anti-liens, anti-raid", "Anti-spam, anti-links, anti-raid"))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
+          .addSubcommand((s) => s.setName("antispam").setDescription(t("Anti-spam (5 messages en 5 s = sourdine 5 min)", "Anti-spam (5 messages in 5 s = 5 min timeout)")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) =>
+            s
+              .setName("antilink")
+              .setDescription(t("Anti-liens", "Anti-links"))
+              .addStringOption((o) => o.setName("mode").setDescription("off / invites / all").setRequired(true).addChoices({ name: t("Désactivé", "Off"), value: "off" }, { name: t("Invitations Discord", "Discord invites"), value: "invites" }, { name: t("Tous les liens", "All links"), value: "all" }))
+          )
+          .addSubcommand((s) => s.setName("antiraid").setDescription(t("Anti-raid (5 arrivées en 10 s)", "Anti-raid (5 joins in 10 s)")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+      ),
+    ];
+    return list.map((b) => b.toJSON());
+  }
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security"]);
+
+  /* ---------- command handlers ---------- */
+  const H = {};
+
+  H.rank = async (i) => {
+    const user = i.options.getUser("membre") || i.user;
+    const xp = db.xp[user.id] || 0;
+    const l = levelOf(xp);
+    const e = embed()
+      .setAuthor({ name: user.username, iconURL: user.displayAvatarURL?.() })
+      .setTitle(t(`Niveau ${l.level}`, `Level ${l.level}`))
+      .setDescription(`${bar(l.into, l.need)}\n**${l.into} / ${l.need}** XP`)
+      .addFields({ name: t("Classement", "Rank"), value: `#${rankOf(user.id)}`, inline: true }, { name: "XP total", value: String(xp), inline: true });
+    return i.reply({ embeds: [e] });
+  };
+
+  H.leaderboard = async (i) => {
+    const top = Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (!top.length) return reply(i, t("Personne n'a encore d'XP.", "Nobody has XP yet."));
+    const medals = ["🥇", "🥈", "🥉"];
+    const lines = top.map(([id, xp], n) => `${medals[n] || `**${n + 1}.**`} <@${id}>  ·  ${t("niveau", "level")} **${levelOf(xp).level}**  ·  ${xp} XP`);
+    return i.reply({ embeds: [embed(0xf1c40f).setTitle(t("🏆 Classement", "🏆 Leaderboard")).setDescription(lines.join("\n"))], allowedMentions: { parse: [] } });
+  };
+
+  H.levels = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const cfg = db.cfg.levels;
+    const sub = i.options.getSubcommand();
+    if (sub === "toggle") {
+      cfg.on = !cfg.on;
+      save();
+      return reply(i, ok(cfg.on ? t("Niveaux activés.", "Levels on.") : t("Niveaux coupés.", "Levels off.")));
+    }
+    if (sub === "announce") {
+      cfg.announce = !cfg.announce;
+      save();
+      return reply(i, ok(cfg.announce ? t("Annonce de niveau activée.", "Level-up messages on.") : t("Annonce de niveau coupée.", "Level-up messages off.")));
+    }
+    if (sub === "reward-add") {
+      const level = i.options.getInteger("niveau");
+      const role = i.options.getRole("role");
+      cfg.rewards = cfg.rewards.filter((r) => r.level !== level);
+      cfg.rewards.push({ level, roleId: role.id });
+      cfg.rewards.sort((a, b) => a.level - b.level);
+      save();
+      return reply(i, ok(t(`Le rôle ${role} sera donné au niveau ${level}.`, `${role} will be given at level ${level}.`)));
+    }
+    if (sub === "reward-remove") {
+      const level = i.options.getInteger("niveau");
+      const before = cfg.rewards.length;
+      cfg.rewards = cfg.rewards.filter((r) => r.level !== level);
+      save();
+      return reply(i, before === cfg.rewards.length ? no(t("Aucune récompense à ce niveau.", "No reward at that level.")) : ok(t("Récompense retirée.", "Reward removed.")));
+    }
+    if (sub === "rewards") {
+      const text = cfg.rewards.length ? cfg.rewards.map((r) => `${t("Niveau", "Level")} **${r.level}** → <@&${r.roleId}>`).join("\n") : t("Aucune récompense. Ajoute-en avec `/levels reward-add`.", "No rewards. Add one with `/levels reward-add`.");
+      return i.reply({ embeds: [embed().setTitle(t("🎁 Récompenses de niveau", "🎁 Level rewards")).setDescription(text)], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "ignore") {
+      const has = cfg.ignored.includes(i.channelId);
+      cfg.ignored = has ? cfg.ignored.filter((c) => c !== i.channelId) : [...cfg.ignored, i.channelId];
+      save();
+      return reply(i, ok(has ? t("Ce salon donne de l'XP.", "This channel gives XP.") : t("Ce salon ne donne plus d'XP.", "This channel no longer gives XP.")));
+    }
+  };
+
+  H.xp = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    const user = i.options.getUser("membre");
+    if (sub === "reset") delete db.xp[user.id];
+    else {
+      const amount = i.options.getInteger("montant");
+      db.xp[user.id] = Math.max(0, (db.xp[user.id] || 0) + (sub === "add" ? amount : -amount));
+    }
+    save();
+    const member = await i.guild.members.fetch(user.id).catch(() => null);
+    if (member) await giveRewards(member, levelOf(db.xp[user.id] || 0).level);
+    return reply(i, ok(`${user.username}: ${db.xp[user.id] || 0} XP (${t("niveau", "level")} ${levelOf(db.xp[user.id] || 0).level})`));
+  };
+
+  /* moderation */
+  const reasonOf = (i) => i.options.getString("raison") || t("Aucune raison", "No reason");
+  const targetMember = async (i) => i.options.getMember?.("membre") || (await i.guild.members.fetch(i.options.getUser("membre").id).catch(() => null));
+
+  H.ban = async (i) => {
+    if (need_perm(i, P.BanMembers)) return;
+    const user = i.options.getUser("membre");
+    const member = await targetMember(i);
+    const problem = canAct(i, member);
+    if (problem) return reply(i, no(problem));
+    const reason = reasonOf(i);
+    try {
+      await i.guild.members.ban(user.id, { reason: `${i.user.username}: ${reason}` });
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu bannir cette personne.", "I could not ban this person.")));
+    }
+    await log(i.guild, `🔨 **Ban** ${user} (${user.id})\n${t("Par", "By")} ${i.user}  ·  ${reason}`, 0xed4245);
+    return i.reply({ content: ok(t(`${user.username} est banni. (${reason})`, `${user.username} is banned. (${reason})`)) });
+  };
+  H.unban = async (i) => {
+    if (need_perm(i, P.BanMembers)) return;
+    const id = i.options.getString("id").trim();
+    try {
+      await i.guild.bans.remove(id, `${i.user.username}`);
+    } catch {
+      return reply(i, no(t("Cet utilisateur n'est pas banni.", "This user is not banned.")));
+    }
+    await log(i.guild, `♻️ **Unban** <@${id}>  ·  ${t("par", "by")} ${i.user}`, 0x2ecc71);
+    return reply(i, ok(t("Débanni.", "Unbanned.")));
+  };
+  H.kick = async (i) => {
+    if (need_perm(i, P.KickMembers)) return;
+    const member = await targetMember(i);
+    if (!member) return reply(i, no(t("Membre introuvable.", "Member not found.")));
+    const problem = canAct(i, member);
+    if (problem) return reply(i, no(problem));
+    const reason = reasonOf(i);
+    try {
+      await member.kick(`${i.user.username}: ${reason}`);
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu expulser cette personne.", "I could not kick this person.")));
+    }
+    await log(i.guild, `👢 **Kick** ${member.user}  ·  ${t("par", "by")} ${i.user}  ·  ${reason}`, 0xe67e22);
+    return i.reply({ content: ok(t(`${member.user.username} est expulsé. (${reason})`, `${member.user.username} was kicked. (${reason})`)) });
+  };
+  H.timeout = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const member = await targetMember(i);
+    if (!member) return reply(i, no(t("Membre introuvable.", "Member not found.")));
+    const problem = canAct(i, member);
+    if (problem) return reply(i, no(problem));
+    const ms = parseDuration(i.options.getString("duree"));
+    if (!ms || ms > 28 * 86_400_000) return reply(i, no(t("Durée invalide (ex : 10m, 2h, 1j ; maximum 28 jours).", "Invalid duration (e.g. 10m, 2h, 1d; 28 days max).")));
+    const reason = reasonOf(i);
+    try {
+      await member.timeout(ms, `${i.user.username}: ${reason}`);
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu mettre cette personne en sourdine.", "I could not time this person out.")));
+    }
+    await log(i.guild, `🔇 **Timeout** ${member.user} ${fmtDuration(ms)}  ·  ${t("par", "by")} ${i.user}  ·  ${reason}`, 0xe67e22);
+    return i.reply({ content: ok(t(`${member.user.username} est en sourdine pendant ${fmtDuration(ms)}.`, `${member.user.username} is timed out for ${fmtDuration(ms)}.`)) });
+  };
+  H.untimeout = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const member = await targetMember(i);
+    if (!member) return reply(i, no(t("Membre introuvable.", "Member not found.")));
+    await member.timeout(null).catch(() => {});
+    return reply(i, ok(t("Sourdine retirée.", "Timeout removed.")));
+  };
+  H.warn = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const user = i.options.getUser("membre");
+    if (user.bot) return reply(i, no(t("Impossible sur un bot.", "Not possible on a bot.")));
+    const reason = i.options.getString("raison");
+    (db.warns[user.id] = db.warns[user.id] || []).push({ by: i.user.id, reason, at: Date.now() });
+    save();
+    await log(i.guild, `⚠️ **Warn** ${user}  ·  ${t("par", "by")} ${i.user}  ·  ${reason}  (${db.warns[user.id].length})`, 0xf1c40f);
+    user.send?.(t(`⚠️ Tu as reçu un avertissement sur **${i.guild.name}** : ${reason}`, `⚠️ You got a warning on **${i.guild.name}**: ${reason}`))?.catch?.(() => {});
+    return i.reply({ content: ok(t(`${user.username} est averti (${db.warns[user.id].length} au total). ${reason}`, `${user.username} was warned (${db.warns[user.id].length} total). ${reason}`)) });
+  };
+  H.warnings = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const user = i.options.getUser("membre");
+    const list = db.warns[user.id] || [];
+    if (!list.length) return reply(i, t(`${user.username} n'a aucun avertissement.`, `${user.username} has no warnings.`));
+    const lines = list.slice(-15).map((w, n) => `**${n + 1}.** <t:${Math.floor(w.at / 1000)}:d>  ·  ${w.reason}  ·  <@${w.by}>`);
+    return i.reply({ embeds: [embed(0xf1c40f).setTitle(`⚠️ ${user.username}  ·  ${list.length}`).setDescription(lines.join("\n"))], flags: ephemeral, allowedMentions: { parse: [] } });
+  };
+  H.clearwarns = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const user = i.options.getUser("membre");
+    delete db.warns[user.id];
+    save();
+    return reply(i, ok(t("Avertissements effacés.", "Warnings cleared.")));
+  };
+  H.clear = async (i) => {
+    if (need_perm(i, P.ManageMessages)) return;
+    const n = i.options.getInteger("nombre");
+    const user = i.options.getUser("membre");
+    await i.deferReply({ flags: ephemeral });
+    try {
+      let count;
+      if (user) {
+        const messages = await i.channel.messages.fetch({ limit: 100 });
+        const mine = [...messages.filter((m) => m.author.id === user.id).values()].slice(0, n);
+        count = (await i.channel.bulkDelete(mine, true)).size;
+      } else {
+        count = (await i.channel.bulkDelete(n, true)).size;
+      }
+      await log(i.guild, `🧹 **Clear** ${count} ${t("messages dans", "messages in")} <#${i.channelId}>  ·  ${t("par", "by")} ${i.user}`);
+      return i.editReply(ok(t(`${count} message(s) supprimé(s). (les messages de plus de 14 jours ne peuvent pas l'être)`, `${count} message(s) deleted. (messages older than 14 days cannot be)`)));
+    } catch {
+      return i.editReply(no(t("Je n'ai pas pu supprimer (permission « Gérer les messages » manquante ?).", "I could not delete (missing Manage Messages?).")));
+    }
+  };
+
+  /* welcome */
+  const fill = (text, member) => String(text).replace(/\{user\}/g, `<@${member.id}>`).replace(/\{server\}/g, member.guild?.name || "").replace(/\{count\}/g, String(member.guild?.memberCount ?? ""));
+  H.welcome = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const w = db.cfg.welcome;
+    const sub = i.options.getSubcommand();
+    if (sub === "channel") {
+      w.channelId = i.channelId;
+      if (!w.message) w.message = t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
+      save();
+      return reply(i, ok(t("Les messages de bienvenue arriveront ici.", "Welcome messages will go here.")));
+    }
+    if (sub === "message") {
+      w.message = i.options.getString("texte");
+      save();
+      return reply(i, ok(t("Message de bienvenue enregistré.", "Welcome message saved.")));
+    }
+    if (sub === "leave") {
+      w.leave = i.options.getString("texte");
+      save();
+      return reply(i, ok(t("Message de départ enregistré.", "Leave message saved.")));
+    }
+    if (sub === "autorole") {
+      const role = i.options.getRole("role");
+      w.autorole = role?.id || "";
+      save();
+      return reply(i, ok(role ? t(`Les nouveaux recevront ${role}.`, `New members will get ${role}.`) : t("Plus de rôle automatique.", "No more auto role.")));
+    }
+    if (sub === "off") {
+      db.cfg.welcome = { channelId: "", message: "", leave: "", autorole: "" };
+      save();
+      return reply(i, ok(t("Bienvenue coupé.", "Welcome turned off.")));
+    }
+    if (sub === "test") {
+      if (!w.message) return reply(i, no(t("Aucun message. Utilise `/welcome channel`.", "No message. Use `/welcome channel`.")));
+      return reply(i, fill(w.message, i.member));
+    }
+  };
+  async function onJoin(member) {
+    const w = db.cfg.welcome;
+    const sec = db.cfg.security;
+    if (sec.antiRaid) {
+      const now = Date.now();
+      joins.push(now);
+      while (joins.length && now - joins[0] > 10_000) joins.shift();
+      if (joins.length >= 5) {
+        if (!raidUntil || now > raidUntil) await log(member.guild, t("🚨 **Raid probable** : 5 arrivées en 10 secondes. Les nouveaux sont mis en sourdine 10 min pendant 2 minutes.", "🚨 **Likely raid**: 5 joins in 10 seconds. New members are timed out 10 min for 2 minutes."), 0xed4245);
+        raidUntil = now + 120_000;
+      }
+      if (raidUntil && now < raidUntil) await member.timeout(600_000, "anti-raid").catch(() => {});
+    }
+    if (w.autorole) await member.roles.add(w.autorole, "auto role").catch(() => {});
+    if (w.channelId && w.message) {
+      const channel = await member.guild.channels.fetch(w.channelId).catch(() => null);
+      if (channel?.isTextBased?.()) await channel.send({ content: fill(w.message, member), allowedMentions: { users: [member.id] } }).catch(() => {});
+    }
+    await log(member.guild, `📥 ${member.user} ${t("a rejoint", "joined")}  ·  ${t("compte créé", "account created")} <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, 0x2ecc71);
+  }
+  async function onLeave(member) {
+    const w = db.cfg.welcome;
+    if (w.channelId && w.leave) {
+      const channel = await member.guild.channels.fetch(w.channelId).catch(() => null);
+      if (channel?.isTextBased?.()) await channel.send({ content: fill(w.leave, member), allowedMentions: { parse: [] } }).catch(() => {});
+    }
+    await log(member.guild, `📤 ${member.user ? `${member.user.username}` : member.id} ${t("a quitté", "left")}`, 0xe67e22);
+  }
+  const joins = [];
+  let raidUntil = 0;
+
+  /* role panel */
+  H.rolepanel = async (i) => {
+    if (need_perm(i, P.ManageRoles)) return;
+    const roles = [];
+    for (let n = 1; n <= 5; n++) {
+      const r = i.options.getRole(`role${n}`);
+      if (r && !roles.some((x) => x.id === r.id)) roles.push(r);
+    }
+    const me = i.guild.members.me;
+    const bad = roles.find((r) => r.managed || r.id === i.guild.id || (me && me.roles.highest.comparePositionTo(r) <= 0));
+    if (bad) return reply(i, no(t(`Je ne peux pas donner ${bad} (rôle géré ou au-dessus du mien).`, `I cannot give ${bad} (managed or above mine).`)));
+    const row = new ActionRowBuilder().addComponents(roles.map((r) => new ButtonBuilder().setCustomId(`tl:rr:${r.id}`).setLabel(r.name.slice(0, 80)).setStyle(ButtonStyle.Secondary)));
+    await i.channel.send({ embeds: [embed().setTitle(i.options.getString("titre")).setDescription(t("Appuie sur un bouton pour prendre ou retirer un rôle.", "Press a button to take or drop a role."))], components: [row] });
+    return reply(i, ok(t("Panneau posté.", "Panel posted.")));
+  };
+  async function roleButton(i, roleId) {
+    const role = i.guild.roles.cache.get(roleId);
+    if (!role) return reply(i, no(t("Ce rôle n'existe plus.", "This role no longer exists.")));
+    const has = i.member.roles.cache.has(roleId);
+    try {
+      if (has) await i.member.roles.remove(roleId, "role panel");
+      else await i.member.roles.add(roleId, "role panel");
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu changer ce rôle (mon rôle est trop bas ?).", "I could not change this role (my role too low?).")));
+    }
+    return reply(i, has ? ok(t(`Rôle ${role.name} retiré.`, `Role ${role.name} removed.`)) : ok(t(`Rôle ${role.name} ajouté.`, `Role ${role.name} added.`)));
+  }
+
+  /* polls */
+  const pollEmbed = (poll) => {
+    const total = Object.keys(poll.votes).length;
+    const lines = poll.options.map((o, n) => {
+      const c = Object.values(poll.votes).filter((v) => v === n).length;
+      return `**${n + 1}. ${o}**\n${bar(c, Math.max(1, total), 10)} ${c} (${total ? Math.round((c / total) * 100) : 0}%)`;
+    });
+    return embed(0x3498db).setTitle(`📊 ${poll.question}`).setDescription(lines.join("\n\n")).setFooter({ text: t(`${total} vote(s)`, `${total} vote(s)`) });
+  };
+  H.poll = async (i) => {
+    const options = [];
+    for (let n = 1; n <= 5; n++) {
+      const o = i.options.getString(`choix${n}`);
+      if (o) options.push(o);
+    }
+    const poll = { question: i.options.getString("question"), options, votes: {} };
+    const row = new ActionRowBuilder().addComponents(options.map((o, n) => new ButtonBuilder().setCustomId(`tl:poll:${n}`).setLabel(`${n + 1}. ${o}`.slice(0, 80)).setStyle(ButtonStyle.Primary)));
+    await i.reply({ embeds: [pollEmbed(poll)], components: [row] });
+    const message = await i.fetchReply();
+    db.polls[message.id] = poll;
+    save();
+  };
+  async function pollVote(i, index) {
+    const poll = db.polls[i.message.id];
+    if (!poll || !poll.options[index]) return reply(i, no(t("Ce sondage n'existe plus.", "This poll no longer exists.")));
+    if (poll.votes[i.user.id] === index) delete poll.votes[i.user.id];
+    else poll.votes[i.user.id] = index;
+    save();
+    return i.update({ embeds: [pollEmbed(poll)] });
+  }
+
+  /* giveaways */
+  const gwEmbed = (g, ended = false, winners = []) =>
+    embed(ended ? 0x747f8d : 0xf1c40f)
+      .setTitle(`🎉 ${g.prize}`)
+      .setDescription(
+        ended
+          ? winners.length ? t(`Gagnant(s) : ${winners.map((w) => `<@${w}>`).join(", ")}`, `Winner(s): ${winners.map((w) => `<@${w}>`).join(", ")}`) : t("Personne n'a participé.", "Nobody joined.")
+          : t(`Appuie sur le bouton pour participer !\nFin : <t:${Math.floor(g.endsAt / 1000)}:R>\nGagnant(s) : **${g.winners}**`, `Press the button to join!\nEnds: <t:${Math.floor(g.endsAt / 1000)}:R>\nWinner(s): **${g.winners}**`)
+      )
+      .setFooter({ text: t(`${g.entries.length} participant(s)`, `${g.entries.length} entrant(s)`) });
+  const draw = (g) => {
+    const pool = [...g.entries];
+    const out = [];
+    while (pool.length && out.length < g.winners) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    return out;
+  };
+  async function endGiveaway(messageId, announce = true) {
+    const g = db.giveaways[messageId];
+    if (!g) return false;
+    const channel = await client.channels.fetch(g.channelId).catch(() => null);
+    const winners = draw(g);
+    g.ended = true;
+    g.lastWinners = winners;
+    save();
+    const message = await channel?.messages?.fetch?.(messageId).catch(() => null);
+    if (message) await message.edit({ embeds: [gwEmbed(g, true, winners)], components: [] }).catch(() => {});
+    if (announce && channel?.isTextBased?.()) {
+      await channel.send({ content: winners.length ? t(`🎉 Bravo ${winners.map((w) => `<@${w}>`).join(", ")} ! Vous gagnez **${g.prize}** !`, `🎉 Congrats ${winners.map((w) => `<@${w}>`).join(", ")}! You win **${g.prize}**!`) : t(`Concours **${g.prize}** terminé : aucun participant.`, `Giveaway **${g.prize}** ended: nobody joined.`), allowedMentions: { users: winners } }).catch(() => {});
+    }
+    return true;
+  }
+  H.giveaway = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    if (sub === "start") {
+      const ms = parseDuration(i.options.getString("duree"));
+      if (!ms || ms < 10_000 || ms > 30 * 86_400_000) return reply(i, no(t("Durée invalide (ex : 10m, 2h, 1j).", "Invalid duration (e.g. 10m, 2h, 1d).")));
+      const g = { channelId: i.channelId, prize: i.options.getString("lot"), winners: i.options.getInteger("gagnants") || 1, endsAt: Date.now() + ms, entries: [], ended: false };
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:gw").setLabel(t("Participer", "Join")).setEmoji("🎉").setStyle(ButtonStyle.Success));
+      await i.reply({ embeds: [gwEmbed(g)], components: [row] });
+      const message = await i.fetchReply();
+      db.giveaways[message.id] = g;
+      save();
+      return;
+    }
+    const id = i.options.getString("message_id").trim();
+    const g = db.giveaways[id];
+    if (!g) return reply(i, no(t("Concours introuvable.", "Giveaway not found.")));
+    if (sub === "end") {
+      if (g.ended) return reply(i, no(t("Déjà terminé. Utilise `/giveaway reroll`.", "Already ended. Use `/giveaway reroll`.")));
+      await endGiveaway(id);
+      return reply(i, ok(t("Concours terminé.", "Giveaway ended.")));
+    }
+    if (sub === "reroll") {
+      if (!g.ended) return reply(i, no(t("Le concours n'est pas terminé.", "The giveaway has not ended.")));
+      const winners = draw(g);
+      g.lastWinners = winners;
+      save();
+      return i.reply({ content: winners.length ? t(`🎉 Nouveau tirage : ${winners.map((w) => `<@${w}>`).join(", ")} gagne **${g.prize}** !`, `🎉 New draw: ${winners.map((w) => `<@${w}>`).join(", ")} wins **${g.prize}**!`) : no(t("Personne n'a participé.", "Nobody joined.")), allowedMentions: { users: winners } });
+    }
+  };
+  async function giveawayJoin(i) {
+    const g = db.giveaways[i.message.id];
+    if (!g || g.ended) return reply(i, no(t("Ce concours est terminé.", "This giveaway has ended.")));
+    if (g.entries.includes(i.user.id)) {
+      g.entries = g.entries.filter((u) => u !== i.user.id);
+      save();
+      await i.update({ embeds: [gwEmbed(g)] });
+      return;
+    }
+    g.entries.push(i.user.id);
+    save();
+    return i.update({ embeds: [gwEmbed(g)] });
+  }
+  async function tickGiveaways() {
+    const now = Date.now();
+    for (const [id, g] of Object.entries(db.giveaways)) {
+      if (!g.ended && g.endsAt <= now) await endGiveaway(id).catch((e) => console.error("⚠️ giveaway:", e?.message || e));
+    }
+    // forget old finished ones (30 days)
+    for (const [id, g] of Object.entries(db.giveaways)) if (g.ended && now - g.endsAt > 30 * 86_400_000) delete db.giveaways[id];
+  }
+
+  /* suggestions */
+  H.suggestions = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    db.cfg.suggest.channelId = i.channelId;
+    save();
+    return reply(i, ok(t("Les suggestions arriveront ici.", "Suggestions will go here.")));
+  };
+  H.suggest = async (i) => {
+    const id = db.cfg.suggest.channelId;
+    if (!id) return reply(i, no(t("Aucun salon de suggestions. Un admin doit utiliser `/suggestions` dans le salon voulu.", "No suggestions channel. An admin must use `/suggestions` in the right channel.")));
+    const channel = await i.guild.channels.fetch(id).catch(() => null);
+    if (!channel?.isTextBased?.()) return reply(i, no(t("Le salon des suggestions n'existe plus.", "The suggestions channel no longer exists.")));
+    const m = await channel.send({ embeds: [embed(0x9b59b6).setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL?.() }).setTitle(t("💡 Suggestion", "💡 Suggestion")).setDescription(i.options.getString("idee"))] });
+    await m.react("👍").catch(() => {});
+    await m.react("👎").catch(() => {});
+    return reply(i, ok(t("Suggestion envoyée !", "Suggestion sent!")));
+  };
+
+  /* small fun */
+  const BALL = {
+    fr: ["Oui, sans aucun doute.", "C'est certain.", "Très probable.", "Les signes disent oui.", "Demande plus tard.", "Je ne peux pas te répondre maintenant.", "Peu probable.", "Mes sources disent non.", "Non.", "Certainement pas."],
+    en: ["Yes, without a doubt.", "It is certain.", "Very likely.", "Signs point to yes.", "Ask again later.", "Cannot predict now.", "Unlikely.", "My sources say no.", "No.", "Definitely not."],
+  };
+  H["8ball"] = (i) => i.reply({ embeds: [embed(0x2c2f33).setTitle("🎱").addFields({ name: t("Question", "Question"), value: i.options.getString("question") }, { name: t("Réponse", "Answer"), value: BALL[FR ? "fr" : "en"][Math.floor(Math.random() * 10)] })] });
+  H.coinflip = (i) => i.reply(`🪙 ${Math.random() < 0.5 ? t("Pile", "Heads") : t("Face", "Tails")} !`);
+  H.dice = (i) => {
+    const faces = i.options.getInteger("faces") || 6;
+    return i.reply(`🎲 d${faces} → **${1 + Math.floor(Math.random() * faces)}**`);
+  };
+  H.avatar = (i) => {
+    const user = i.options.getUser("membre") || i.user;
+    return i.reply({ embeds: [embed().setTitle(user.username).setImage(user.displayAvatarURL({ size: 1024 }))] });
+  };
+  H.userinfo = async (i) => {
+    const user = i.options.getUser("membre") || i.user;
+    const member = await i.guild.members.fetch(user.id).catch(() => null);
+    const e = embed()
+      .setTitle(user.username)
+      .setThumbnail(user.displayAvatarURL?.())
+      .addFields(
+        { name: "ID", value: user.id, inline: true },
+        { name: t("Compte créé", "Account created"), value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+        { name: t("A rejoint", "Joined"), value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : "—", inline: true },
+        { name: t("Niveau", "Level"), value: `${levelOf(db.xp[user.id] || 0).level}`, inline: true },
+        { name: t("Avertissements", "Warnings"), value: `${(db.warns[user.id] || []).length}`, inline: true }
+      );
+    return i.reply({ embeds: [e] });
+  };
+  H.serverinfo = async (i) => {
+    const g = i.guild;
+    return i.reply({
+      embeds: [
+        embed()
+          .setTitle(g.name)
+          .setThumbnail(g.iconURL?.() || null)
+          .addFields(
+            { name: t("Membres", "Members"), value: String(g.memberCount), inline: true },
+            { name: t("Salons", "Channels"), value: String(g.channels.cache.size), inline: true },
+            { name: t("Rôles", "Roles"), value: String(g.roles.cache.size), inline: true },
+            { name: t("Créé", "Created"), value: `<t:${Math.floor(g.createdTimestamp / 1000)}:R>`, inline: true },
+            { name: t("Propriétaire", "Owner"), value: `<@${g.ownerId}>`, inline: true }
+          ),
+      ],
+    });
+  };
+  H.ping = (i) => i.reply(`🏓 ${Math.round(client?.ws?.ping ?? 0)} ms`);
+  H.help = (i) =>
+    i.reply({
+      flags: ephemeral,
+      embeds: [
+        embed()
+          .setTitle(t("🧰 Commandes", "🧰 Commands"))
+          .addFields(
+            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp`" },
+            { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear`" },
+            { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
+            { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
+            { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
+            { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
+          ),
+      ],
+    });
+
+  /* logs and security settings */
+  H.logs = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    if (i.options.getSubcommand() === "off") db.cfg.logs.channelId = "";
+    else db.cfg.logs.channelId = i.channelId;
+    save();
+    return reply(i, ok(db.cfg.logs.channelId ? t("Les logs arriveront ici.", "Logs will go here.") : t("Logs coupés.", "Logs off.")));
+  };
+  H.security = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const s = db.cfg.security;
+    const sub = i.options.getSubcommand();
+    if (sub === "antispam") s.antiSpam = i.options.getBoolean("actif");
+    if (sub === "antiraid") s.antiRaid = i.options.getBoolean("actif");
+    if (sub === "antilink") s.antiLink = i.options.getString("mode");
+    save();
+    const onOff = (v) => (v ? "✅" : "❌");
+    return reply(
+      i,
+      `🛡️ ${t("Anti-spam", "Anti-spam")} ${onOff(s.antiSpam)}  ·  ${t("Anti-liens", "Anti-links")} **${s.antiLink}**  ·  ${t("Anti-raid", "Anti-raid")} ${onOff(s.antiRaid)}\n${t("Les modérateurs (Gérer les messages) ne sont jamais touchés.", "Moderators (Manage Messages) are never affected.")}`
+    );
+  };
+
+  /* ---------- message protection ---------- */
+  const spam = new Map();
+  const INVITE = /(discord\.gg|discord(?:app)?\.com\/invite)\/[\w-]+/i;
+  const ANY_LINK = /https?:\/\/\S+/i;
+  async function protect(message) {
+    const s = db.cfg.security;
+    if (message.author.bot || !message.guild || !message.member) return false;
+    if (message.member.permissions?.has?.(P.ManageMessages)) return false;
+    if (s.antiLink !== "off") {
+      const hit = s.antiLink === "all" ? ANY_LINK.test(message.content) : INVITE.test(message.content);
+      if (hit) {
+        await message.delete().catch(() => {});
+        const warning = await message.channel.send({ content: t(`🔗 ${message.author}, les liens ne sont pas autorisés ici.`, `🔗 ${message.author}, links are not allowed here.`), allowedMentions: { users: [message.author.id] } }).catch(() => null);
+        if (warning) setTimeout(() => warning.delete().catch(() => {}), 6000);
+        await log(message.guild, `🔗 **Anti-link** ${message.author} <#${message.channelId}>\n${String(message.content).slice(0, 300)}`, 0xe67e22);
+        return true;
+      }
+    }
+    if (s.antiSpam) {
+      const now = Date.now();
+      const list = (spam.get(message.author.id) || []).filter((x) => now - x < 5000);
+      list.push(now);
+      spam.set(message.author.id, list);
+      if (list.length >= 5) {
+        spam.delete(message.author.id);
+        await message.member.timeout(300_000, "anti-spam").catch(() => {});
+        await message.channel.send({ content: t(`🔇 ${message.author} est en sourdine 5 min (spam).`, `🔇 ${message.author} is timed out for 5 min (spam).`), allowedMentions: { users: [message.author.id] } }).catch(() => {});
+        await log(message.guild, `🔇 **Anti-spam** ${message.author} <#${message.channelId}>`, 0xe67e22);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* ---------- wiring ---------- */
+  async function handleInteraction(i) {
+    if (!ON) return false;
+    try {
+      if (i.isChatInputCommand?.() && NAMES.has(i.commandName)) {
+        if (!i.guild) return (await reply(i, no(t("Utilise cette commande sur le serveur.", "Use this command in the server."))), true);
+        await H[i.commandName](i);
+        return true;
+      }
+      if (i.isButton?.() && typeof i.customId === "string" && i.customId.startsWith("tl:")) {
+        const [, kind, arg] = i.customId.split(":");
+        if (kind === "rr") await roleButton(i, arg);
+        else if (kind === "poll") await pollVote(i, Number(arg));
+        else if (kind === "gw") await giveawayJoin(i);
+        return true;
+      }
+    } catch (error) {
+      console.error("⚠️ Tools error:", error?.message || error);
+      const message = { content: no(t("Une erreur est survenue.", "Something went wrong.")), flags: ephemeral };
+      if (i.deferred || i.replied) await i.followUp(message).catch(() => {});
+      else await i.reply(message).catch(() => {});
+      return true;
+    }
+    return false;
+  }
+
+  let tickTimer = null;
+  let exitHooked = false;
+  function attach(discordClient, canReadMessages) {
+    client = discordClient;
+    if (!ON) return;
+    load();
+    client.on(Events.MessageCreate, async (message) => {
+      try {
+        if (await protect(message)) return;
+        await onXp(message);
+      } catch (error) {
+        console.error("⚠️ Tools message error:", error?.message || error);
+      }
+    });
+    client.on(Events.MessageDelete, (m) => {
+      if (m.author?.bot || !m.guild) return;
+      log(m.guild, `🗑️ ${t("Message supprimé", "Message deleted")} ${m.author ? `${m.author}` : ""} <#${m.channelId}>\n${m.content ? String(m.content).slice(0, 1500) : t("(contenu inconnu)", "(unknown content)")}`);
+    });
+    client.on(Events.MessageUpdate, (a, b) => {
+      if (a.author?.bot || !a.guild || !a.content || a.content === b.content) return;
+      log(a.guild, `✏️ ${t("Message modifié", "Message edited")} ${a.author} <#${a.channelId}>\n**${t("Avant", "Before")}:** ${String(a.content).slice(0, 700)}\n**${t("Après", "After")}:** ${String(b.content || "").slice(0, 700)}`);
+    });
+    client.on(Events.GuildMemberAdd, (m) => onJoin(m).catch((e) => console.error("⚠️ Tools join error:", e?.message || e)));
+    client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
+    client.on(Events.GuildBanAdd, (b) => log(b.guild, `🔨 **Ban** ${b.user.username} (${b.user.id})`, 0xed4245));
+    if (tickTimer) clearInterval(tickTimer);
+    tickTimer = setInterval(() => tickGiveaways().catch(() => {}), 30_000);
+    tickTimer.unref?.();
+    if (!exitHooked) {
+      exitHooked = true;
+      process.on("exit", () => save(true));
+    }
+    if (!canReadMessages) console.log("ℹ️ Multitools: levels, anti-spam, anti-links and welcome need the Message Content and Server Members intents (see the setup note).");
+    else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
+  }
+
+  return { ON, commands, handleInteraction, attach, _test: { save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+})();
+
+/* =====================================================
    PART 2: DISCORD BOT (panel + tickets)
 ===================================================== */
 
@@ -2559,7 +3459,9 @@ const CATEGORY_ID = process.env.MM_CATEGORY_ID || "";
 const LOG_CHANNEL_ID = process.env.MM_LOG_CHANNEL_ID || "";
 const ephemeral = MessageFlags.Ephemeral;
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration];
+const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration];
+let client = new Client({ intents: tools.ON ? FULL_INTENTS : [GatewayIntentBits.Guilds] });
 
 const isStaff = (member) =>
   Boolean(
@@ -2809,9 +3711,10 @@ async function closeTicket(interaction) {
 
 /* ---------- events ---------- */
 
-client.on(Events.InteractionCreate, async (interaction) => {
+const onInteraction = async (interaction) => {
   try {
     if (await middleman.handleInteraction(interaction)) return;
+    if (await tools.handleInteraction(interaction)) return;
 
     if (interaction.isChatInputCommand() && interaction.commandName === "panel") return await postPanel(interaction);
     if (interaction.isButton() && (interaction.customId === "open_ticket" || interaction.customId.startsWith("open_ticket:"))) return await askLanguage(interaction);
@@ -2824,17 +3727,47 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.deferred || interaction.replied) await interaction.followUp(message).catch(() => {});
     else await interaction.reply(message).catch(() => {});
   }
-});
+};
 
-client.once(Events.ClientReady, () => {
+const onReady = () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: "", logChannelId: LOG_CHANNEL_ID });
-});
+};
 
-client.on(Events.Invalidated, () => {
+const onInvalidated = () => {
   console.error("❌ Discord session invalidated: restarting the bot.");
   process.exit(1);
-});
+};
+
+let toolsAttached = false;
+function wire(canReadMessages) {
+  client.on(Events.InteractionCreate, onInteraction);
+  client.once(Events.ClientReady, onReady);
+  client.on(Events.Invalidated, onInvalidated);
+  if (!toolsAttached) {
+    toolsAttached = true;
+    tools.attach(client, canReadMessages);
+  }
+}
+
+/* The Message Content and Server Members intents must be switched on in the Developer Portal.
+   When they are not, the bot starts anyway without them (levels still work, but not anti-links and welcome). */
+async function loginWithFallback() {
+  wire(tools.ON);
+  try {
+    await client.login(process.env.DISCORD_TOKEN);
+  } catch (error) {
+    if (!tools.ON || !/disallowed intents/i.test(String(error?.message || error))) throw error;
+    console.warn("⚠️ The Message Content / Server Members intents are not enabled: starting without them. Switch them on in the Discord Developer Portal (Bot tab, Privileged Gateway Intents), then restart.");
+    await client.destroy().catch(() => {});
+    client = new Client({ intents: BASIC_INTENTS });
+    client.on(Events.InteractionCreate, onInteraction);
+    client.once(Events.ClientReady, onReady);
+    client.on(Events.Invalidated, onInvalidated);
+    tools.attach(client, false);
+    await client.login(process.env.DISCORD_TOKEN);
+  }
+}
 
 (async () => {
   try {
@@ -2854,9 +3787,10 @@ client.on(Events.Invalidated, () => {
         new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").toJSON(),
         new SlashCommandBuilder().setName("access").setDescription("Choose which roles can see the private Litecoin tickets").toJSON(),
         new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").toJSON(),
+        ...tools.commands(),
       ],
     });
-    await client.login(process.env.DISCORD_TOKEN);
+    await loginWithFallback();
   } catch (error) {
     console.error("❌ Could not start:", error?.message || error);
     process.exit(1);
