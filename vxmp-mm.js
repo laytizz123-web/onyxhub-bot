@@ -473,50 +473,92 @@ const middleman = (() => {
     }
   }
 
-  function dealEmbed(deal) {
+  /* The deal card is several panels (embeds) in one message, so one edit refreshes them all:
+       1. header   : progress + what to do now
+       2. details  : sender, receiver, amount
+       3. payment  : exact amount, address, QR      (while waiting for the payment)
+       4. progress : confirmations, last check      (while waiting for the payment)
+       5. result   : payout or refund transaction   (when finished)            */
+  function dealEmbeds(deal) {
+    const panels = [];
     const color = deal.frozen ? COLORS.bad : STATE_COLOR[deal.state] || COLORS.info;
+
+    // 1. header
+    panels.push(
+      new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`💱  Litecoin Middleman  ·  Deal #${deal.n}`)
+        .setDescription(
+          [
+            deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide." : null,
+            stepper(deal) || null,
+            stateText(deal) || null,
+          ].filter(Boolean).join("\n\u200b\n")
+        )
+    );
+
+    // 2. details
     const amountLine = deal.amountSat
       ? `**${satToLtc(deal.amountSat)} LTC**${deal.quote ? `\n${quoteText(deal.quote)}` : ""}`
       : "*not set yet*";
-
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setTitle(`💱  Litecoin Middleman  ·  Deal #${deal.n}`)
-      .setDescription(
-        [
-          deal.frozen ? "🧊  **FROZEN**: a dispute is open, staff will decide." : null,
-          stepper(deal) || null,
-          stateText(deal) || null,
-        ].filter(Boolean).join("\n\u200b\n")
-      )
-      .addFields(
-        { name: "📤  Sender", value: deal.senderId ? mention(deal.senderId) : "*waiting…*", inline: true },
-        { name: "📥  Receiver", value: deal.receiverId ? mention(deal.receiverId) : "*waiting…*", inline: true },
-        { name: "💰  Amount", value: amountLine, inline: true }
-      )
-      .setFooter({ text: "VXMP MM  ·  funds are held by the bot until release" })
-      .setTimestamp();
+    panels.push(
+      new EmbedBuilder()
+        .setColor(0x4f545c)
+        .setTitle("📋  Deal details")
+        .addFields(
+          { name: "📤  Sender", value: deal.senderId ? mention(deal.senderId) : "*waiting…*", inline: true },
+          { name: "📥  Receiver", value: deal.receiverId ? mention(deal.receiverId) : "*waiting…*", inline: true },
+          { name: "💰  Amount", value: amountLine, inline: true }
+        )
+    );
 
     if (deal.state === "awaiting_payment" || deal.state === "confirming") {
       const confirming = deal.state === "confirming";
       const checked = deal.lastCheck ? `\n🔄 Last check <t:${unix(deal.lastCheck)}:R>` : "";
-      embed.addFields(
-        { name: "💳  Send exactly", value: `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\``, inline: true },
-        { name: "📮  To this address (this deal only)", value: `\`\`\`${deal.address}\`\`\`` },
-        {
-          name: "⏱️  Progress",
-          value: confirming
-            ? `${bar(deal.confirmations, cfg.confirmations)}  **${Math.min(deal.confirmations, cfg.confirmations)}/${cfg.confirmations}** confirmations\nSeen: **${satToLtc(deal.seenSat)} LTC**${checked}`
-            : `${bar(0, cfg.confirmations)}  waiting for the payment\nNeeds ${cfg.confirmations} confirmation(s) after sending (about ${Math.round(cfg.confirmations * 2.5)} min)${checked}`,
-        }
+
+      // 3. payment
+      const payment = new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle("💳  Payment")
+        .addFields(
+          { name: "Send exactly", value: `\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`` },
+          { name: "To this address (this deal only)", value: `\`\`\`${deal.address}\`\`\`` }
+        );
+      if (cfg.qr && deal.address) payment.setThumbnail(qrUrl(deal));
+      panels.push(payment);
+
+      // 4. progress
+      panels.push(
+        new EmbedBuilder()
+          .setColor(confirming ? 0xf57c00 : 0xfaa61a)
+          .setTitle("⏱️  Progress")
+          .setDescription(
+            confirming
+              ? `${bar(deal.confirmations, cfg.confirmations)}  **${Math.min(deal.confirmations, cfg.confirmations)}/${cfg.confirmations}** confirmations\nSeen: **${satToLtc(deal.seenSat)} LTC**${checked}`
+              : `${bar(0, cfg.confirmations)}  waiting for the payment\nNeeds ${cfg.confirmations} confirmation(s) after sending (about ${Math.round(cfg.confirmations * 2.5)} min)${checked}`
+          )
       );
-      if (cfg.qr && deal.address) embed.setThumbnail(qrUrl(deal));
     }
 
-    if (deal.payoutTxid) embed.addFields({ name: "🏦  Payout", value: `${txLink(deal.payoutTxid)}\n\`${deal.payoutAddress}\`` });
-    if (deal.refundTxid) embed.addFields({ name: "↩️  Refund", value: `${txLink(deal.refundTxid)}\n\`${deal.refundAddress}\`` });
-    if (deal.payoutTxid || deal.refundTxid) embed.addFields({ name: "🧾  Network fee", value: `${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)` });
-    return embed;
+    // 5. result
+    if (deal.payoutTxid || deal.refundTxid) {
+      const refund = Boolean(deal.refundTxid);
+      panels.push(
+        new EmbedBuilder()
+          .setColor(refund ? COLORS.grey : COLORS.ok)
+          .setTitle(refund ? "↩️  Refund" : "🏦  Payout")
+          .setDescription(
+            [
+              `${txLink(refund ? deal.refundTxid : deal.payoutTxid)}`,
+              `\`${refund ? deal.refundAddress : deal.payoutAddress}\``,
+              `🧾 Network fee: ${satToLtc(deal.feeSat)} LTC (deducted from the amount sent)`,
+            ].join("\n")
+          )
+      );
+    }
+
+    panels[panels.length - 1].setFooter({ text: "VXMP MM  ·  funds are held by the bot until release" }).setTimestamp();
+    return panels;
   }
 
   function dealComponents(deal) {
@@ -549,7 +591,7 @@ const middleman = (() => {
     return staff.length ? [new ActionRowBuilder().addComponents(staff)] : [];
   }
 
-  const render = (deal) => ({ embeds: [dealEmbed(deal)], components: dealComponents(deal) });
+  const render = (deal) => ({ embeds: dealEmbeds(deal), components: dealComponents(deal) });
 
   async function getChannel(deal) {
     return client.channels.fetch(deal.channelId).catch(() => null);
