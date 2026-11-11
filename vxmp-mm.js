@@ -2821,12 +2821,12 @@ const tools = (() => {
   const FILE = path.join(process.env.DATA_DIR || __dirname, "tools.json");
 
   /* ---------- storage ---------- */
-  let db = {
+  const defaults = () => ({
     xp: {},
     warns: {},
     polls: {},
     giveaways: {},
-    setup: { items: [], levelRoles: [] },
+    setup: { items: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
@@ -2835,16 +2835,25 @@ const tools = (() => {
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       security: { antiSpam: false, antiLink: "off", antiRaid: false },
     },
-  };
+  });
+  let db = defaults();
   let saveTimer = null;
+  /* Reads tools.json. A file written by an older version gets every missing setting filled with its default. */
   function load() {
+    let raw = {};
     try {
-      const raw = JSON.parse(fs.readFileSync(FILE, "utf8"));
-      db = { ...db, ...raw, cfg: { ...db.cfg, ...(raw.cfg || {}) } };
-      for (const k of Object.keys(db.cfg)) db.cfg[k] = { ...db.cfg[k], ...((raw.cfg || {})[k] || {}) };
+      raw = JSON.parse(fs.readFileSync(FILE, "utf8")) || {};
     } catch {
-      /* first start */
+      /* first start (or unreadable file): defaults */
     }
+    const base = defaults();
+    const next = { ...base, ...raw };
+    next.cfg = { ...(raw.cfg || {}) };
+    for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
+    next.setup = { ...base.setup, ...(raw.setup || {}) };
+    for (const key of ["xp", "warns", "polls", "giveaways"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const [group, keys] of [[next.setup, ["items", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
+    db = next;
   }
   function save(now = false) {
     const write = () => {
