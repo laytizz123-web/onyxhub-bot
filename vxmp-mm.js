@@ -266,7 +266,7 @@ const middleman = (() => {
   const quoteText = (q) =>
     !q ? "" : q.indicative
       ? `≈ ${fmtMoney(q.fiat)} ${q.currency} (1 LTC = ${q.price} ${q.currency})`
-      : `≈ ${q.fiat} ${q.currency} (1 LTC = ${q.price} ${q.currency}, rate fixed now)`;
+      : `≈ ${q.fiat} ${q.currency} (1 LTC = ${q.price} ${q.currency})`;
 
   async function getTipHeight() {
     const height = parseInt(await api("/blocks/tip/height"), 10);
@@ -456,7 +456,7 @@ const middleman = (() => {
       case "partner": return "**Add the person you trade with.**\nClick the button below and send their @mention or user ID.";
       case "roles": return "**Pick your roles.**\n📤 The *sender* pays the LTC.   📥 The *receiver* gets it when the deal is done.";
       case "amount": return `**${sender}: set the amount.**\nType it in LTC (\`0.25\`) or in money (\`5$\`, \`5€\`).`;
-      case "amount_confirm": return `**${receiver}: check the amount and confirm it.**\nThe LTC figure is final once confirmed, even if the price moves.`;
+      case "amount_confirm": return `**${receiver}: check the amount and confirm it.**\nOnce confirmed, the LTC figure is locked, even if the price moves.`;
       case "awaiting_payment": return `**${sender}: send the exact amount below** from a wallet you control.\nThe bot spots the payment by itself, nothing to click.`;
       case "confirming": return "**Payment spotted!**\nThe network is confirming it, this card updates by itself.";
       case "funded": return `**Funds secured.**\n📥 ${receiver}: deliver what was agreed.\n📤 ${sender}: click **Release** only once you really received it.`;
@@ -783,7 +783,7 @@ const middleman = (() => {
         await interaction.update(render(deal));
         return notify(deal, {
           title: "💳  Payment instructions",
-          body: `📤 ${mention(deal.senderId)} send exactly\n\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`to this address\n\`\`\`${deal.address}\`\`\`The bot announces it here as soon as it sees the transaction.`,
+          body: `📤 ${mention(deal.senderId)} send exactly\n\`\`\`${satToLtc(deal.amountSat)} LTC\`\`\`to this address\n\`\`\`${deal.address}\`\`\`🔒 The amount is **locked** now, it will not change even if the price moves.\nThe bot announces it here as soon as it sees the transaction.`,
           color: COLORS.wait,
           ping: [deal.senderId],
           thumbnail: cfg.qr ? qrUrl(deal) : undefined,
@@ -946,7 +946,7 @@ const middleman = (() => {
       await refreshMain(deal);
       return notify(deal, {
         title: "💰  Amount set",
-        body: `${mention(deal.senderId)} set the amount to\n\`\`\`${satToLtc(result.sat)} LTC\`\`\`${result.quote ? `${quoteText(result.quote)}\n\n` : "\n"}📥 ${mention(deal.receiverId)} confirm it with the button above.\nThe amount to pay is the **LTC figure**, it will not change.`,
+        body: `${mention(deal.senderId)} set the amount to\n\`\`\`${satToLtc(result.sat)} LTC\`\`\`${result.quote ? `${quoteText(result.quote)}\n\n` : "\n"}📥 ${mention(deal.receiverId)} confirm it with the button above.\n⚠️ **Not final yet.** The sender can still change it. Once you confirm, the LTC figure is locked.`,
         color: COLORS.info,
         ping: [deal.receiverId],
       });
