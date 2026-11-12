@@ -2918,14 +2918,14 @@ const tools = (() => {
 
   /* The ladder of level roles the bot can create: [level, name, colour]. Always in English. */
   const LADDER = [
-    [1, "Newcomer", 0x95a5a6],
-    [5, "Member", 0x3498db],
-    [10, "Active", 0x1abc9c],
-    [15, "Regular", 0x2ecc71],
-    [20, "Veteran", 0x9b59b6],
-    [30, "Elite", 0xe91e63],
-    [40, "Master", 0xe67e22],
-    [50, "Legend", 0xf1c40f],
+    [1, "🌱 Newcomer", 0x95a5a6],
+    [5, "⭐ Rookie", 0x3498db],
+    [10, "🔥 Active", 0x1abc9c],
+    [15, "💠 Regular", 0x2ecc71],
+    [20, "⚔️ Veteran", 0x9b59b6],
+    [30, "💎 Elite", 0xe91e63],
+    [40, "👑 Master", 0xe67e22],
+    [50, "🏆 Legend", 0xf1c40f],
   ];
 
   /* Creates the level roles, remembers them, and connects them to the levels. Returns how many. */
@@ -2942,6 +2942,24 @@ const tools = (() => {
     db.cfg.levels.rewards.sort((a, b) => a.level - b.level);
     save(true);
     return made;
+  }
+
+  /* The roles already exist: give them the current names and colours of the ladder. Returns how many changed. */
+  async function refreshLevelRoles(guild) {
+    let changed = 0;
+    for (const [level, name, color] of LADDER) {
+      const reward = db.cfg.levels.rewards.find((r) => r.level === level && db.setup.levelRoles.includes(r.roleId));
+      if (!reward) continue;
+      const role = await Promise.resolve(guild.roles.fetch?.(reward.roleId)).catch(() => null);
+      if (!role || (role.name === name && role.color === color)) continue;
+      try {
+        await role.edit({ name, color, reason: "level roles updated" });
+        changed++;
+      } catch {
+        /* the role keeps its name */
+      }
+    }
+    return changed;
   }
 
   /* Deletes only the roles the bot created, and the rewards that pointed to them. Returns how many. */
@@ -3285,7 +3303,11 @@ const tools = (() => {
     }
     if (sub === "roles-create") {
       if (need_perm(i, P.ManageRoles)) return;
-      if (db.setup.levelRoles.length) return reply(i, no(t("Les rôles de niveau existent déjà. `/levels roles-delete` d'abord pour les refaire.", "The level roles already exist. `/levels roles-delete` first to remake them.")));
+      if (db.setup.levelRoles.length) {
+        await i.deferReply({ flags: ephemeral });
+        const n = await refreshLevelRoles(i.guild);
+        return i.editReply(ok(t(`${n} rôle(s) de niveau mis à jour (noms et couleurs).`, `${n} level role(s) updated (names and colours).`)));
+      }
       await i.deferReply({ flags: ephemeral });
       try {
         const n = await createLevelRoles(i.guild);
