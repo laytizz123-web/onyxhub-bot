@@ -3768,7 +3768,120 @@ const gfx = (() => {
     return encodeGif(Array.from({ length: FRAMES }, (_, f) => scene.render(f / FRAMES)), 5);
   };
 
-  return { Canvas, decodePng, encodeGif, logo, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+  /* A picture drawn on black and on white gives its exact transparency, so it can be laid over every frame. */
+  function overlayOf(W, H, draw) {
+    const onBlack = new Canvas(W, H, "#000000");
+    const onWhite = new Canvas(W, H, "#ffffff");
+    draw(onBlack);
+    draw(onWhite);
+    const overlay = { rgb: new Float32Array(W * H * 3), a: new Float32Array(W * H), W, H };
+    for (let i = 0; i < W * H; i++) {
+      let alpha = 0;
+      for (let k = 0; k < 3; k++) alpha += 1 - (onWhite.px[i * 3 + k] - onBlack.px[i * 3 + k]) / 255;
+      alpha = clamp01(alpha / 3);
+      overlay.a[i] = alpha;
+      for (let k = 0; k < 3; k++) overlay.rgb[i * 3 + k] = alpha > 0.003 ? Math.min(255, onBlack.px[i * 3 + k] / alpha) : 0;
+    }
+    return overlay;
+  }
+  function layOver(c, overlay) {
+    for (let i = 0; i < overlay.W * overlay.H; i++) {
+      const al = overlay.a[i];
+      if (al > 0.003) {
+        const j = i * 3;
+        c.px[j] += (overlay.rgb[j] - c.px[j]) * al;
+        c.px[j + 1] += (overlay.rgb[j + 1] - c.px[j + 1]) * al;
+        c.px[j + 2] += (overlay.rgb[j + 2] - c.px[j + 2]) * al;
+      }
+    }
+  }
+  /* A bouncing gift box. t in [0, 1) loops. */
+  function giftBox(c, cx, cy, S, t) {
+    const phase = Math.abs(Math.sin(2 * Math.PI * t));
+    const y0 = cy - phase * S * 0.16;
+    c.ellipseSoft(cx, cy + S * 0.62, S * 0.46 * (1 - phase * 0.3), S * 0.06, 10, "#000000", 0.38);
+    c.glow(cx, y0 + S * 0.2, S * 0.95, "#ffb02e", 0.25 + 0.15 * phase);
+    c.round(cx - 0.43 * S, y0 - 0.02 * S, 0.86 * S, 0.54 * S, 0.07 * S, lin(cx - S / 2, y0, cx + S / 2, y0 + 0.5 * S, [[0, "#ff6b95"], [1, "#d02060"]]));
+    c.round(cx - 0.4 * S, y0, 0.18 * S, 0.5 * S, 0.05 * S, "#ffffff", 0.16);
+    c.round(cx - 0.49 * S, y0 - 0.2 * S, 0.98 * S, 0.24 * S, 0.06 * S, lin(cx, y0 - 0.2 * S, cx, y0 + 0.04 * S, [[0, "#ff9ab6"], [1, "#e63a73"]]));
+    c.round(cx - 0.07 * S, y0 - 0.2 * S, 0.14 * S, 0.74 * S, 2, lin(cx - 0.07 * S, 0, cx + 0.07 * S, 0, [[0, "#fff3b0"], [1, "#ffb02e"]]));
+    for (const dir of [-1, 1]) {
+      c.ellipse(cx + dir * 0.16 * S, y0 - 0.27 * S, 0.15 * S, 0.095 * S, lin(cx, y0 - 0.4 * S, cx, y0 - 0.15 * S, [[0, "#fff3b0"], [1, "#ffb02e"]]));
+      c.ellipse(cx + dir * 0.16 * S, y0 - 0.27 * S, 0.08 * S, 0.045 * S, "#c2740a", 0.55);
+    }
+    c.circle(cx, y0 - 0.22 * S, 0.065 * S, lin(cx, y0 - 0.3 * S, cx, y0 - 0.15 * S, [[0, "#ffe27a"], [1, "#e0971a"]]));
+  }
+  /* The "GIVEAWAY" banner: a gift that bounces, confetti, sparkles, a shine over the title. */
+  function giveawayScene({ prize, winners, host, label }) {
+    const W = 720;
+    const H = 240;
+    const pal = ["#2a1250", "#6a2a8a", "#ffb02e", "#ff5ccf", "#7a6bff"];
+    const bg = new Canvas(W, H);
+    aurora(bg, `giveaway${prize}`, pal, 8);
+    const overlay = overlayOf(W, H, (c) => {
+      c.glass(18, 18, W - 36, H - 36, 34, 0.1);
+      c.text(cutText(c, prize, 450, 46), 232, 128, fitSize(c, cutText(c, prize, 450, 46), 450, 46), { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
+      const pill = `${winners} ${winners > 1 ? label.winnersMany : label.winnersOne}`;
+      c.pill(232, 164, c.measure(pill, 20, "bold", 2) + 40, 36, lin(232, 0, 470, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pill, 20, { spacing: 2, glow: "#7c4dff" });
+      if (host) c.text(cutText(c, `${label.by} ${host}`, 300, 20, "regular"), 700 - 22, 182, 20, { align: "right", font: "regular", alpha: 0.8 });
+    });
+    const rnd = rngOf(`gwconfetti${prize}`);
+    const confetti = Array.from({ length: 34 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(rnd() * 6)], sway: rnd() * 6 }));
+    const twinkle = Array.from({ length: 8 }, () => ({ x: 230 + rnd() * 470, y: 26 + rnd() * 190, r: 3 + rnd() * 5, phase: rnd() }));
+    const render = (t) => {
+      const c = bg.clone();
+      for (const k of confetti) c.confetti(k.x + Math.sin(2 * Math.PI * t * k.speed + k.sway) * 10, ((k.y + t * H * k.speed) % (H + 40)) - 20, k.w, k.h, k.a + 2 * Math.PI * t * k.spin, k.color, 0.9);
+      layOver(c, overlay);
+      giftBox(c, 118, 112, 112, t);
+      const bandX = 224 + (t * 1.6 - 0.3) * 470;
+      c.text(label.title, 232, 70, fitSize(c, label.title, 450, 54, "bold", 4), {
+        spacing: 4,
+        paint: (top, base) => {
+          const g = lin(0, top, 0, base, [[0, "#fff3b0"], [1, "#ffb02e"]]);
+          return (x, y) => mixc(g(x, y), [255, 255, 255], Math.max(0, 1 - Math.abs(x - bandX - (y - top) * 0.7) / 55) * 0.9);
+        },
+        glow: { blur: 14, color: "#ffb02e", alpha: 0.5 },
+        shadow: { dy: 4, blur: 8, alpha: 0.5 },
+      });
+      const orbit = 2 * Math.PI * t;
+      c.sparkle(118 + Math.cos(orbit) * 84, 112 + Math.sin(orbit) * 70, 8, "#ffffff", 0.9);
+      for (const k of twinkle) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
+      return c;
+    };
+    return { render };
+  }
+  const giveawayAnimated = (opts) => {
+    const scene = giveawayScene(opts);
+    return encodeGif(Array.from({ length: 24 }, (_, f) => scene.render(f / 24)), 5);
+  };
+  /* The card of the end: a crown over the first winner, the names, how many entered. */
+  function giveawayEnd({ prize, winners, count, label }) {
+    const c = new Canvas(720, 240);
+    aurora(c, `gwend${prize}`, ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"], 12);
+    const r = rngOf(`gwendconfetti${prize}`);
+    for (let k = 0; k < 40; k++) c.confetti(r() * 720, r() * 240, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(r() * 6)], 0.55 + r() * 0.4);
+    c.glass(18, 18, 684, 204, 34, 0.1);
+    const first = winners[0];
+    if (first) {
+      portrait(c, 124, 132, 112, first.name, first.avatar, GOLD, "#ffb02e");
+      const crown = [[-36, 24], [-36, -6], [-18, 12], [0, -20], [18, 12], [36, -6], [36, 24]].map(([x, y]) => [124 + x, 56 + y]);
+      c.polygons([crown.map(([x, y]) => [x + 2, y + 5])], "#000000", 0.3);
+      c.polygons([crown], lin(88, 36, 160, 80, [[0, "#fff3b0"], [0.5, "#ffc93c"], [1, "#e08a1a"]]));
+      for (const [x, y] of [[-36, -6], [0, -20], [36, -6]]) c.circle(124 + x, 56 + y, 4.5, "#ffffff", 0.95);
+    }
+    const title = winners.length > 1 ? label.winnersMany : winners.length === 1 ? label.winnersOne : label.noWinner;
+    c.text(title, 226, 56, fitSize(c, title, 450, 48, "bold", 4), { spacing: 4, gradient: GOLD, glow: { blur: 14, color: "#ffb02e", alpha: 0.55 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
+    const shownNames = winners.length > 3 ? winners.slice(0, 2) : winners.slice(0, 3);
+    shownNames.forEach((w, n) => c.text(cutText(c, w.name, 440, 28), 226, 98 + n * 32, 28, { shadow: { dy: 2, blur: 4, alpha: 0.5 } }));
+    if (winners.length > 3) c.text(`+ ${winners.length - 2}`, 226, 98 + 2 * 32, 24, { font: "regular", alpha: 0.85 });
+    if (!winners.length) c.text(cutText(c, prize, 440, 30), 226, 110, 30, { font: "regular", alpha: 0.9 });
+    const pillText = `${count} ${label.entries}`;
+    c.pill(226, 192, c.measure(pillText, 18, "bold", 2) + 36, 30, lin(226, 0, 440, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pillText, 18, { spacing: 2, glow: "#7c4dff" });
+    if (winners.length) c.text(cutText(c, prize, 250, 20, "regular"), 700 - 22, 207, 20, { align: "right", font: "regular", alpha: 0.85 });
+    return c.png();
+  }
+
+  return { Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
@@ -4997,15 +5110,36 @@ const tools = (() => {
   }
 
   /* giveaways */
-  const gwEmbed = (g, ended = false, winners = []) =>
-    embed(ended ? 0x747f8d : 0xf1c40f)
-      .setTitle(`🎉 ${g.prize}`)
-      .setDescription(
-        ended
-          ? winners.length ? t(`Gagnant(s) : ${winners.map((w) => `<@${w}>`).join(", ")}`, `Winner(s): ${winners.map((w) => `<@${w}>`).join(", ")}`) : t("Personne n'a participé.", "Nobody joined.")
-          : t(`Appuie sur le bouton pour participer !\nFin : <t:${Math.floor(g.endsAt / 1000)}:R>\nGagnant(s) : **${g.winners}**`, `Press the button to join!\nEnds: <t:${Math.floor(g.endsAt / 1000)}:R>\nWinner(s): **${g.winners}**`)
-      )
-      .setFooter({ text: t(`${g.entries.length} participant(s)`, `${g.entries.length} entrant(s)`) });
+  const gwWord = () => ({ title: "GIVEAWAY", winnersOne: t("GAGNANT", "WINNER"), winnersMany: t("GAGNANTS", "WINNERS"), noWinner: t("PAS DE GAGNANT", "NO WINNER"), entries: t("PARTICIPANTS", "ENTRIES"), by: t("par", "by") });
+  /* The giveaway message: a live countdown, the host, the number of entries (changes with every click). */
+  const gwEmbed = (g, ended = false, winners = [], withImage = true) => {
+    const end = Math.floor(g.endsAt / 1000);
+    const e = embed(ended ? 0x747f8d : 0xf1c40f).setTitle(`🎉  ${g.prize}`);
+    if (!ended) {
+      e.setDescription(t("Appuie sur **🎉 Participer** pour tenter ta chance !", "Press **🎉 Join** to try your luck!"))
+        .addFields(
+          { name: `⏰  ${t("Fin", "Ends")}`, value: `<t:${end}:R>\n<t:${end}:f>`, inline: true },
+          { name: `🏆  ${t("Gagnants", "Winners")}`, value: `**${g.winners}**`, inline: true },
+          { name: `👥  ${t("Participants", "Entries")}`, value: `**${g.entries.length}**`, inline: true },
+          ...(g.host ? [{ name: `👑  ${t("Organisé par", "Hosted by")}`, value: `<@${g.host}>`, inline: true }] : [])
+        )
+        .setTimestamp(g.endsAt)
+        .setFooter({ text: t("Se termine", "Ends") });
+      if (withImage) e.setImage("attachment://giveaway.gif");
+    } else {
+      e.setDescription(winners.length ? t(`🏆  **${winners.length > 1 ? "Gagnants" : "Gagnant"} :** ${winners.map((w) => `<@${w}>`).join(", ")}`, `🏆  **${winners.length > 1 ? "Winners" : "Winner"}:** ${winners.map((w) => `<@${w}>`).join(", ")}`) : t("Personne n'a participé.", "Nobody joined."))
+        .addFields({ name: `👥  ${t("Participants", "Entries")}`, value: `**${g.entries.length}**`, inline: true }, ...(g.host ? [{ name: `👑  ${t("Organisé par", "Hosted by")}`, value: `<@${g.host}>`, inline: true }] : []))
+        .setFooter({ text: t("Terminé", "Ended") })
+        .setTimestamp(g.endsAt);
+      if (withImage) e.setImage("attachment://giveaway-end.png");
+    }
+    return e;
+  };
+  const gwRow = (g, ended = false) =>
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("tl:gw").setLabel(ended ? t("Terminé", "Ended") : `${t("Participer", "Join")} (${g.entries.length})`).setEmoji("🎉").setStyle(ended ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(ended),
+      new ButtonBuilder().setCustomId("tl:gwlist").setLabel(t("Participants", "Entries")).setEmoji("👥").setStyle(ButtonStyle.Secondary)
+    );
   const draw = (g) => {
     const pool = [...g.entries];
     const out = [];
@@ -5021,7 +5155,22 @@ const tools = (() => {
     g.lastWinners = winners;
     save();
     const message = await channel?.messages?.fetch?.(messageId).catch(() => null);
-    if (message) await message.edit({ embeds: [gwEmbed(g, true, winners)], components: [] }).catch(() => {});
+    if (message) {
+      let card = null;
+      try {
+        const named = await Promise.all(
+          winners.slice(0, 3).map(async (id, n) => {
+            const m = await channel.guild?.members?.fetch?.(id).catch(() => null);
+            return { name: m?.displayName || m?.user?.username || t("Membre", "Member"), avatar: n === 0 && m ? await loadAvatar(m) : null };
+          })
+        );
+        card = picture("giveaway-end.png", gfx.giveawayEnd({ prize: g.prize, winners: winners.map((id, n) => named[n] || { name: "…", avatar: null }), count: g.entries.length, label: gwWord() }));
+      } catch (error) {
+        console.error("⚠️ Giveaway card failed:", error?.message || error);
+      }
+      // the animated banner is replaced by the card of the end, and the button is switched off
+      await message.edit({ embeds: [gwEmbed(g, true, winners, Boolean(card))], components: [gwRow(g, true)], ...(card ? { files: [card.file], attachments: [] } : { attachments: [] }) }).catch(() => {});
+    }
     if (announce && channel?.isTextBased?.()) {
       await channel.send({ content: winners.length ? t(`🎉 Bravo ${winners.map((w) => `<@${w}>`).join(", ")} ! Vous gagnez **${g.prize}** !`, `🎉 Congrats ${winners.map((w) => `<@${w}>`).join(", ")}! You win **${g.prize}**!`) : t(`Concours **${g.prize}** terminé : aucun participant.`, `Giveaway **${g.prize}** ended: nobody joined.`), allowedMentions: { users: winners } }).catch(() => {});
     }
@@ -5033,9 +5182,15 @@ const tools = (() => {
     if (sub === "start") {
       const ms = parseDuration(i.options.getString("duree"));
       if (!ms || ms < 10_000 || ms > 30 * 86_400_000) return reply(i, no(t("Durée invalide (ex : 10m, 2h, 1j).", "Invalid duration (e.g. 10m, 2h, 1d).")));
-      const g = { channelId: i.channelId, prize: i.options.getString("lot"), winners: i.options.getInteger("gagnants") || 1, endsAt: Date.now() + ms, entries: [], ended: false };
-      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:gw").setLabel(t("Participer", "Join")).setEmoji("🎉").setStyle(ButtonStyle.Success));
-      await i.reply({ embeds: [gwEmbed(g)], components: [row] });
+      const g = { channelId: i.channelId, prize: i.options.getString("lot"), winners: i.options.getInteger("gagnants") || 1, endsAt: Date.now() + ms, entries: [], ended: false, host: i.user.id };
+      await i.deferReply(); // the animated banner takes about a second to draw
+      let card = null;
+      try {
+        card = picture("giveaway.gif", gfx.giveawayAnimated({ prize: g.prize, winners: g.winners, host: i.member?.displayName || i.user.username, label: gwWord() }));
+      } catch (error) {
+        console.error("⚠️ Giveaway banner failed:", error?.message || error);
+      }
+      await i.editReply({ embeds: [gwEmbed(g, false, [], Boolean(card))], components: [gwRow(g)], ...(card ? { files: [card.file] } : {}) });
       const message = await i.fetchReply();
       db.giveaways[message.id] = g;
       save();
@@ -5063,12 +5218,24 @@ const tools = (() => {
     if (g.entries.includes(i.user.id)) {
       g.entries = g.entries.filter((u) => u !== i.user.id);
       save();
-      await i.update({ embeds: [gwEmbed(g)] });
+      await i.update({ embeds: [gwEmbed(g)], components: [gwRow(g)] });
       return;
     }
     g.entries.push(i.user.id);
     save();
-    return i.update({ embeds: [gwEmbed(g)] });
+    return i.update({ embeds: [gwEmbed(g)], components: [gwRow(g)] });
+  }
+  /* "Entries": who is in, privately. */
+  async function giveawayList(i) {
+    const g = db.giveaways[i.message?.id];
+    if (!g) return reply(i, no(t("Ce concours n'existe plus.", "This giveaway no longer exists.")));
+    const shown = g.entries.slice(0, 40).map((id) => `<@${id}>`).join(" ");
+    const more = g.entries.length > 40 ? `\n${t(`… et ${g.entries.length - 40} autres`, `… and ${g.entries.length - 40} more`)}` : "";
+    return i.reply({
+      flags: ephemeral,
+      allowedMentions: { parse: [] },
+      embeds: [embed(0xf1c40f).setTitle(`👥  ${t("Participants", "Entries")}  ·  ${g.entries.length}`).setDescription(g.entries.length ? `${shown}${more}` : t("Personne pour le moment. Sois le premier !", "Nobody yet. Be the first!"))],
+    });
   }
   async function tickGiveaways() {
     const now = Date.now();
@@ -6074,6 +6241,7 @@ const tools = (() => {
         if (kind === "rr") await roleButton(i, arg);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
+        else if (kind === "gwlist") await giveawayList(i);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
