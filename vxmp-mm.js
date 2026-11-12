@@ -3027,6 +3027,13 @@ const gfx = (() => {
         }
       }
     }
+    clone() {
+      const c = Object.create(Canvas.prototype);
+      c.w = this.w;
+      c.h = this.h;
+      c.px = Float32Array.from(this.px);
+      return c;
+    }
     blend(x, y, c, a) {
       if (a <= 0 || x < 0 || y < 0 || x >= this.w || y >= this.h) return;
       const i = (y * this.w + x) * 3;
@@ -3182,7 +3189,7 @@ const gfx = (() => {
       if (o.glow) stamp(blurMask(m.mask, m.w, m.h, o.glow.blur), o.glow.color || "#ffffff", o.glow.alpha ?? 0.7);
       if (o.shadow) stamp(blurMask(m.mask, m.w, m.h, o.shadow.blur ?? 4), o.shadow.color || "#000000", o.shadow.alpha ?? 0.5, Math.round(o.shadow.dx || 0), Math.round(o.shadow.dy ?? 3));
       const top = base - CAP * size;
-      const paint = o.gradient ? lin(0, top, 0, base, o.gradient) : null;
+      const paint = o.paint ? o.paint(top, base) : o.gradient ? lin(0, top, 0, base, o.gradient) : null;
       const fixed = paint ? null : hex(o.color || "#ffffff");
       const opacity = o.alpha ?? 1;
       for (let j = 0; j < m.h; j++) for (let i = 0; i < m.w; i++) {
@@ -3245,6 +3252,167 @@ const gfx = (() => {
       const dy = Math.abs(py - (y + h / 2)) - (h / 2 - r);
       return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r;
     };
+  }
+
+  /* ---------- animated GIF ---------- */
+  /* 255 colours that fit the given RGB samples best (median cut). */
+  function medianCut(samples, count) {
+    const total = samples.length / 3;
+    const boxes = [Array.from({ length: total }, (_, i) => i)];
+    const range = (box) => {
+      const lo = [255, 255, 255];
+      const hi = [0, 0, 0];
+      for (const i of box) for (let k = 0; k < 3; k++) { const v = samples[i * 3 + k]; if (v < lo[k]) lo[k] = v; if (v > hi[k]) hi[k] = v; }
+      const spans = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+      const channel = spans.indexOf(Math.max(...spans));
+      return { channel, span: spans[channel] };
+    };
+    const info = boxes.map(range);
+    while (boxes.length < count) {
+      let pick = -1;
+      let best = 0;
+      for (let b = 0; b < boxes.length; b++) {
+        const score = boxes[b].length > 1 ? info[b].span * Math.sqrt(boxes[b].length) : 0;
+        if (score > best) { best = score; pick = b; }
+      }
+      if (pick < 0) break;
+      const box = boxes[pick];
+      const ch = info[pick].channel;
+      box.sort((a, b) => samples[a * 3 + ch] - samples[b * 3 + ch]);
+      const mid = box.length >> 1;
+      const left = box.slice(0, mid);
+      const right = box.slice(mid);
+      boxes[pick] = left;
+      info[pick] = range(left);
+      boxes.push(right);
+      info.push(range(right));
+    }
+    return boxes.map((box) => {
+      let r = 0, g = 0, b = 0;
+      for (const i of box) { r += samples[i * 3]; g += samples[i * 3 + 1]; b += samples[i * 3 + 2]; }
+      const n = box.length || 1;
+      return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+    });
+  }
+
+  /* GIF's own compression (LZW), the encoder of the classic gif.js. Returns the data sub-blocks. */
+  function lzw(indices, minCode) {
+    const clear = 1 << minCode;
+    const eof = clear + 1;
+    const bytes = [];
+    let acc = 0;
+    let bits = 0;
+    let nbits = minCode + 1;
+    let maxcode = (1 << nbits) - 1;
+    let free = clear + 2;
+    let clearFlag = false;
+    const write = (code) => {
+      acc |= code << bits;
+      bits += nbits;
+      while (bits >= 8) { bytes.push(acc & 255); acc >>>= 8; bits -= 8; }
+    };
+    const output = (code) => {
+      write(code);
+      if (free > maxcode || clearFlag) {
+        if (clearFlag) { nbits = minCode + 1; maxcode = (1 << nbits) - 1; clearFlag = false; } else { nbits++; maxcode = nbits === 12 ? 4096 : (1 << nbits) - 1; }
+      }
+    };
+    const dict = new Map();
+    output(clear);
+    let cur = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+      const k = indices[i];
+      const key = cur * 256 + k;
+      const found = dict.get(key);
+      if (found !== undefined) { cur = found; continue; }
+      output(cur);
+      cur = k;
+      if (free < 4096) dict.set(key, free++);
+      else { dict.clear(); free = clear + 2; clearFlag = true; output(clear); }
+    }
+    output(cur);
+    output(eof);
+    if (bits > 0) bytes.push(acc & 255);
+    const out = [];
+    for (let i = 0; i < bytes.length; i += 255) {
+      const part = bytes.slice(i, i + 255);
+      out.push(part.length, ...part);
+    }
+    out.push(0);
+    return Buffer.from(out);
+  }
+
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  /* Canvases -> one animated GIF (loops forever). Pixels that do not change from a frame to the next are left transparent. */
+  function encodeGif(canvases, delayCs = 5) {
+    const w = canvases[0].w;
+    const h = canvases[0].h;
+    // palette from a handful of frames
+    const sample = [];
+    const picks = [0, 0.25, 0.5, 0.75, 1].map((k) => Math.min(canvases.length - 1, Math.round(k * (canvases.length - 1)))).filter((v, i, a) => a.indexOf(v) === i);
+    const stride = Math.max(1, Math.ceil((w * h * picks.length) / 30000)); // about 30 000 samples: enough for a good palette, quick to sort
+    for (const f of picks) for (let i = 0; i < w * h; i += stride) sample.push(canvases[f].px[i * 3], canvases[f].px[i * 3 + 1], canvases[f].px[i * 3 + 2]);
+    const palette = medianCut(Uint8Array.from(sample.map((v) => Math.max(0, Math.min(255, Math.round(v))))), 255);
+    while (palette.length < 255) palette.push([0, 0, 0]);
+    const TRANSPARENT = 255;
+    const lut = new Int16Array(32768).fill(-1);
+    const nearest = (r, g, b) => {
+      const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+      if (lut[key] >= 0) return lut[key];
+      const rr = (r & 0xf8) + 4, gg = (g & 0xf8) + 4, bb = (b & 0xf8) + 4;
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < 255; i++) {
+        const d = (palette[i][0] - rr) ** 2 + (palette[i][1] - gg) ** 2 + (palette[i][2] - bb) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      lut[key] = best;
+      return best;
+    };
+    const quantize = (c) => {
+      const idx = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 3;
+        const dv = (BAYER[(y & 3) * 4 + (x & 3)] - 7.5) * 1.6;
+        idx[y * w + x] = nearest(Math.max(0, Math.min(255, Math.round(c.px[i] + dv))), Math.max(0, Math.min(255, Math.round(c.px[i + 1] + dv))), Math.max(0, Math.min(255, Math.round(c.px[i + 2] + dv))));
+      }
+      return idx;
+    };
+    const head = Buffer.alloc(13);
+    head.write("GIF89a", 0, "ascii");
+    head.writeUInt16LE(w, 6);
+    head.writeUInt16LE(h, 8);
+    head[10] = 0xf7; // global colour table, 256 entries
+    const table = Buffer.alloc(768);
+    palette.forEach((c, i) => { table[i * 3] = c[0]; table[i * 3 + 1] = c[1]; table[i * 3 + 2] = c[2]; });
+    const parts = [head, table, Buffer.from([0x21, 0xff, 0x0b, ...Buffer.from("NETSCAPE2.0", "ascii"), 3, 1, 0, 0, 0])];
+    let prev = null;
+    for (const canvas of canvases) {
+      const idx = quantize(canvas);
+      let x0 = 0, y0 = 0, x1 = w, y1 = h;
+      let data = idx;
+      let transparent = 0;
+      if (prev) {
+        let minx = w, miny = h, maxx = -1, maxy = -1;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (idx[y * w + x] !== prev[y * w + x]) { if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y; }
+        if (maxx < 0) { minx = 0; miny = 0; maxx = 0; maxy = 0; }
+        x0 = minx; y0 = miny; x1 = maxx + 1; y1 = maxy + 1;
+        data = new Uint8Array((x1 - x0) * (y1 - y0));
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data[(y - y0) * (x1 - x0) + (x - x0)] = idx[y * w + x] === prev[y * w + x] ? TRANSPARENT : idx[y * w + x];
+        transparent = 1;
+      }
+      const gce = Buffer.from([0x21, 0xf9, 0x04, (1 << 2) | transparent, delayCs & 255, delayCs >> 8, TRANSPARENT, 0]);
+      const desc = Buffer.alloc(10);
+      desc[0] = 0x2c;
+      desc.writeUInt16LE(x0, 1);
+      desc.writeUInt16LE(y0, 3);
+      desc.writeUInt16LE(x1 - x0, 5);
+      desc.writeUInt16LE(y1 - y0, 7);
+      parts.push(gce, desc, Buffer.from([8]), lzw(data, 8));
+      prev = idx;
+    }
+    parts.push(Buffer.from([0x3b]));
+    return Buffer.concat(parts);
   }
 
   /* ---------- shared look ---------- */
@@ -3474,20 +3642,90 @@ const gfx = (() => {
     return c.png();
   }
 
-  function welcome({ name, server, count, avatar, label }) {
-    const c = new Canvas(900, 300);
+  /* The welcome picture: a background, a foreground (glass, avatar, texts) and the moving parts. */
+  function welcomeScene({ name, server, count, avatar, label }) {
+    const W = 720;
+    const H = 240;
     const pal = pickPalette(name);
-    aurora(c, `welcome${name}`, pal, 18);
-    c.glass(24, 24, 852, 252, 40, 0.09);
-    portrait(c, 160, 150, 170, name, avatar, [[0, pal[3]], [1, pal[4]]], pal[2]);
-    c.text(label.welcome, 276, 84, fitSize(c, label.welcome, 560, 76), { spacing: 3, gradient: [[0, "#ffffff"], [1, "#ffd9a0"]], glow: { blur: 16, color: "#ffb02e", alpha: 0.55 }, shadow: { dy: 4, blur: 8, alpha: 0.5 } });
-    c.text(cutText(c, name, 560, 44), 276, 148, 44, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
-    c.text(cutText(c, `${label.to} ${server}`, 560, 28, "regular"), 276, 192, 28, { font: "regular", alpha: 0.85 });
-    c.pill(276, 218, c.measure(`${label.member} #${count}`, 22, "bold", 2) + 44, 40, lin(276, 0, 560, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), `${label.member} #${count}`, 22, { spacing: 2, glow: "#7c4dff" });
-    return c.png();
-  }
+    const bg = new Canvas(W, H);
+    aurora(bg, `welcome${name}`, pal, 8);
 
-  return { Canvas, decodePng, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+    // The foreground is drawn on black and on white, which gives its exact transparency: it can then be laid over every frame.
+    const drawForeground = (c) => {
+      c.glass(18, 18, W - 36, H - 36, 34, 0.1);
+      c.circle(120, 128, 76, "#000000", 0.3);
+      if (avatar) c.avatar(avatar, 118, 120, 140);
+      else {
+        c.circle(118, 120, 70, lin(48, 50, 188, 190, [[0, "#7c8cff"], [1, "#d96bff"]]));
+        c.text(initial(name), 118, 120, 70, { align: "center", shadow: { dy: 3, blur: 5, alpha: 0.4 } });
+      }
+      c.text(cutText(c, name, 460, 38), 222, 112, 38, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
+      c.text(cutText(c, `${label.to} ${server}`, 460, 24, "regular"), 222, 148, 24, { font: "regular", alpha: 0.85 });
+      const pillText = `${label.member} #${count}`;
+      c.pill(222, 172, c.measure(pillText, 20, "bold", 2) + 40, 36, lin(222, 0, 460, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pillText, 20, { spacing: 2, glow: "#7c4dff" });
+    };
+    const onBlack = new Canvas(W, H, "#000000");
+    const onWhite = new Canvas(W, H, "#ffffff");
+    drawForeground(onBlack);
+    drawForeground(onWhite);
+    const overlay = { rgb: new Float32Array(W * H * 3), a: new Float32Array(W * H) };
+    for (let i = 0; i < W * H; i++) {
+      let alpha = 0;
+      for (let k = 0; k < 3; k++) alpha += 1 - (onWhite.px[i * 3 + k] - onBlack.px[i * 3 + k]) / 255;
+      alpha = clamp01(alpha / 3);
+      overlay.a[i] = alpha;
+      for (let k = 0; k < 3; k++) overlay.rgb[i * 3 + k] = alpha > 0.003 ? Math.min(255, onBlack.px[i * 3 + k] / alpha) : 0;
+    }
+    const rnd = rngOf(`confetti${name}`);
+    const confetti = Array.from({ length: 36 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(rnd() * 6)], sway: rnd() * 6 }));
+    const twinkle = Array.from({ length: 9 }, () => ({ x: 230 + rnd() * 470, y: 26 + rnd() * 190, r: 3 + rnd() * 5, phase: rnd() }));
+
+    /* The picture at time t in [0, 1): everything moves in a loop. */
+    const render = (t) => {
+      const c = bg.clone();
+      const pulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * t);
+      c.glow(118, 120, 118 + 16 * pulse, pal[2], 0.45 + 0.25 * pulse);
+      for (const k of confetti) {
+        const y = ((k.y + t * H * k.speed) % (H + 40)) - 20;
+        const x = k.x + Math.sin(2 * Math.PI * t * k.speed + k.sway) * 10;
+        c.confetti(x, y, k.w, k.h, k.a + 2 * Math.PI * t * k.spin, k.color, 0.9);
+      }
+      for (let i = 0; i < W * H; i++) { // the foreground over it
+        const al = overlay.a[i];
+        if (al > 0.003) {
+          const j = i * 3;
+          c.px[j] += (overlay.rgb[j] - c.px[j]) * al;
+          c.px[j + 1] += (overlay.rgb[j + 1] - c.px[j + 1]) * al;
+          c.px[j + 2] += (overlay.rgb[j + 2] - c.px[j + 2]) * al;
+        }
+      }
+      c.ring(118, 120, 77 + 2 * pulse, 7 + 3 * pulse, lin(40, 40, 200, 200, [[0, pal[3]], [1, pal[4]]])); // over the avatar's shadow: it shines
+      // moving shine across the title
+      const bandX = 214 + (t * 1.6 - 0.3) * 470;
+      c.text(label.welcome, 222, 64, fitSize(c, label.welcome, 460, 60), {
+        spacing: 3,
+        paint: (top, base) => {
+          const g = lin(0, top, 0, base, [[0, "#ffffff"], [1, "#ffd9a0"]]);
+          return (x, y) => mixc(g(x, y), [255, 255, 255], Math.max(0, 1 - Math.abs(x - bandX - (y - top) * 0.7) / 60) * 0.9);
+        },
+        glow: { blur: 14, color: "#ffb02e", alpha: 0.5 },
+        shadow: { dy: 4, blur: 8, alpha: 0.5 },
+      });
+      const orbit = 2 * Math.PI * t - Math.PI / 2;
+      c.sparkle(118 + Math.cos(orbit) * 92, 120 + Math.sin(orbit) * 92, 9, "#ffffff", 0.95);
+      for (const k of twinkle) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
+      return c;
+    };
+    return { render, w: W, h: H };
+  }
+  const welcome = (opts) => welcomeScene(opts).render(0.3).png();
+  const FRAMES = 24;
+  const welcomeAnimated = (opts) => {
+    const scene = welcomeScene(opts);
+    return encodeGif(Array.from({ length: FRAMES }, (_, f) => scene.render(f / FRAMES)), 5);
+  };
+
+  return { Canvas, decodePng, encodeGif, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
@@ -3686,6 +3924,20 @@ const tools = (() => {
   }
 
   const cardLabel = () => ({ level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), title: t("CLASSEMENT", "LEADERBOARD"), up: t("NIVEAU SUPÉRIEUR !", "LEVEL UP!"), welcome: t("BIENVENUE", "WELCOME"), to: t("sur", "to"), member: t("MEMBRE", "MEMBER") });
+
+  /* The welcome picture of a member: an animated GIF, or a still PNG when animating is not wanted or fails. */
+  async function welcomeCard(member, animated = true) {
+    const opts = { name: member.displayName || member.user?.username || "?", server: member.guild?.name || "", count: member.guild?.memberCount ?? 0, avatar: await loadAvatar(member), label: cardLabel() };
+    if (animated) {
+      try {
+        await new Promise((resolve) => setImmediate(resolve)); // let other events through first: the animation takes about a second
+        return picture("welcome.gif", gfx.welcomeAnimated(opts));
+      } catch (error) {
+        console.error("⚠️ Animated welcome failed, using a still picture:", error?.message || error);
+      }
+    }
+    return picture("welcome.png", gfx.welcome(opts));
+  }
 
   /* The profile picture of a member as a decoded image (null when it cannot be loaded: the card then shows an initial). */
   const avatarCache = new Map();
@@ -4463,11 +4715,17 @@ const tools = (() => {
     }
     if (sub === "test") {
       if (!w.message) return reply(i, no(t("Aucun message. Utilise `/welcome channel`.", "No message. Use `/welcome channel`.")));
-      return reply(i, fill(w.message, i.member));
+      await i.deferReply({ flags: ephemeral });
+      const card = await welcomeCard(i.member, true);
+      return i.editReply({ content: fill(w.message, i.member), embeds: [embed(0xff8a3d).setImage(card.url)], files: [card.file] });
     }
   };
+  const recentJoins = [];
   async function onJoin(member) {
     const w = db.cfg.welcome;
+    const joinedAt = Date.now();
+    while (recentJoins.length && joinedAt - recentJoins[0] > 10_000) recentJoins.shift();
+    recentJoins.push(joinedAt);
     const sec = db.cfg.security;
     if (sec.antiRaid) {
       const now = Date.now();
@@ -4485,7 +4743,7 @@ const tools = (() => {
       if (channel?.isTextBased?.()) {
         const body = { content: fill(w.message, member), allowedMentions: { users: [member.id] } };
         try {
-          const card = picture("welcome.png", gfx.welcome({ name: member.displayName || member.user?.username || "?", server: member.guild?.name || "", count: member.guild?.memberCount ?? 0, avatar: await loadAvatar(member), label: cardLabel() }));
+          const card = await welcomeCard(member, recentJoins.length < 3); // many joins at once (a raid): a still picture, the server stays responsive
           body.embeds = [embed(0xff8a3d).setImage(card.url)];
           body.files = [card.file];
         } catch (error) {
