@@ -2178,10 +2178,10 @@ const middleman = (() => {
       case "close": {
         if (needStaff()) return;
         if (!FINAL.has(deal.state)) return reply(interaction, T("❌ The deal is not finished.", "❌ Le deal n'est pas terminé."));
-        await reply(interaction, T("🗑️ Closing the channel...", "🗑️ Fermeture du salon..."));
+        await interaction.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
         delete store.deals[deal.channelId];
         saveStore();
-        return setTimeout(() => interaction.channel?.delete().catch(() => {}), 3000);
+        return interaction.channel?.delete().catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
       }
     }
   }
@@ -5813,11 +5813,9 @@ const tools = (() => {
     const info = appTicketOf(i.channel);
     if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
     if (i.user.id !== info.userId && !appStaff(i.member)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
-    await i.reply({ content: t("🔒 Ticket fermé. Ce salon sera supprimé dans 5 secondes.", "🔒 Ticket closed. This channel will be deleted in 5 seconds.") });
+    await i.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
     await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d);
-    const channel = i.channel;
-    const timer = setTimeout(() => channel.delete("application ticket closed").catch(() => {}), 5000);
-    timer.unref?.();
+    await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
   /* ---------- wiring ---------- */
@@ -6306,8 +6304,8 @@ async function closeTicket(interaction) {
     return interaction.reply({ content: T("❌ The deal in this ticket still holds funds. Finish it or refund it first.", "❌ Le deal de ce ticket garde encore des fonds. Termine-le ou rembourse-le d'abord."), flags: ephemeral });
   }
   middleman.forget(channel.id);
-  await interaction.reply(T("🔒 Ticket closed. This channel will be deleted in 5 seconds.", "🔒 Ticket fermé. Ce salon sera supprimé dans 5 secondes."));
-  setTimeout(() => channel.delete("middleman ticket closed").catch(() => {}), 5000);
+  await interaction.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
+  await channel.delete("middleman ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
 }
 
 /* ---------- events ---------- */
