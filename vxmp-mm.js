@@ -1,7 +1,7 @@
 "use strict";
 
 /*
-  VXMP MM: single-file Discord bot, Litecoin middleman (escrow) inside tickets.
+  KAZUKI MM: single-file Discord bot, Litecoin middleman (escrow) inside tickets.
 
   SETUP (Windows, in a new empty folder that contains only this file):
     npm init -y
@@ -391,7 +391,7 @@ const middleman = (() => {
      STORAGE
   ===================================================== */
 
-  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1, tiers: [], nextTier: 1, tiersReady: false, access: [] };
+  let store = { nextIndex: 0, nextDeal: 1, walletCheck: "", deals: {}, paypal: [], nextPaypal: 1, tiers: [], nextTier: 1, tiersReady: false, access: [], stats: {} };
 
   function loadStore() {
     try {
@@ -725,8 +725,8 @@ const middleman = (() => {
     panels[panels.length - 1]
       .setFooter({
         text: isPaypal(deal)
-          ? T("VXMP MM  ·  every PayPal payment is checked and sent by staff", "VXMP MM  ·  chaque paiement PayPal est vérifié et envoyé par le staff")
-          : T("VXMP MM  ·  funds are held by the bot until release", "VXMP MM  ·  les fonds sont gardés par le bot jusqu'à la libération"),
+          ? T("Kazuki MM  ·  every PayPal payment is checked and sent by staff", "Kazuki MM  ·  chaque paiement PayPal est vérifié et envoyé par le staff")
+          : T("Kazuki MM  ·  funds are held by the bot until release", "Kazuki MM  ·  les fonds sont gardés par le bot jusqu'à la libération"),
       })
       .setTimestamp();
     return panels;
@@ -1777,6 +1777,39 @@ const middleman = (() => {
     return true;
   }
 
+  /* Counts a finished deal for the panel statistics (kept even after the ticket is closed). */
+  function recordStat(deal, outcome) {
+    store.stats = store.stats && typeof store.stats === "object" ? store.stats : {};
+    const key = isPaypal(deal) ? "paypal" : "ltc";
+    const m = (store.stats[key] = { done: 0, refunded: 0, sat: 0, usd: 0, eur: 0, ...(store.stats[key] || {}) });
+    if (outcome === "refunded") {
+      m.refunded++;
+      return;
+    }
+    m.done++;
+    if (isPaypal(deal)) m[deal.currency === "EUR" ? "eur" : "usd"] += deal.amountCents || 0;
+    else m.sat += deal.amountSat || 0;
+  }
+
+  /* Live numbers for a panel: deals done, in progress, and the volume handled. */
+  function panelStats(method) {
+    const key = method === "paypal" ? "paypal" : "ltc";
+    const m = { done: 0, refunded: 0, sat: 0, usd: 0, eur: 0, ...((store.stats || {})[key] || {}) };
+    const active = Object.values(store.deals).filter((d) => isPaypal(d) === (key === "paypal") && !FINAL.has(d.state)).length;
+    const volume = key === "paypal" ? [m.usd ? `$${(m.usd / 100).toFixed(2)}` : "", m.eur ? `€${(m.eur / 100).toFixed(2)}` : ""].filter(Boolean).join(" + ") || "$0.00" : `${satToLtc(m.sat)} LTC`;
+    return { done: m.done, refunded: m.refunded, active, volume };
+  }
+
+  /* Rules shown on the panel buttons (how much, how many confirmations). */
+  function panelInfo() {
+    return {
+      confirmations: cfg.confirmations,
+      minLtc: satToLtc(cfg.minSat),
+      paypalMin: fmtFiat(cfg.paypalMinCents, cfg.paypalCurrency),
+      paypalNote: cfg.paypalNote,
+    };
+  }
+
   /* Forget a finished deal when its ticket is closed. */
   function forget(channelId) {
     if (store.deals[channelId] && !blocksClose(channelId)) {
@@ -2289,6 +2322,7 @@ const middleman = (() => {
       if (deal.state !== "payout_pending") return reply(interaction, T("❌ This is not possible in the current state of the deal.", "❌ Impossible dans l'état actuel du deal."));
       deal.resultNote = value;
       deal.state = "done";
+      recordStat(deal, "done");
       saveStore();
       await reply(interaction, T("✅ Deal marked as done.", "✅ Deal marqué comme terminé."));
       await advance(deal, { summary: T(`🏦  **Payout sent by staff**  ·  ${mention(user.id)}`, `🏦  **Versement envoyé par le staff**  ·  ${mention(user.id)}`), ping: [deal.receiverId, deal.senderId] });
@@ -2300,6 +2334,7 @@ const middleman = (() => {
       if (!["funded", "released", "payout_pending"].includes(deal.state)) return reply(interaction, T("❌ Nothing to refund.", "❌ Rien à rembourser."));
       deal.resultNote = value;
       deal.state = "refunded";
+      recordStat(deal, "refunded");
       saveStore();
       await reply(interaction, T("✅ Deal marked as refunded.", "✅ Deal marqué comme remboursé."));
       await refreshPaymentCard(deal);
@@ -2336,6 +2371,7 @@ const middleman = (() => {
         }
         deal.feeSat = sent.fee;
         deal.sentSat = sent.outValue;
+        recordStat(deal, isRefund ? "refunded" : "done");
         saveStore();
         return { sent };
       } catch (error) {
@@ -2522,7 +2558,7 @@ const middleman = (() => {
   /* Is this member staff for the ticket of that channel? (general staff, or the role of its amount range) */
   const isStaffFor = (channelId, member) => (store.deals[channelId] ? staffFor(store.deals[channelId], member) : isStaff(member));
 
-  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions, tierRole: tierRoleId, isStaffFor, accessRoles: ltcAccess };
+  return { init, openDeal, blocksClose, forget, handleInteraction, newSeed, paypalStatus, tierOptions, tierRole: tierRoleId, isStaffFor, accessRoles: ltcAccess, panelStats, panelInfo };
 })();
 
 /* =====================================================
@@ -2790,7 +2826,18 @@ const gfx = (() => {
     return c.png();
   }
 
-  return { Canvas, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, ascii, measure };
+  function banner(title, subtitle, colorA, colorB) {
+    const c = new Canvas(720, 220, colorA, colorB);
+    c.circle(650, 30, 100, "#ffffff", 0.07);
+    c.circle(700, 200, 130, "#ffffff", 0.05);
+    c.circle(30, 230, 90, "#ffffff", 0.05);
+    c.round(24, 24, 672, 172, 26, "#000000", 0.2);
+    c.text(title, 360, 54, fit(title, 620, 10), "#ffffff", "center");
+    c.text(subtitle, 360, 142, fit(subtitle, 620, 4), "#fee75c", "center");
+    return c.png();
+  }
+
+  return { Canvas, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, ascii, measure };
 })();
 
 /* =====================================================
@@ -4614,6 +4661,7 @@ const tools = (() => {
 
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -4657,57 +4705,172 @@ const isStaff = (member) =>
 
 /* ---------- panels: one for Litecoin, one for PayPal ---------- */
 
+const PANEL_FR = String(process.env.TOOLS_LANG || "fr").trim().toLowerCase() !== "en";
+const pt = (fr, en) => (PANEL_FR ? fr : en);
+const PANELS_FILE = require("path").join(process.env.DATA_DIR || __dirname, "panels.json");
+const panelRegistry = (() => {
+  let list = [];
+  try {
+    list = JSON.parse(require("fs").readFileSync(PANELS_FILE, "utf8"));
+    if (!Array.isArray(list)) list = [];
+  } catch {
+    /* no panel yet */
+  }
+  return {
+    all: () => list,
+    add: (entry) => {
+      list.push(entry);
+      panelRegistry.save();
+    },
+    drop: (messageId) => {
+      list = list.filter((p) => p.messageId !== messageId);
+      panelRegistry.save();
+    },
+    save: () => {
+      try {
+        require("fs").writeFileSync(PANELS_FILE, JSON.stringify(list));
+      } catch (error) {
+        console.error("⚠️ Could not save panels.json:", error?.message || error);
+      }
+    },
+  };
+})();
+
+const PANEL_LOOK = {
+  ltc: { color: 0x5865f2, banner: ["#2b3a8f", "#7b4dd6"], subtitle: "LITECOIN MIDDLEMAN", title: "💱  KAZUKI MM  ·  Litecoin Middleman", button: "Open a Litecoin ticket", buttonFr: "Ouvrir un ticket Litecoin", emoji: "💱", style: ButtonStyle.Primary },
+  paypal: { color: 0x0070ba, banner: ["#0a3d91", "#1a8cff"], subtitle: "PAYPAL MIDDLEMAN", title: "💙  KAZUKI MM  ·  PayPal Middleman", button: "Open a PayPal ticket", buttonFr: "Ouvrir un ticket PayPal", emoji: "💙", style: ButtonStyle.Success },
+};
+
+/* The panel as it is posted and refreshed: banner, steps, live numbers and the buttons. */
+function buildPanel(type) {
+  const look = PANEL_LOOK[type];
+  const stats = middleman.panelStats(type);
+  const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", look.subtitle, look.banner[0], look.banner[1]), { name: `kazuki-${type}.png` });
+  const steps =
+    type === "paypal"
+      ? [
+          [pt("1️⃣  Ouvre un ticket", "1️⃣  Open a ticket"), pt("Ajoute la personne avec qui tu échanges.", "Add the person you trade with.")],
+          [pt("2️⃣  Mettez-vous d'accord", "2️⃣  Agree"), pt("Qui paie, qui est payé, le montant en $ ou €.", "Who pays, who gets paid, the amount in $ or €.")],
+          [pt("3️⃣  Un staff donne son PayPal", "3️⃣  Staff gives their PayPal"), pt("Le payeur voit le compte et la **référence**.", "The payer sees the account and the **reference**.")],
+          [pt("4️⃣  Paiement vérifié", "4️⃣  Payment checked"), pt("Le staff vérifie le paiement sur PayPal.", "Staff checks the payment on PayPal.")],
+          [pt("5️⃣  Livraison", "5️⃣  Delivery"), pt("Le vendeur livre, le payeur libère.", "The seller delivers, the payer releases.")],
+          [pt("6️⃣  Versement", "6️⃣  Payout"), pt("Le staff envoie l'argent au vendeur.", "Staff sends the money to the seller.")],
+        ]
+      : [
+          [pt("1️⃣  Ouvre un ticket", "1️⃣  Open a ticket"), pt("Ajoute la personne avec qui tu échanges.", "Add the person you trade with.")],
+          [pt("2️⃣  Mettez-vous d'accord", "2️⃣  Agree"), pt("Qui envoie, qui reçoit, le montant.", "Who sends, who receives, the amount.")],
+          [pt("3️⃣  Dépôt", "3️⃣  Deposit"), pt("L'expéditeur paie l'adresse donnée par le bot.", "The sender pays the address given by the bot.")],
+          [pt("4️⃣  Livraison", "4️⃣  Delivery"), pt("Le destinataire donne ce qui était convenu.", "The receiver gives what was agreed.")],
+          [pt("5️⃣  Libération", "5️⃣  Release"), pt("L'expéditeur confirme, le bot paie le destinataire.", "The sender confirms, the bot pays the receiver.")],
+          [pt("🛟  Un problème ?", "🛟  Problem?"), pt("**Appeler le staff** gèle le deal à tout moment.", "**Call staff** freezes the deal at any time.")],
+        ];
+  const main = new EmbedBuilder()
+    .setColor(look.color)
+    .setTitle(look.title)
+    .setDescription(
+      type === "paypal"
+        ? pt("Échange avec PayPal : **le staff vérifie le paiement** et ne paie le vendeur qu'une fois le deal terminé.", "Trade with PayPal: **staff checks the payment** and only pays the seller once the deal is done.")
+        : pt("Échange en sécurité : le bot **garde les LTC** jusqu'à ce que les deux soient satisfaits.\nAucune confiance nécessaire, tout est suivi sur la blockchain.", "Trade safely: the bot **holds the LTC** until both sides are happy.\nNo trust needed, everything is tracked on the blockchain.")
+    )
+    .addFields(...steps.map(([name, value]) => ({ name, value, inline: true })))
+    .setImage(`attachment://kazuki-${type}.png`)
+    .setFooter({ text: type === "paypal" ? pt("Écris toujours la référence dans la note PayPal  ·  🇫🇷 / 🇬🇧", "Always write the reference in the PayPal note  ·  🇫🇷 / 🇬🇧") : pt("Montants en LTC, $ ou €  ·  petits frais réseau  ·  🇫🇷 / 🇬🇧", "Amounts in LTC, $ or €  ·  small network fee  ·  🇫🇷 / 🇬🇧") });
+
+  const live = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle(pt("📊  En direct", "📊  Live"))
+    .addFields(
+      { name: pt("✅  Deals terminés", "✅  Deals completed"), value: `**${stats.done}**`, inline: true },
+      { name: pt("⏳  En cours", "⏳  In progress"), value: `**${stats.active}**`, inline: true },
+      { name: pt("💰  Volume traité", "💰  Volume handled"), value: `**${stats.volume}**`, inline: true }
+    )
+    .setDescription(`🟢  ${pt("Middleman en ligne", "Middleman online")}  ·  ${pt("mis à jour", "updated")} <t:${Math.floor(Date.now() / 1000)}:R>`);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`open_ticket:${type}`).setLabel(pt(look.buttonFr, look.button)).setEmoji(look.emoji).setStyle(look.style),
+    new ButtonBuilder().setCustomId(`panel:how:${type}`).setLabel(pt("Comment ça marche", "How it works")).setEmoji("❓").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`panel:fees:${type}`).setLabel(pt("Frais et limites", "Fees and limits")).setEmoji("💰").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`panel:mine:${type}`).setLabel(pt("Mon ticket", "My ticket")).setEmoji("🎫").setStyle(ButtonStyle.Secondary)
+  );
+  return { embeds: [main, live], components: [row], files: [file] };
+}
+
 async function postPanel(interaction) {
   if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
     return interaction.reply({ content: "❌ Only administrators can use this command.", flags: ephemeral });
   }
   const type = interaction.options?.getString("type") === "paypal" ? "paypal" : "ltc";
-
-  let embed;
-  let row;
-  if (type === "paypal") {
-    if (!middleman.paypalStatus().configured) {
-      return interaction.reply({ content: "❌ No PayPal account yet. Add one with `/paypal` first, then post this panel again.", flags: ephemeral });
-    }
-    embed = new EmbedBuilder()
-      .setColor(0x0070ba)
-      .setTitle("💙  VXMP MM  ·  PayPal Middleman")
-      .setDescription("Trade with PayPal: **staff checks the payment** and only pays the seller once the deal is done.")
-      .addFields(
-        { name: "1️⃣  Open a ticket", value: "Add the person you trade with.", inline: true },
-        { name: "2️⃣  Agree", value: "Pick payer and seller, set the amount.", inline: true },
-        { name: "3️⃣  Pay", value: "The payer sends it to the account shown, with the **reference**.", inline: true },
-        { name: "4️⃣  Staff checks", value: "Staff verifies the payment on PayPal.", inline: true },
-        { name: "5️⃣  Deliver & release", value: "The seller delivers, the payer releases.", inline: true },
-        { name: "6️⃣  Payout", value: "Staff sends the money to the seller.", inline: true }
-      )
-      .setFooter({ text: "Always write the reference in the PayPal note  ·  every payment is checked by staff  ·  🇫🇷 / 🇬🇧" });
-    row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("open_ticket:paypal").setLabel("Open a PayPal ticket").setEmoji("💙").setStyle(ButtonStyle.Success)
-    );
-  } else {
-    embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle("💱  VXMP MM  ·  Litecoin Middleman")
-      .setDescription("Trade safely: the bot **holds the LTC** until both sides are happy.\nNo trust needed, everything is tracked on the blockchain.")
-      .addFields(
-        { name: "1️⃣  Open a ticket", value: "Add the person you trade with.", inline: true },
-        { name: "2️⃣  Agree", value: "Pick who sends / receives, set the amount.", inline: true },
-        { name: "3️⃣  Pay", value: "The sender pays the address given by the bot.", inline: true },
-        { name: "4️⃣  Deliver", value: "The receiver gives what was agreed.", inline: true },
-        { name: "5️⃣  Release", value: "The sender confirms, the bot pays the receiver.", inline: true },
-        { name: "🛟  Problem?", value: "**Call staff** freezes the deal at any time.", inline: true }
-      )
-      .setFooter({ text: "Amounts can be typed in LTC, $ or €  ·  small network fee applies  ·  🇫🇷 / 🇬🇧" });
-    row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("open_ticket:ltc").setLabel("Open a Litecoin ticket").setEmoji("💱").setStyle(ButtonStyle.Primary)
-    );
+  if (type === "paypal" && !middleman.paypalStatus().configured) {
+    return interaction.reply({ content: "❌ PayPal is not available.", flags: ephemeral });
   }
-  await interaction.channel.send({ embeds: [embed], components: [row] });
-  return interaction.reply({ content: `✅ ${type === "paypal" ? "PayPal" : "Litecoin"} panel posted.`, flags: ephemeral });
+  const message = await interaction.channel.send(buildPanel(type));
+  if (message?.id) panelRegistry.add({ channelId: interaction.channelId, messageId: message.id, type });
+  return interaction.reply({ content: `✅ ${type === "paypal" ? "PayPal" : "Litecoin"} panel posted. ${pt("Les chiffres se mettent à jour tout seuls.", "The numbers update by themselves.")}`, flags: ephemeral });
 }
 
-/* ---------- tickets ---------- */
+/* Every few minutes the posted panels get fresh numbers (a panel that was deleted is forgotten). */
+async function refreshPanels() {
+  for (const entry of [...panelRegistry.all()]) {
+    const channel = await client.channels.fetch(entry.channelId).catch(() => null);
+    const message = channel?.messages ? await channel.messages.fetch(entry.messageId).catch(() => null) : null;
+    if (!message) {
+      panelRegistry.drop(entry.messageId);
+      continue;
+    }
+    const fresh = buildPanel(entry.type);
+    await message.edit({ embeds: fresh.embeds, components: fresh.components }).catch((error) => console.error("⚠️ Panel refresh failed:", error?.message || error));
+  }
+}
+
+/* The info buttons of a panel answer in the language of the person who clicks. */
+async function panelButton(interaction) {
+  const [, action, rawType] = String(interaction.customId).split(":"); // panel:<how|fees|mine>:<ltc|paypal>
+  const type = rawType === "paypal" ? "paypal" : "ltc";
+  const fr = userIsFrench(interaction);
+  const T = (en, frText) => (fr ? frText : en);
+  const info = middleman.panelInfo();
+  const look = PANEL_LOOK[type];
+  if (action === "mine") {
+    const existing = findOpenTicket(interaction.guild, interaction.user.id, type);
+    return interaction.reply({ content: existing ? T(`🎫 Your open ticket: ${existing}`, `🎫 Ton ticket ouvert : ${existing}`) : T("🎫 You have no open ticket. Press the first button to open one.", "🎫 Tu n'as pas de ticket ouvert. Appuie sur le premier bouton pour en ouvrir un."), flags: ephemeral });
+  }
+  if (action === "fees") {
+    const lines =
+      type === "paypal"
+        ? [
+            T(`• Minimum deal: **${info.paypalMin}**`, `• Deal minimum : **${info.paypalMin}**`),
+            T("• Currency: **dollars or euros**, you choose in the ticket", "• Devise : **dollars ou euros**, tu choisis dans le ticket"),
+            T("• Every payment is **checked by staff** on PayPal before the deal goes on", "• Chaque paiement est **vérifié par le staff** sur PayPal avant la suite du deal"),
+            ...(info.paypalNote ? [`• ℹ️ ${info.paypalNote}`] : []),
+          ]
+        : [
+            T(`• Minimum deal: **${info.minLtc} LTC**`, `• Deal minimum : **${info.minLtc} LTC**`),
+            T(`• Payment is secured after **${info.confirmations} confirmations**`, `• Le paiement est sécurisé après **${info.confirmations} confirmations**`),
+            T("• Only a small **network fee** is taken from the amount sent, nothing else", "• Seuls de petits **frais réseau** sont déduits du montant envoyé, rien d'autre"),
+            T("• Type the amount in **LTC, $ or €**", "• Écris le montant en **LTC, $ ou €**"),
+          ];
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(look.color).setTitle(T("💰  Fees and limits", "💰  Frais et limites")).setDescription(lines.join("\n"))], flags: ephemeral });
+  }
+  const how =
+    type === "paypal"
+      ? [
+          T("**1.** Open a ticket and add the person you trade with.", "**1.** Ouvre un ticket et ajoute la personne avec qui tu échanges."),
+          T("**2.** Choose who pays and who gets paid, then the amount ($ or €).", "**2.** Choisissez qui paie et qui est payé, puis le montant ($ ou €)."),
+          T("**3.** A staff member gives their PayPal, the payer sends the money with the **reference**.", "**3.** Un staff donne son PayPal, le payeur envoie l'argent avec la **référence**."),
+          T("**4.** Staff checks the payment. The seller then delivers.", "**4.** Le staff vérifie le paiement. Le vendeur livre ensuite."),
+          T("**5.** The payer releases, staff pays the seller. 🎉", "**5.** Le payeur libère, le staff paie le vendeur. 🎉"),
+          T("🛟 A problem at any step? **Call staff**: the deal is frozen until staff decides.", "🛟 Un problème ? **Appeler le staff** : le deal est gelé jusqu'à la décision du staff."),
+        ]
+      : [
+          T("**1.** Open a ticket and add the person you trade with.", "**1.** Ouvre un ticket et ajoute la personne avec qui tu échanges."),
+          T("**2.** Choose who sends and who receives the LTC, then the amount.", "**2.** Choisissez qui envoie et qui reçoit les LTC, puis le montant."),
+          T("**3.** The sender pays the deposit address; the bot waits for the confirmations.", "**3.** L'expéditeur paie l'adresse de dépôt ; le bot attend les confirmations."),
+          T("**4.** The receiver delivers what was agreed.", "**4.** Le destinataire donne ce qui était convenu."),
+          T("**5.** The sender releases, the bot pays the receiver. 🎉", "**5.** L'expéditeur libère, le bot paie le destinataire. 🎉"),
+          T("🛟 A problem at any step? **Call staff**: the deal is frozen until staff decides.", "🛟 Un problème ? **Appeler le staff** : le deal est gelé jusqu'à la décision du staff."),
+        ];
+  return interaction.reply({ embeds: [new EmbedBuilder().setColor(look.color).setTitle(T("❓  How it works", "❓  Comment ça marche")).setDescription(how.join("\n"))], flags: ephemeral });
+}
 
 /* Before a language is chosen, the texts follow the Discord language of the person. */
 const userIsFrench = (interaction) => String(interaction.locale || "").toLowerCase().startsWith("fr");
@@ -4903,6 +5066,7 @@ const onInteraction = async (interaction) => {
     if (await tools.handleInteraction(interaction)) return;
 
     if (interaction.isChatInputCommand() && interaction.commandName === "panel") return await postPanel(interaction);
+    if (interaction.isButton() && String(interaction.customId).startsWith("panel:")) return await panelButton(interaction);
     if (interaction.isButton() && (interaction.customId === "open_ticket" || interaction.customId.startsWith("open_ticket:"))) return await askLanguage(interaction);
     if (interaction.isButton() && interaction.customId.startsWith("ticket_lang:")) return await askTier(interaction);
     if (interaction.isStringSelectMenu?.() && interaction.customId.startsWith("ticket_tier:")) return await openTicketFromMenu(interaction);
@@ -4918,6 +5082,8 @@ const onInteraction = async (interaction) => {
 const onReady = () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: "", logChannelId: LOG_CHANNEL_ID });
+  refreshPanels().catch(() => {});
+  setInterval(() => refreshPanels().catch(() => {}), 5 * 60_000).unref?.();
 };
 
 const onInvalidated = () => {
