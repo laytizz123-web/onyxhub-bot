@@ -6042,7 +6042,17 @@ function buildPanel(type) {
     new ButtonBuilder().setCustomId(`panel:fees:${type}`).setLabel(pt("Frais et limites", "Fees and limits")).setEmoji("💰").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`panel:mine:${type}`).setLabel(pt("Mon ticket", "My ticket")).setEmoji("🎫").setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [main, live], components: [row], files: [file] };
+  // Litecoin only: the system is automatic, nobody may ask for a payment to their own address
+  const alert = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle(pt("🚨  Important : système 100 % automatique", "🚨  Important: 100% automatic system"))
+    .setDescription(
+      pt(
+        "Ce middleman est **entièrement automatique** : le bot génère lui-même l'adresse de dépôt de chaque deal et envoie les fonds quand le deal est terminé. **Personne** n'a besoin de recevoir ton paiement.\n\nSi un membre du **staff** ou un **middleman** te demande d'envoyer le paiement à **son adresse** (ou en dehors du ticket) : **ne le fais pas** et **signale-le immédiatement** à un administrateur. C'est une arnaque.",
+        "This middleman is **fully automatic**: the bot creates the deposit address of every deal itself and sends the funds when the deal is done. **Nobody** needs to receive your payment.\n\nIf a **staff** member or a **middleman** asks you to send the payment to **their own address** (or outside the ticket): **do not do it** and **report it immediately** to an administrator. It is a scam."
+      )
+    );
+  return { embeds: type === "ltc" ? [main, alert, live] : [main, live], components: [row], files: [file] };
 }
 
 async function postPanel(interaction) {
@@ -6117,6 +6127,7 @@ async function panelButton(interaction) {
           T("**3.** The sender pays the deposit address; the bot waits for the confirmations.", "**3.** L'expéditeur paie l'adresse de dépôt ; le bot attend les confirmations."),
           T("**4.** The receiver delivers what was agreed.", "**4.** Le destinataire donne ce qui était convenu."),
           T("**5.** The sender releases, the bot pays the receiver. 🎉", "**5.** L'expéditeur libère, le bot paie le destinataire. 🎉"),
+          T("🚨 The system is **automatic**. If staff or a middleman asks you to pay **their own address**: do not do it and **report it** to an administrator.", "🚨 Le système est **automatique**. Si un staff ou un middleman te demande de payer **sa propre adresse** : ne le fais pas et **signale-le** à un administrateur."),
           T("🛟 A problem at any step? **Call staff**: the deal is frozen until staff decides.", "🛟 Un problème ? **Appeler le staff** : le deal est gelé jusqu'à la décision du staff."),
         ];
   return interaction.reply({ embeds: [new EmbedBuilder().setColor(look.color).setTitle(T("❓  How it works", "❓  Comment ça marche")).setDescription(how.join("\n"))], flags: ephemeral });
