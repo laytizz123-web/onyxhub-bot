@@ -2827,6 +2827,7 @@ const tools = (() => {
     polls: {},
     giveaways: {},
     locks: {},
+    voc: { hubs: [], rooms: {} },
     setup: { items: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
@@ -2852,6 +2853,9 @@ const tools = (() => {
     next.cfg = { ...(raw.cfg || {}) };
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
+    next.voc = { ...base.voc, ...(raw.voc || {}) };
+    if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
+    if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
     for (const key of ["xp", "warns", "polls", "giveaways", "locks"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     db = next;
@@ -3199,6 +3203,22 @@ const tools = (() => {
       cmd("serverinfo", t("Infos sur le serveur", "Server info")),
       cmd("ping", t("Latence du bot", "Bot latency")),
       cmd("help", t("Liste des commandes", "Command list")),
+      // voice channels
+      cmd("voc", t("Salons vocaux : en créer, ou gérer ton vocal", "Voice channels: create one, or manage yours"))
+        .addSubcommand((s) =>
+          s
+            .setName("create")
+            .setDescription(t("Créer un salon vocal", "Create a voice channel"))
+            .addStringOption((o) => o.setName("nom").setDescription(t("Nom du vocal", "Voice channel name")).setRequired(true).setMaxLength(80))
+            .addIntegerOption((o) => o.setName("limite").setDescription(t("Nombre de places (0 = illimité)", "Number of seats (0 = unlimited)")).setMinValue(0).setMaxValue(99))
+            .addBooleanOption((o) => o.setName("prive").setDescription(t("Privé : personne ne peut le rejoindre sans invitation", "Private: nobody can join without an invite")))
+            .addIntegerOption((o) => o.setName("nombre").setDescription(t("Combien en créer d'un coup (numérotés, 1-25)", "How many to create at once (numbered, 1-25)")).setMinValue(1).setMaxValue(25))
+        )
+        .addSubcommand((s) => s.setName("hub").setDescription(t("Créer le salon « ➕ Créer ton vocal » (chacun obtient son vocal)", "Create the \"➕ Create your voice\" channel (everyone gets their own)")))
+        .addSubcommand((s) => s.setName("rename").setDescription(t("Renommer ton vocal", "Rename your voice channel")).addStringOption((o) => o.setName("nom").setDescription(t("Nouveau nom", "New name")).setRequired(true).setMaxLength(80)))
+        .addSubcommand((s) => s.setName("limit").setDescription(t("Limiter les places de ton vocal", "Limit the seats of your voice channel")).addIntegerOption((o) => o.setName("places").setDescription(t("0 = illimité", "0 = unlimited")).setRequired(true).setMinValue(0).setMaxValue(99)))
+        .addSubcommand((s) => s.setName("lock").setDescription(t("Fermer ton vocal : plus personne ne peut le rejoindre", "Close your voice channel: nobody else can join")))
+        .addSubcommand((s) => s.setName("unlock").setDescription(t("Rouvrir ton vocal", "Open your voice channel again"))),
       // channels made by the bot
       D(
         P.Administrator,
@@ -3235,7 +3255,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -3457,6 +3477,141 @@ const tools = (() => {
     save();
     return reply(i, ok(t("Avertissements effacés.", "Warnings cleared.")));
   };
+  /* ---------- voice channels: /voc, and "join to create" rooms ---------- */
+  const VOICE = ChannelType.GuildVoice;
+  const roomCooldown = new Map();
+  async function createRoom(guild, member, hub) {
+    const name = `🔊│${member.displayName || member.user?.username || "vocal"}`.slice(0, 100);
+    const room = await guild.channels.create({
+      name,
+      type: VOICE,
+      parent: hub.parentId || undefined,
+      permissionOverwrites: [{ id: member.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.ManageChannels, P.MoveMembers] }],
+      reason: "voice room",
+    });
+    db.voc.rooms[room.id] = { owner: member.id, at: Date.now() };
+    save();
+    return room;
+  }
+  async function onVoice(oldState, newState) {
+    const guild = newState.guild || oldState.guild;
+    const member = newState.member || oldState.member;
+    if (!guild || !member || member.user?.bot) return;
+    if (newState.channelId && newState.channelId !== oldState.channelId && db.voc.hubs.includes(newState.channelId)) {
+      const now = Date.now();
+      if (now - (roomCooldown.get(member.id) || 0) < 8000) return; // no flood of rooms
+      roomCooldown.set(member.id, now);
+      const hub = newState.channel || (await guild.channels.fetch(newState.channelId).catch(() => null));
+      if (!hub) return;
+      let room = null;
+      try {
+        room = await createRoom(guild, member, hub);
+        await member.voice.setChannel(room, "voice room");
+      } catch (error) {
+        console.error("⚠️ Voice room error:", error?.message || error);
+        if (room) {
+          delete db.voc.rooms[room.id];
+          await room.delete("voice room failed").catch(() => {});
+          save();
+        }
+      }
+    }
+    if (oldState.channelId && oldState.channelId !== newState.channelId && db.voc.rooms[oldState.channelId]) {
+      const room = oldState.channel || (await guild.channels.fetch(oldState.channelId).catch(() => null));
+      if (room && room.members?.size === 0) {
+        delete db.voc.rooms[room.id];
+        save();
+        await room.delete("empty voice room").catch(() => {});
+      }
+    }
+  }
+  /* Forgets rooms and hubs that no longer exist and removes rooms that stayed empty. */
+  async function tickVoc() {
+    for (const [id, room] of Object.entries(db.voc.rooms)) {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
+      if (!channel) {
+        delete db.voc.rooms[id];
+        save();
+      } else if (channel.members?.size === 0 && Date.now() - room.at > 30_000) {
+        delete db.voc.rooms[id];
+        save();
+        await channel.delete("empty voice room").catch(() => {});
+      }
+    }
+    for (const id of [...db.voc.hubs]) {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
+      if (!channel) {
+        db.voc.hubs = db.voc.hubs.filter((h) => h !== id);
+        save();
+      }
+    }
+  }
+  /* The voice room of the member, when it is one of the bot's rooms and they own it (or manage channels). */
+  async function ownRoom(i) {
+    const id = i.member?.voice?.channelId;
+    const room = id ? db.voc.rooms[id] : null;
+    if (!room) return reply(i, no(t("Rejoins d'abord ton vocal (créé avec « ➕ Créer ton vocal »).", "Join your own voice room first (made with \"➕ Create your voice\").")));
+    if (room.owner !== i.user.id && !i.member.permissions?.has?.(P.ManageChannels)) return reply(i, no(t("Ce vocal appartient à quelqu'un d'autre.", "This voice room belongs to someone else.")));
+    return i.member.voice.channel || (await i.guild.channels.fetch(id).catch(() => null)) || reply(i, no(t("Vocal introuvable.", "Voice channel not found.")));
+  }
+  H.voc = async (i) => {
+    const sub = i.options.getSubcommand();
+    if (sub === "create" || sub === "hub") {
+      if (need_perm(i, P.ManageChannels)) return;
+      const parent = i.channel?.parentId || undefined;
+      try {
+        if (sub === "hub") {
+          const hub = await i.guild.channels.create({ name: t("➕│Créer ton vocal", "➕│Create your voice"), type: VOICE, parent, reason: "voice hub" });
+          db.voc.hubs.push(hub.id);
+          save(true);
+          return reply(i, ok(t(`<#${hub.id}> est prêt : en le rejoignant, chacun obtient son propre vocal (supprimé quand il est vide).`, `<#${hub.id}> is ready: joining it gives everyone their own voice room (deleted when empty).`)));
+        }
+        const priv = i.options.getBoolean("prive");
+        const count = i.options.getInteger("nombre") || 1;
+        if (count > 1) await i.deferReply({ flags: ephemeral });
+        const made = [];
+        try {
+          for (let n = 1; n <= count; n++) {
+            const base = i.options.getString("nom");
+            const channel = await i.guild.channels.create({
+              name: `🔊│${count > 1 ? `${base} ${n}` : base}`.slice(0, 100),
+              type: VOICE,
+              parent,
+              userLimit: i.options.getInteger("limite") || 0,
+              permissionOverwrites: priv ? [{ id: i.guild.roles.everyone.id, deny: [P.Connect] }, { id: i.user.id, allow: [P.Connect, P.ViewChannel] }] : [],
+              reason: `voc create: ${i.user.username}`,
+            });
+            made.push(channel);
+          }
+        } catch (error) {
+          console.error("⚠️ Voc error:", error?.message || error);
+          const text = made.length
+            ? t(`Je n'en ai créé que ${made.length} sur ${count} : ${made.map((c) => `<#${c.id}>`).join(" ")} (il me faut « Gérer les salons »).`, `I only created ${made.length} of ${count}: ${made.map((c) => `<#${c.id}>`).join(" ")} (I need Manage Channels).`)
+            : t("Je n'ai pas pu le créer (il me faut « Gérer les salons »).", "I could not create it (I need Manage Channels).");
+          return count > 1 ? i.editReply(no(text)) : reply(i, no(text));
+        }
+        const list = made.map((c) => `<#${c.id}>`).join(" ");
+        const doneText = ok(count > 1 ? t(`${count} vocaux créés : ${list}${priv ? " (privés)" : ""}.`, `${count} voice channels created: ${list}${priv ? " (private)" : ""}.`) : t(`Vocal créé : ${list}${priv ? " (privé)" : ""}.`, `Voice channel created: ${list}${priv ? " (private)" : ""}.`));
+        return count > 1 ? i.editReply(doneText) : reply(i, doneText);
+      } catch (error) {
+        console.error("⚠️ Voc error:", error?.message || error);
+        return reply(i, no(t("Je n'ai pas pu le créer (il me faut « Gérer les salons »).", "I could not create it (I need Manage Channels).")));
+      }
+    }
+    const channel = await ownRoom(i);
+    if (!channel?.id) return; // ownRoom already answered
+    try {
+      if (sub === "rename") await channel.setName(`🔊│${i.options.getString("nom")}`.slice(0, 100));
+      if (sub === "limit") await channel.setUserLimit(i.options.getInteger("places"));
+      if (sub === "lock") await channel.permissionOverwrites.edit(i.guild.roles.everyone.id, { Connect: false });
+      if (sub === "unlock") await channel.permissionOverwrites.edit(i.guild.roles.everyone.id, { Connect: null });
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu modifier ce vocal.", "I could not change this voice room.")));
+    }
+    const done = { rename: t("Vocal renommé.", "Voice room renamed."), limit: t("Nombre de places modifié.", "Seats changed."), lock: t("🔒 Vocal fermé : plus personne ne peut le rejoindre.", "🔒 Voice room closed: nobody else can join."), unlock: t("🔓 Vocal rouvert.", "🔓 Voice room open again.") };
+    return reply(i, ok(done[sub]));
+  };
+
   /* ---------- lock / unlock a channel ---------- */
   const SEND = P.SendMessages;
   async function lockChannel(guild, channel, by, reason, ms) {
@@ -4006,6 +4161,19 @@ const tools = (() => {
         { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
         { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
       ] },
+      { category: t("🔊 VOCAUX", "🔊 VOICE"), channels: [
+        { key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), kind: "text", voice: true },
+        { key: "voice1", name: t("🎙️│Général 1", "🎙️│General 1"), kind: "text", voice: true },
+        { key: "voice2", name: t("🎙️│Général 2", "🎙️│General 2"), kind: "text", voice: true },
+        { key: "voice3", name: t("🎙️│Général 3", "🎙️│General 3"), kind: "text", voice: true },
+        { key: "voice4", name: t("🤝│Trade 1", "🤝│Trade 1"), kind: "text", voice: true },
+        { key: "voice5", name: t("🤝│Trade 2", "🤝│Trade 2"), kind: "text", voice: true },
+        { key: "voice6", name: t("🤝│Trade 3", "🤝│Trade 3"), kind: "text", voice: true },
+        { key: "voice7", name: t("🎮│Gaming 1", "🎮│Gaming 1"), kind: "text", voice: true },
+        { key: "voice8", name: t("🎮│Gaming 2", "🎮│Gaming 2"), kind: "text", voice: true },
+        { key: "voice9", name: t("🎵│Musique", "🎵│Music"), kind: "text", voice: true },
+        { key: "voice10", name: t("😴│AFK", "😴│AFK"), kind: "text", voice: true },
+      ] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
         { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
         { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
@@ -4044,6 +4212,19 @@ const tools = (() => {
       { category: t("🛡️ MIDDLEMAN", "🛡️ MIDDLEMAN"), channels: [
         { key: "middleman", name: t("💱│middleman", "💱│middleman"), kind: "readonly", topic: t("Trade sécurisé : ouvre un ticket avec le bouton du panneau.", "Safe trade: open a ticket with the panel button.") },
         { key: "vouches", name: t("⭐│vouches", "⭐│vouches"), kind: "text", slow: 60, topic: t("Laisse un avis après un trade réussi.", "Leave a review after a successful trade.") },
+      ] },
+      { category: t("🔊 VOCAUX", "🔊 VOICE"), channels: [
+        { key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), kind: "text", voice: true },
+        { key: "voice1", name: t("🎙️│Général 1", "🎙️│General 1"), kind: "text", voice: true },
+        { key: "voice2", name: t("🎙️│Général 2", "🎙️│General 2"), kind: "text", voice: true },
+        { key: "voice3", name: t("🎙️│Général 3", "🎙️│General 3"), kind: "text", voice: true },
+        { key: "voice4", name: t("🤝│Trade 1", "🤝│Trade 1"), kind: "text", voice: true },
+        { key: "voice5", name: t("🤝│Trade 2", "🤝│Trade 2"), kind: "text", voice: true },
+        { key: "voice6", name: t("🤝│Trade 3", "🤝│Trade 3"), kind: "text", voice: true },
+        { key: "voice7", name: t("🎮│Gaming 1", "🎮│Gaming 1"), kind: "text", voice: true },
+        { key: "voice8", name: t("🎮│Gaming 2", "🎮│Gaming 2"), kind: "text", voice: true },
+        { key: "voice9", name: t("🎵│Musique", "🎵│Music"), kind: "text", voice: true },
+        { key: "voice10", name: t("😴│AFK", "😴│AFK"), kind: "text", voice: true },
       ] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
         { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
@@ -4085,8 +4266,11 @@ const tools = (() => {
         const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
         db.setup.items.push({ id: category.id, kind: "category" });
         for (const c of group.channels) {
-          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
-          db.setup.items.push({ id: channel.id, kind: "text", key: c.key });
+          const channel = await guild.channels.create(c.voice
+            ? { name: c.name, type: ChannelType.GuildVoice, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), reason: "setup" }
+            : { name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
+          db.setup.items.push({ id: channel.id, kind: c.voice ? "voice" : "text", key: c.key });
+          if (c.key === "hub") db.voc.hubs.push(channel.id);
           made[c.key] = channel;
         }
       }
@@ -4193,6 +4377,12 @@ const tools = (() => {
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
     if (ids.has(db.cfg.autoquiz.channelId)) Object.assign(db.cfg.autoquiz, { on: false, channelId: "", nextAt: 0 });
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
+    db.voc.hubs = db.voc.hubs.filter((h) => !ids.has(h));
+    for (const roomId of Object.keys(db.voc.rooms)) {
+      const room = await i.guild.channels.fetch(roomId).catch(() => null);
+      await room?.delete?.("setup delete").catch(() => {});
+      delete db.voc.rooms[roomId];
+    }
     db.setup.items = [];
     const rolesRemoved = db.setup.levelRoles.length ? await removeLevelRoles(i.guild) : 0;
     save(true);
@@ -4211,6 +4401,7 @@ const tools = (() => {
             { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
             { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
+            { name: t("🔊 Vocaux", "🔊 Voice"), value: "`/voc create` `/voc hub` `/voc rename` `/voc limit` `/voc lock` `/voc unlock`" },
             { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup status`" },
             { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
           ),
@@ -4327,11 +4518,13 @@ const tools = (() => {
     });
     client.on(Events.GuildMemberAdd, (m) => onJoin(m).catch((e) => console.error("⚠️ Tools join error:", e?.message || e)));
     client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
+    client.on(Events.VoiceStateUpdate, (a, b) => onVoice(a, b).catch((e) => console.error("⚠️ Tools voice error:", e?.message || e)));
     client.on(Events.GuildBanAdd, (b) => log(b.guild, `🔨 **Ban** ${b.user.username} (${b.user.id})`, 0xed4245));
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = setInterval(() => {
       tickGiveaways().catch(() => {});
       tickLocks().catch((e) => console.error("⚠️ locks:", e?.message || e));
+      tickVoc().catch((e) => console.error("⚠️ voc:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
@@ -4343,7 +4536,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
@@ -4383,8 +4576,8 @@ const CATEGORY_ID = process.env.MM_CATEGORY_ID || "";
 const LOG_CHANNEL_ID = process.env.MM_LOG_CHANNEL_ID || "";
 const ephemeral = MessageFlags.Ephemeral;
 
-const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration];
-const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration];
+const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates];
+const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates];
 let client = new Client({ intents: tools.ON ? FULL_INTENTS : [GatewayIntentBits.Guilds] });
 
 const isStaff = (member) =>
