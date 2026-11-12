@@ -2828,7 +2828,7 @@ const tools = (() => {
     giveaways: {},
     locks: {},
     voc: { hubs: [], rooms: {} },
-    setup: { items: [], levelRoles: [], autoWelcome: false },
+    setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
@@ -2857,7 +2857,7 @@ const tools = (() => {
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
     for (const key of ["xp", "warns", "polls", "giveaways", "locks"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
-    for (const [group, keys] of [[next.setup, ["items", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
+    for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     db = next;
   }
   function save(now = false) {
@@ -3230,6 +3230,13 @@ const tools = (() => {
               .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: "Steal a Brainrot (trades, shops, middleman)", value: "brainrot" }, { name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("delete").setDescription(t("Supprimer les salons créés par le bot", "Delete the channels the bot created")))
+          .addSubcommand((s) =>
+            s
+              .setName("voc-create")
+              .setDescription(t("Créer plein de salons vocaux d'un coup (catégories, trade, gaming, chill...)", "Create lots of voice channels at once (categories, trade, gaming, chill...)"))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Steal a Brainrot (37 vocaux)", "Steal a Brainrot (37 voice channels)"), value: "brainrot" }, { name: t("Complet (17 vocaux)", "Full (17 voice channels)"), value: "full" }, { name: t("Minimal (4 vocaux)", "Minimal (4 voice channels)"), value: "minimal" }))
+          )
+          .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
       ),
       // logs and security
@@ -4161,19 +4168,6 @@ const tools = (() => {
         { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
         { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
       ] },
-      { category: t("🔊 VOCAUX", "🔊 VOICE"), channels: [
-        { key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), kind: "text", voice: true },
-        { key: "voice1", name: t("🎙️│Général 1", "🎙️│General 1"), kind: "text", voice: true },
-        { key: "voice2", name: t("🎙️│Général 2", "🎙️│General 2"), kind: "text", voice: true },
-        { key: "voice3", name: t("🎙️│Général 3", "🎙️│General 3"), kind: "text", voice: true },
-        { key: "voice4", name: t("🤝│Trade 1", "🤝│Trade 1"), kind: "text", voice: true },
-        { key: "voice5", name: t("🤝│Trade 2", "🤝│Trade 2"), kind: "text", voice: true },
-        { key: "voice6", name: t("🤝│Trade 3", "🤝│Trade 3"), kind: "text", voice: true },
-        { key: "voice7", name: t("🎮│Gaming 1", "🎮│Gaming 1"), kind: "text", voice: true },
-        { key: "voice8", name: t("🎮│Gaming 2", "🎮│Gaming 2"), kind: "text", voice: true },
-        { key: "voice9", name: t("🎵│Musique", "🎵│Music"), kind: "text", voice: true },
-        { key: "voice10", name: t("😴│AFK", "😴│AFK"), kind: "text", voice: true },
-      ] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
         { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
         { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
@@ -4213,19 +4207,6 @@ const tools = (() => {
         { key: "middleman", name: t("💱│middleman", "💱│middleman"), kind: "readonly", topic: t("Trade sécurisé : ouvre un ticket avec le bouton du panneau.", "Safe trade: open a ticket with the panel button.") },
         { key: "vouches", name: t("⭐│vouches", "⭐│vouches"), kind: "text", slow: 60, topic: t("Laisse un avis après un trade réussi.", "Leave a review after a successful trade.") },
       ] },
-      { category: t("🔊 VOCAUX", "🔊 VOICE"), channels: [
-        { key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), kind: "text", voice: true },
-        { key: "voice1", name: t("🎙️│Général 1", "🎙️│General 1"), kind: "text", voice: true },
-        { key: "voice2", name: t("🎙️│Général 2", "🎙️│General 2"), kind: "text", voice: true },
-        { key: "voice3", name: t("🎙️│Général 3", "🎙️│General 3"), kind: "text", voice: true },
-        { key: "voice4", name: t("🤝│Trade 1", "🤝│Trade 1"), kind: "text", voice: true },
-        { key: "voice5", name: t("🤝│Trade 2", "🤝│Trade 2"), kind: "text", voice: true },
-        { key: "voice6", name: t("🤝│Trade 3", "🤝│Trade 3"), kind: "text", voice: true },
-        { key: "voice7", name: t("🎮│Gaming 1", "🎮│Gaming 1"), kind: "text", voice: true },
-        { key: "voice8", name: t("🎮│Gaming 2", "🎮│Gaming 2"), kind: "text", voice: true },
-        { key: "voice9", name: t("🎵│Musique", "🎵│Music"), kind: "text", voice: true },
-        { key: "voice10", name: t("😴│AFK", "😴│AFK"), kind: "text", voice: true },
-      ] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
         { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
         { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
@@ -4254,6 +4235,90 @@ const tools = (() => {
     return [];
   }
 
+  /* ---------- /setup voc-create: lots of different voice channels ---------- */
+  const nums = (key, emoji, fr, en, count, limit = 0) => Array.from({ length: count }, (_, n) => ({ key: `${key}${n + 1}`, name: `${emoji}│${t(fr, en)} ${n + 1}`, limit }));
+  const one = (key, emoji, fr, en, limit = 0) => ({ key, name: `${emoji}│${t(fr, en)}`, limit });
+  const hubChannel = () => ({ key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), limit: 0 });
+  const VOICE_TEMPLATES = {
+    brainrot: [
+      { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3), one("lounge", "🛋️", "Lounge", "Lounge")] },
+      { category: t("🤝 TRADE", "🤝 TRADE"), channels: [...nums("trade", "🤝", "Trade", "Trade", 5), ...nums("mm", "🛡️", "Middleman", "Middleman", 3), one("wait", "⏳", "Salle d'attente", "Waiting room")] },
+      { category: t("🧠 STEAL A BRAINROT", "🧠 STEAL A BRAINROT"), channels: [...nums("sab", "🧠", "Steal a Brainrot", "Steal a Brainrot", 5), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4), ...nums("rbx", "🎮", "Roblox", "Roblox", 3)] },
+      { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music1", "🎵", "Musique 1", "Music 1"), one("music2", "🎵", "Musique 2", "Music 2"), one("chill", "😌", "Chill", "Chill"), one("lofi", "📻", "Lo-fi", "Lo-fi"), one("movie", "🎬", "Film", "Movie"), one("stream", "📺", "Stream", "Stream"), one("karaoke", "🎤", "Karaoké", "Karaoke"), one("talk", "💬", "Discussion", "Talk")] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting")] },
+      { category: t("😴 AFK", "😴 AFK"), channels: [one("afk", "😴", "AFK", "AFK")] },
+    ],
+    full: [
+      { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3)] },
+      { category: t("🎮 GAMING", "🎮 GAMING"), channels: [...nums("game", "🎮", "Gaming", "Gaming", 4), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4)] },
+      { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music", "🎵", "Musique", "Music"), one("chill", "😌", "Chill", "Chill"), one("movie", "🎬", "Film", "Movie")] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [one("meeting", "📋", "Réunion", "Meeting"), one("staff", "🛡️", "Staff", "Staff")] },
+      { category: t("😴 AFK", "😴 AFK"), channels: [one("afk", "😴", "AFK", "AFK")] },
+    ],
+    minimal: [
+      { category: t("🔊 VOCAUX", "🔊 VOICE"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 2)] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [one("meeting", "📋", "Réunion", "Meeting")] },
+    ],
+  };
+
+  async function setupVocCreate(i) {
+    if (db.setup.voiceItems.length) return reply(i, no(t("Les vocaux ont déjà été créés. Utilise `/setup voc-delete` d'abord.", "The voice channels were already created. Use `/setup voc-delete` first.")));
+    await i.deferReply({ flags: ephemeral });
+    const key = VOICE_TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "brainrot";
+    const guild = i.guild;
+    let channelsMade = 0;
+    let hubId = "";
+    try {
+      for (const group of VOICE_TEMPLATES[key]) {
+        const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "voice setup" });
+        db.setup.voiceItems.push({ id: category.id, kind: "category" });
+        for (const c of group.channels) {
+          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildVoice, parent: category.id, ...(c.limit ? { userLimit: c.limit } : {}), permissionOverwrites: overwritesFor(guild, "text", group.private), reason: "voice setup" });
+          db.setup.voiceItems.push({ id: channel.id, kind: "voice", key: c.key });
+          channelsMade++;
+          if (c.key === "hub") {
+            hubId = channel.id;
+            db.voc.hubs.push(channel.id);
+          }
+        }
+      }
+    } catch (error) {
+      save(true);
+      console.error("⚠️ Voice setup error:", error?.message || error);
+      return i.editReply(no(t(`Je n'ai créé que ${channelsMade} vocal(aux) : il me faut la permission « Gérer les salons ». Ce qui existe est gardé : \`/setup voc-delete\` le supprime.`, `I only created ${channelsMade} voice channel(s): I need the Manage Channels permission. What exists is kept: \`/setup voc-delete\` removes it.`)));
+    }
+    save(true);
+    const cats = db.setup.voiceItems.filter((x) => x.kind === "category").length;
+    return i.editReply(ok(t(`**${channelsMade} vocaux** créés dans ${cats} catégories.${hubId ? `\nEn rejoignant <#${hubId}>, chacun obtient son propre vocal (supprimé quand il est vide).` : ""}\nPour tout enlever : \`/setup voc-delete\`.`, `**${channelsMade} voice channels** created in ${cats} categories.${hubId ? `\nJoining <#${hubId}> gives everyone their own voice room (deleted when empty).` : ""}\nTo remove everything: \`/setup voc-delete\`.`)));
+  }
+  async function setupVocDeleteButton(i, answer) {
+    if (!(i.memberPermissions?.has?.(P.Administrator) || i.member?.permissions?.has?.(P.Administrator))) return reply(i, no(t("Réservé aux administrateurs.", "Administrators only.")));
+    if (answer !== "yes") return i.update({ content: t("Annulé.", "Cancelled."), components: [] });
+    await i.update({ content: t("⏳ Suppression…", "⏳ Deleting…"), components: [] });
+    let removed = 0;
+    const ids = new Set(db.setup.voiceItems.map((x) => x.id));
+    for (const item of [...db.setup.voiceItems].reverse()) {
+      const channel = await i.guild.channels.fetch(item.id).catch(() => null);
+      if (channel) {
+        try {
+          await channel.delete("voice setup delete");
+          removed++;
+        } catch {
+          /* forgotten below */
+        }
+      }
+    }
+    db.voc.hubs = db.voc.hubs.filter((h) => !ids.has(h));
+    for (const roomId of Object.keys(db.voc.rooms)) { // the personal rooms made from the hub go too
+      const room = await i.guild.channels.fetch(roomId).catch(() => null);
+      await room?.delete?.("voice setup delete").catch(() => {});
+      delete db.voc.rooms[roomId];
+    }
+    db.setup.voiceItems = [];
+    save(true);
+    return i.editReply({ content: ok(t(`${removed} vocal(aux) et catégorie(s) supprimé(s).`, `${removed} voice channel(s) and category(ies) deleted.`)), components: [] });
+  }
+
   async function setupCreate(i) {
     if (db.setup.items.length) return reply(i, no(t("Les salons ont déjà été créés. Utilise `/setup delete` d'abord, ou `/setup status`.", "The channels were already created. Use `/setup delete` first, or `/setup status`.")));
     await i.deferReply({ flags: ephemeral });
@@ -4266,11 +4331,8 @@ const tools = (() => {
         const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
         db.setup.items.push({ id: category.id, kind: "category" });
         for (const c of group.channels) {
-          const channel = await guild.channels.create(c.voice
-            ? { name: c.name, type: ChannelType.GuildVoice, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), reason: "setup" }
-            : { name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
-          db.setup.items.push({ id: channel.id, kind: c.voice ? "voice" : "text", key: c.key });
-          if (c.key === "hub") db.voc.hubs.push(channel.id);
+          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
+          db.setup.items.push({ id: channel.id, kind: "text", key: c.key });
           made[c.key] = channel;
         }
       }
@@ -4336,9 +4398,20 @@ const tools = (() => {
     if (need_perm(i, P.Administrator)) return;
     const sub = i.options.getSubcommand();
     if (sub === "create") return setupCreate(i);
+    if (sub === "voc-create") return setupVocCreate(i);
+    if (sub === "voc-delete") {
+      if (!db.setup.voiceItems.length) return reply(i, no(t("Le bot n'a créé aucun vocal.", "The bot created no voice channels.")));
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("tl:setup:vyes").setLabel(t("Oui, tout supprimer", "Yes, delete everything")).setEmoji("🗑️").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("tl:setup:vno").setLabel(t("Annuler", "Cancel")).setStyle(ButtonStyle.Secondary)
+      );
+      return i.reply({ flags: ephemeral, content: t(`⚠️ Je vais supprimer **${db.setup.voiceItems.length}** vocal(aux)/catégorie(s) créés par moi, et les vocaux perso en cours. Seulement ceux-là, rien d'autre. C'est irréversible.`, `⚠️ I will delete **${db.setup.voiceItems.length}** voice channel(s)/category(ies) I created, and the personal rooms in use. Only those, nothing else. This cannot be undone.`), components: [row] });
+    }
     if (sub === "status") {
       const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
-      return reply(i, list ? t(`Salons créés par le bot : ${list}`, `Channels created by the bot: ${list}`) : t("Le bot n'a créé aucun salon.", "The bot created no channels."));
+      const voices = db.setup.voiceItems.filter((x) => x.kind === "voice").length;
+      const parts = [list ? t(`Salons créés par le bot : ${list}`, `Channels created by the bot: ${list}`) : t("Salons : aucun.", "Channels: none."), voices ? t(`Vocaux créés par le bot : ${voices}`, `Voice channels created by the bot: ${voices}`) : t("Vocaux : aucun.", "Voice channels: none.")];
+      return reply(i, parts.join("\n"));
     }
     if (sub === "delete") {
       if (!db.setup.items.length && !db.setup.levelRoles.length) return reply(i, no(t("Le bot n'a créé aucun salon.", "The bot created no channels.")));
@@ -4377,12 +4450,6 @@ const tools = (() => {
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
     if (ids.has(db.cfg.autoquiz.channelId)) Object.assign(db.cfg.autoquiz, { on: false, channelId: "", nextAt: 0 });
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
-    db.voc.hubs = db.voc.hubs.filter((h) => !ids.has(h));
-    for (const roomId of Object.keys(db.voc.rooms)) {
-      const room = await i.guild.channels.fetch(roomId).catch(() => null);
-      await room?.delete?.("setup delete").catch(() => {});
-      delete db.voc.rooms[roomId];
-    }
     db.setup.items = [];
     const rolesRemoved = db.setup.levelRoles.length ? await removeLevelRoles(i.guild) : 0;
     save(true);
@@ -4402,7 +4469,7 @@ const tools = (() => {
             { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
             { name: t("🔊 Vocaux", "🔊 Voice"), value: "`/voc create` `/voc hub` `/voc rename` `/voc limit` `/voc lock` `/voc unlock`" },
-            { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup status`" },
+            { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup voc-create` `/setup voc-delete` `/setup status`" },
             { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
           ),
       ],
@@ -4479,7 +4546,7 @@ const tools = (() => {
         if (kind === "rr") await roleButton(i, arg);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
-        else if (kind === "setup") await setupDeleteButton(i, arg);
+        else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
     } catch (error) {
