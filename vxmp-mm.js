@@ -2826,6 +2826,7 @@ const tools = (() => {
     warns: {},
     polls: {},
     giveaways: {},
+    locks: {},
     setup: { items: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
@@ -2851,7 +2852,7 @@ const tools = (() => {
     next.cfg = { ...(raw.cfg || {}) };
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
-    for (const key of ["xp", "warns", "polls", "giveaways"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     db = next;
   }
@@ -3123,6 +3124,14 @@ const tools = (() => {
       D(P.ModerateMembers, strOpt(userOpt(cmd("warn", t("Avertir un membre", "Warn a member"))), "raison", t("Raison", "Reason"), true)),
       D(P.ModerateMembers, userOpt(cmd("warnings", t("Voir les avertissements d'un membre", "See a member's warnings")))),
       D(P.ModerateMembers, userOpt(cmd("clearwarns", t("Effacer les avertissements d'un membre", "Clear a member's warnings")))),
+      D(
+        P.ManageChannels,
+        cmd("lock", t("Verrouiller un salon : plus personne ne peut écrire", "Lock a channel: nobody can write"))
+          .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+          .addStringOption((o) => o.setName("duree").setDescription(t("Se rouvre tout seul après : 10m, 2h, 1j", "Opens again after: 10m, 2h, 1d")).setMaxLength(10))
+          .addStringOption((o) => o.setName("raison").setDescription(t("Raison", "Reason")).setMaxLength(200))
+      ),
+      D(P.ManageChannels, cmd("unlock", t("Déverrouiller un salon", "Unlock a channel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))),
       D(P.ManageMessages, userOpt(cmd("clear", t("Supprimer des messages", "Delete messages")).addIntegerOption((o) => o.setName("nombre").setDescription("1-100").setMinValue(1).setMaxValue(100).setRequired(true)), false, "membre", t("Seulement ce membre", "Only this member"))),
       // welcome and roles
       D(
@@ -3226,7 +3235,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -3448,6 +3457,74 @@ const tools = (() => {
     save();
     return reply(i, ok(t("Avertissements effacés.", "Warnings cleared.")));
   };
+  /* ---------- lock / unlock a channel ---------- */
+  const SEND = P.SendMessages;
+  async function lockChannel(guild, channel, by, reason, ms) {
+    const everyone = guild.roles.everyone;
+    const current = channel.permissionOverwrites.cache?.get?.(everyone.id);
+    const prev = current?.allow?.has?.(SEND) ? true : current?.deny?.has?.(SEND) ? false : null;
+    await channel.permissionOverwrites.edit(everyone.id, { SendMessages: false, SendMessagesInThreads: false, AddReactions: false }, { reason: `lock: ${by}` });
+    db.locks[channel.id] = { prev, until: ms ? Date.now() + ms : 0 };
+    save(true);
+  }
+  async function unlockChannel(guild, channel, why) {
+    const lock = db.locks[channel.id];
+    await channel.permissionOverwrites.edit(guild.roles.everyone.id, { SendMessages: lock?.prev ?? null, SendMessagesInThreads: null, AddReactions: null }, { reason: `unlock: ${why}` });
+    delete db.locks[channel.id];
+    save(true);
+  }
+  H.lock = async (i) => {
+    if (need_perm(i, P.ManageChannels)) return;
+    const channel = i.options.getChannel("salon") || i.channel;
+    if (String(channel.topic || "").startsWith("mm-ticket:")) return reply(i, no(t("Impossible sur un ticket middleman : utilise « Appeler le staff » dans le ticket.", "Not possible on a middleman ticket: use \"Call staff\" in the ticket.")));
+    if (db.locks[channel.id]) return reply(i, no(t("Ce salon est déjà verrouillé. `/unlock` pour le rouvrir.", "This channel is already locked. `/unlock` to open it.")));
+    const raw = i.options.getString("duree");
+    const ms = raw ? parseDuration(raw) : 0;
+    if (raw && (!ms || ms > 30 * 86_400_000)) return reply(i, no(t("Durée invalide (ex : 10m, 2h, 1j).", "Invalid duration (e.g. 10m, 2h, 1d).")));
+    const reason = i.options.getString("raison") || t("Aucune raison", "No reason");
+    try {
+      await lockChannel(i.guild, channel, i.user.username, reason, ms);
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu verrouiller (il me faut « Gérer les salons »).", "I could not lock it (I need Manage Channels).")));
+    }
+    await channel.send?.({ embeds: [embed(0xed4245).setTitle(t("🔒 Salon verrouillé", "🔒 Channel locked")).setDescription(`${reason}${ms ? `\n${t("Réouverture", "Opens again")} <t:${Math.floor((Date.now() + ms) / 1000)}:R>` : ""}`)] }).catch(() => {});
+    await log(i.guild, `🔒 **Lock** <#${channel.id}>  ·  ${t("par", "by")} ${i.user}  ·  ${reason}${ms ? `  ·  ${fmtDuration(ms)}` : ""}`, 0xed4245);
+    return reply(i, ok(t(`<#${channel.id}> est verrouillé${ms ? ` pendant ${fmtDuration(ms)}` : ""}.`, `<#${channel.id}> is locked${ms ? ` for ${fmtDuration(ms)}` : ""}.`)));
+  };
+  H.unlock = async (i) => {
+    if (need_perm(i, P.ManageChannels)) return;
+    const channel = i.options.getChannel("salon") || i.channel;
+    if (!db.locks[channel.id]) return reply(i, no(t("Ce salon n'a pas été verrouillé par le bot.", "This channel was not locked by the bot.")));
+    try {
+      await unlockChannel(i.guild, channel, i.user.username);
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu déverrouiller (il me faut « Gérer les salons »).", "I could not unlock it (I need Manage Channels).")));
+    }
+    await channel.send?.({ embeds: [embed(0x57f287).setTitle(t("🔓 Salon déverrouillé", "🔓 Channel unlocked"))] }).catch(() => {});
+    await log(i.guild, `🔓 **Unlock** <#${channel.id}>  ·  ${t("par", "by")} ${i.user}`, 0x2ecc71);
+    return reply(i, ok(t(`<#${channel.id}> est déverrouillé.`, `<#${channel.id}> is unlocked.`)));
+  };
+  /* Locks with a duration open again by themselves. */
+  async function tickLocks() {
+    const now = Date.now();
+    for (const [id, lock] of Object.entries(db.locks)) {
+      if (!lock.until || lock.until > now) continue;
+      const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
+      if (!channel?.guild) {
+        delete db.locks[id]; // the channel is gone
+        save();
+        continue;
+      }
+      try {
+        await unlockChannel(channel.guild, channel, "timer");
+        await channel.send?.({ embeds: [embed(0x57f287).setTitle(t("🔓 Salon déverrouillé", "🔓 Channel unlocked"))] }).catch(() => {});
+      } catch (error) {
+        console.error("⚠️ Auto unlock failed:", error?.message || error);
+        lock.until = now + 5 * 60_000; // try again in 5 minutes
+      }
+    }
+  }
+
   H.clear = async (i) => {
     if (need_perm(i, P.ManageMessages)) return;
     const n = i.options.getInteger("nombre");
@@ -4130,7 +4207,7 @@ const tools = (() => {
           .setTitle(t("🧰 Commandes", "🧰 Commands"))
           .addFields(
             { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp` `/quiz` `/autoquiz`" },
-            { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear`" },
+            { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear` `/lock` `/unlock`" },
             { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
             { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
@@ -4254,6 +4331,7 @@ const tools = (() => {
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = setInterval(() => {
       tickGiveaways().catch(() => {});
+      tickLocks().catch((e) => console.error("⚠️ locks:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
@@ -4265,7 +4343,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
