@@ -3630,15 +3630,15 @@ const gfx = (() => {
   }
 
   function banner(title, subtitle, colorA, colorB) {
-    const c = new Canvas(900, 300);
-    aurora(c, `${title}${subtitle}`, [colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"], 16);
-    c.glass(24, 24, 852, 252, 40, 0.08);
-    shield(c, 140, 150, 150, [[0, "#ffffff"], [0.5, "#bfa8ff"], [1, "#6c4dff"]]);
-    c.text(title, 262, 120, fitSize(c, title, 590, 112), { gradient: [[0, "#ffffff"], [1, "#d9ccff"]], glow: { blur: 18, color: "#9b7bff", alpha: 0.6 }, shadow: { dy: 5, blur: 9, alpha: 0.55 } });
-    const w = Math.min(560, c.measure(subtitle, 26, "bold", 4) + 52);
-    c.round(262, 188, w, 52, 26, "#000000", 0.28);
-    c.shape((px, py) => Math.abs(roundSdf(262, 188, w, 52, 26)(px, py) + 1) - 0.9, 260, 186, 262 + w + 2, 242, lin(262, 188, 262 + w, 240, [[0, "#ffffff"], [1, "#9aa4ff"]]), 0.35);
-    c.text(subtitle, 262 + w / 2, 214, 26, { align: "center", spacing: 4, gradient: [[0, "#fff3b0"], [1, "#ffc93c"]] });
+    const c = new Canvas(900, 176);
+    aurora(c, `${title}${subtitle}`, [colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"], 12);
+    c.glass(18, 18, 864, 140, 32, 0.08);
+    shield(c, 100, 88, 92, [[0, "#ffffff"], [0.5, "#bfa8ff"], [1, "#6c4dff"]]);
+    c.text(title, 170, 64, fitSize(c, title, 680, 82), { gradient: [[0, "#ffffff"], [1, "#d9ccff"]], glow: { blur: 14, color: "#9b7bff", alpha: 0.6 }, shadow: { dy: 4, blur: 7, alpha: 0.55 } });
+    const w = Math.min(600, c.measure(subtitle, 22, "bold", 4) + 44);
+    c.round(170, 102, w, 40, 20, "#000000", 0.28);
+    c.shape((px, py) => Math.abs(roundSdf(170, 102, w, 40, 20)(px, py) + 1) - 0.9, 168, 100, 170 + w + 2, 144, lin(170, 102, 170 + w, 142, [[0, "#ffffff"], [1, "#9aa4ff"]]), 0.35);
+    c.text(subtitle, 170 + w / 2, 122, 22, { align: "center", spacing: 4, gradient: [[0, "#fff3b0"], [1, "#ffc93c"]] });
     return c.png();
   }
 
@@ -5998,43 +5998,23 @@ function buildPanel(type) {
   const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", look.subtitle, look.banner[0], look.banner[1]), { name: `kazuki-${type}.png` });
   const steps =
     type === "paypal"
-      ? [
-          [pt("1️⃣  Ouvre un ticket", "1️⃣  Open a ticket"), pt("Ajoute la personne avec qui tu échanges.", "Add the person you trade with.")],
-          [pt("2️⃣  Mettez-vous d'accord", "2️⃣  Agree"), pt("Qui paie, qui est payé, le montant en $ ou €.", "Who pays, who gets paid, the amount in $ or €.")],
-          [pt("3️⃣  Un staff donne son PayPal", "3️⃣  Staff gives their PayPal"), pt("Le payeur voit le compte et la **référence**.", "The payer sees the account and the **reference**.")],
-          [pt("4️⃣  Paiement vérifié", "4️⃣  Payment checked"), pt("Le staff vérifie le paiement sur PayPal.", "Staff checks the payment on PayPal.")],
-          [pt("5️⃣  Livraison", "5️⃣  Delivery"), pt("Le vendeur livre, le payeur libère.", "The seller delivers, the payer releases.")],
-          [pt("6️⃣  Versement", "6️⃣  Payout"), pt("Le staff envoie l'argent au vendeur.", "Staff sends the money to the seller.")],
-        ]
-      : [
-          [pt("1️⃣  Ouvre un ticket", "1️⃣  Open a ticket"), pt("Ajoute la personne avec qui tu échanges.", "Add the person you trade with.")],
-          [pt("2️⃣  Mettez-vous d'accord", "2️⃣  Agree"), pt("Qui envoie, qui reçoit, le montant.", "Who sends, who receives, the amount.")],
-          [pt("3️⃣  Dépôt", "3️⃣  Deposit"), pt("L'expéditeur paie l'adresse donnée par le bot.", "The sender pays the address given by the bot.")],
-          [pt("4️⃣  Livraison", "4️⃣  Delivery"), pt("Le destinataire donne ce qui était convenu.", "The receiver gives what was agreed.")],
-          [pt("5️⃣  Libération", "5️⃣  Release"), pt("L'expéditeur confirme, le bot paie le destinataire.", "The sender confirms, the bot pays the receiver.")],
-          [pt("🛟  Un problème ?", "🛟  Problem?"), pt("**Appeler le staff** gèle le deal à tout moment.", "**Call staff** freezes the deal at any time.")],
-        ];
+      ? pt("**①** Ticket  **②** Accord  **③** PayPal du staff  **④** Vérification  **⑤** Livraison  **⑥** Versement", "**①** Ticket  **②** Agree  **③** Staff PayPal  **④** Check  **⑤** Delivery  **⑥** Payout")
+      : pt("**①** Ticket  **②** Accord  **③** Dépôt  **④** Livraison  **⑤** Libération", "**①** Ticket  **②** Agree  **③** Deposit  **④** Delivery  **⑤** Release");
+  const intro =
+    type === "paypal"
+      ? pt("Le **staff vérifie le paiement** et ne paie le vendeur qu'une fois le deal terminé.", "**Staff checks the payment** and only pays the seller once the deal is done.")
+      : pt("Le bot **garde les LTC** jusqu'à ce que les deux soient satisfaits.", "The bot **holds the LTC** until both sides are happy.");
+  const numbers = pt(
+    `📊  ✅ **${stats.done}** terminés  ·  ⏳ **${stats.active}** en cours  ·  💰 **${stats.volume}**  ·  🟢 en ligne`,
+    `📊  ✅ **${stats.done}** completed  ·  ⏳ **${stats.active}** in progress  ·  💰 **${stats.volume}**  ·  🟢 online`
+  );
   const main = new EmbedBuilder()
     .setColor(look.color)
     .setTitle(look.title)
-    .setDescription(
-      type === "paypal"
-        ? pt("Échange avec PayPal : **le staff vérifie le paiement** et ne paie le vendeur qu'une fois le deal terminé.", "Trade with PayPal: **staff checks the payment** and only pays the seller once the deal is done.")
-        : pt("Échange en sécurité : le bot **garde les LTC** jusqu'à ce que les deux soient satisfaits.\nAucune confiance nécessaire, tout est suivi sur la blockchain.", "Trade safely: the bot **holds the LTC** until both sides are happy.\nNo trust needed, everything is tracked on the blockchain.")
-    )
-    .addFields(...steps.map(([name, value]) => ({ name, value, inline: true })))
+    .setDescription(`${intro}\n${steps}\n${numbers}`)
     .setImage(`attachment://kazuki-${type}.png`)
-    .setFooter({ text: type === "paypal" ? pt("Écris toujours la référence dans la note PayPal  ·  🇫🇷 / 🇬🇧", "Always write the reference in the PayPal note  ·  🇫🇷 / 🇬🇧") : pt("Montants en LTC, $ ou €  ·  petits frais réseau  ·  🇫🇷 / 🇬🇧", "Amounts in LTC, $ or €  ·  small network fee  ·  🇫🇷 / 🇬🇧") });
-
-  const live = new EmbedBuilder()
-    .setColor(0x2ecc71)
-    .setTitle(pt("📊  En direct", "📊  Live"))
-    .addFields(
-      { name: pt("✅  Deals terminés", "✅  Deals completed"), value: `**${stats.done}**`, inline: true },
-      { name: pt("⏳  En cours", "⏳  In progress"), value: `**${stats.active}**`, inline: true },
-      { name: pt("💰  Volume traité", "💰  Volume handled"), value: `**${stats.volume}**`, inline: true }
-    )
-    .setDescription(`🟢  ${pt("Middleman en ligne", "Middleman online")}  ·  ${pt("mis à jour", "updated")} <t:${Math.floor(Date.now() / 1000)}:R>`);
+    .setFooter({ text: type === "paypal" ? pt("Écris toujours la référence dans la note PayPal  ·  🇫🇷 / 🇬🇧", "Always write the reference in the PayPal note  ·  🇫🇷 / 🇬🇧") : pt("Montants en LTC, $ ou €  ·  petits frais réseau  ·  🇫🇷 / 🇬🇧", "Amounts in LTC, $ or €  ·  small network fee  ·  🇫🇷 / 🇬🇧") })
+    .setTimestamp();
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`open_ticket:${type}`).setLabel(pt(look.buttonFr, look.button)).setEmoji(look.emoji).setStyle(look.style),
@@ -6042,17 +6022,17 @@ function buildPanel(type) {
     new ButtonBuilder().setCustomId(`panel:fees:${type}`).setLabel(pt("Frais et limites", "Fees and limits")).setEmoji("💰").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`panel:mine:${type}`).setLabel(pt("Mon ticket", "My ticket")).setEmoji("🎫").setStyle(ButtonStyle.Secondary)
   );
-  // Litecoin only: the system is automatic, nobody may ask for a payment to their own address
+  // Litecoin only: short and red. The system is automatic: nobody may ask for a payment to their own address
   const alert = new EmbedBuilder()
     .setColor(0xed4245)
-    .setTitle(pt("🚨  Important : système 100 % automatique", "🚨  Important: 100% automatic system"))
+    .setTitle(pt("🚨  Système 100 % automatique", "🚨  100% automatic system"))
     .setDescription(
       pt(
-        "Ce middleman est **entièrement automatique** : le bot génère lui-même l'adresse de dépôt de chaque deal et envoie les fonds quand le deal est terminé. **Personne** n'a besoin de recevoir ton paiement.\n\nSi un membre du **staff** ou un **middleman** te demande d'envoyer le paiement à **son adresse** (ou en dehors du ticket) : **ne le fais pas** et **signale-le immédiatement** à un administrateur. C'est une arnaque.",
-        "This middleman is **fully automatic**: the bot creates the deposit address of every deal itself and sends the funds when the deal is done. **Nobody** needs to receive your payment.\n\nIf a **staff** member or a **middleman** asks you to send the payment to **their own address** (or outside the ticket): **do not do it** and **report it immediately** to an administrator. It is a scam."
+        "Personne ne reçoit ton paiement : le bot s'en charge. Si un **staff** ou un **middleman** te demande de payer **son adresse** : **ne le fais pas** et **signale-le** à un administrateur (arnaque).",
+        "Nobody receives your payment: the bot handles it. If a **staff** member or **middleman** asks you to pay **their address**: **do not do it** and **report it** to an administrator (scam)."
       )
     );
-  return { embeds: type === "ltc" ? [main, alert, live] : [main, live], components: [row], files: [file] };
+  return { embeds: type === "ltc" ? [main, alert] : [main], components: [row], files: [file] };
 }
 
 async function postPanel(interaction) {
