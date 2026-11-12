@@ -3777,7 +3777,7 @@ const tools = (() => {
         staffRoleId: "",
         mmRoleId: "",
         categoryId: "",
-        access: { trade: { channelId: "1570218139113758740", label: "Trade OG" }, shop: { channelId: "1570218143903912007", label: "Shop OG" } },
+        access: { trade: { channelId: "1570218139113758740", roleId: "1570262105309847642", label: "Trade OG" }, shop: { channelId: "1570218143903912007", roleId: "1570262023546339429", label: "Shop OG" } },
       },
       security: { antiSpam: false, antiLink: "off", antiRaid: false },
     },
@@ -4198,9 +4198,10 @@ const tools = (() => {
           .addSubcommand((s) =>
             s
               .setName("access")
-              .setDescription(t("Changer le salon ouvert par une demande d'accès", "Change the channel opened by an access request"))
+              .setDescription(t("Changer le rôle donné (et le salon affiché) pour une demande d'accès", "Change the role given (and the channel shown) for an access request"))
               .addStringOption((o) => o.setName("type").setDescription(t("Quelle demande", "Which request")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
-              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon à ouvrir", "The channel to open")).setRequired(true))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle donné quand c'est accepté", "The role given when accepted")))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon que ce rôle ouvre (affiché dans le ticket)", "The channel this role opens (shown in the ticket)")))
           )
           .addSubcommand((s) =>
             s
@@ -5649,20 +5650,28 @@ const tools = (() => {
     }
     if (sub === "access") {
       const kind = i.options.getString("type");
+      const role = i.options.getRole("role");
       const channel = i.options.getChannel("salon");
-      a.access[kind].channelId = channel.id;
+      if (!role && !channel) return reply(i, no(t("Choisis un rôle, un salon, ou les deux.", "Pick a role, a channel, or both.")));
+      if (role) a.access[kind].roleId = role.id;
+      if (channel) a.access[kind].channelId = channel.id;
       save();
-      return reply(i, ok(t(`${a.access[kind].label} ouvre maintenant ${channel}.`, `${a.access[kind].label} now opens ${channel}.`)));
+      const bits = [role ? t(`donne maintenant ${role}`, `now gives ${role}`) : "", channel ? t(`affiche ${channel}`, `shows ${channel}`) : ""].filter(Boolean).join(t(" et ", " and "));
+      return reply(i, ok(`${a.access[kind].label} ${bits}.`));
     }
     if (sub === "revoke") {
       const user = i.options.getUser("membre");
       const kind = i.options.getString("type");
-      const channel = await i.guild.channels.fetch(a.access[kind].channelId).catch(() => null);
-      if (!channel?.permissionOverwrites) return reply(i, no(t("Salon introuvable : vérifie-le avec `/apps access`.", "Channel not found: check it with `/apps access`.")));
+      const roleId = a.access[kind].roleId;
+      const channel = roleId ? null : await i.guild.channels.fetch(a.access[kind].channelId).catch(() => null);
+      const person = roleId ? await i.guild.members.fetch(user.id).catch(() => null) : null;
+      if (roleId && !person) return reply(i, no(t("Cette personne n'est pas sur le serveur.", "This person is not on the server.")));
+      if (!roleId && !channel?.permissionOverwrites) return reply(i, no(t("Salon introuvable : vérifie-le avec `/apps access`.", "Channel not found: check it with `/apps access`.")));
       try {
-        await channel.permissionOverwrites.delete(user.id, `revoke by ${i.user.username}`);
+        if (roleId) await person.roles.remove(roleId, `revoke by ${i.user.username}`);
+        else await channel.permissionOverwrites.delete(user.id, `revoke by ${i.user.username}`);
       } catch {
-        return reply(i, no(t("Je n'ai pas pu retirer l'accès (il me faut « Gérer les salons »).", "I could not take the access away (I need Manage Channels).")));
+        return reply(i, no(t("Je n'ai pas pu retirer l'accès (il me faut « Gérer les rôles », et mon rôle doit être au-dessus).", "I could not take the access away (I need Manage Roles, and my role must be above).")));
       }
       await log(i.guild, `🔒 **${a.access[kind].label}** ${t("retiré à", "removed from")} ${user}  ·  ${t("par", "by")} <@${i.user.id}>`, 0xe67e22);
       return reply(i, ok(t(`Accès ${a.access[kind].label} retiré à ${user.username}.`, `${a.access[kind].label} access removed from ${user.username}.`)));
@@ -5679,8 +5688,8 @@ const tools = (() => {
               line(t("**Rôle staff :**", "**Staff role:**"), a.staffRoleId, (id) => `<@&${id}>`),
               line(t("**Rôle middleman donné :**", "**Middleman role given:**"), a.mmRoleId, (id) => `<@&${id}>`),
               line(t("**Catégorie des tickets :**", "**Tickets category:**"), a.categoryId, (id) => `<#${id}>`),
-              line(`**${a.access.trade.label} :**`, a.access.trade.channelId, (id) => `<#${id}>`),
-              line(`**${a.access.shop.label} :**`, a.access.shop.channelId, (id) => `<#${id}>`),
+              line(t(`**${a.access.trade.label} : rôle**`, `**${a.access.trade.label}: role**`), a.access.trade.roleId, (id) => `<@&${id}>`) + (a.access.trade.channelId ? `  ·  <#${a.access.trade.channelId}>` : ""),
+              line(t(`**${a.access.shop.label} : rôle**`, `**${a.access.shop.label}: role**`), a.access.shop.roleId, (id) => `<@&${id}>`) + (a.access.shop.channelId ? `  ·  <#${a.access.shop.channelId}>` : ""),
             ].join("\n")
           ),
       ],
@@ -5693,7 +5702,7 @@ const tools = (() => {
     if (!k) return;
     const existing = [...(i.guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`app-ticket:${i.user.id}:${kind}`));
     if (existing) return reply(i, no(t(`Tu as déjà un ticket ouvert : ${existing}`, `You already have an open ticket: ${existing}`)));
-    if (kind !== "mm" && !db.cfg.apps.access[kind]?.channelId) return reply(i, no(t("Cette demande n'est pas encore réglée. Préviens le staff.", "This request is not set up yet. Tell the staff.")));
+    if (kind !== "mm" && !db.cfg.apps.access[kind]?.roleId && !db.cfg.apps.access[kind]?.channelId) return reply(i, no(t("Cette demande n'est pas encore réglée. Préviens le staff.", "This request is not set up yet. Tell the staff.")));
     const modal = new ModalBuilder().setCustomId(`ap:m:${kind}`).setTitle(k.modal().slice(0, 45));
     for (const [id, label, style, required, max] of k.inputs()) modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setStyle(style).setRequired(required).setMaxLength(max)));
     return i.showModal(modal);
@@ -5754,10 +5763,17 @@ const tools = (() => {
           done = t(`Bienvenue dans l'équipe middleman ! Le rôle <@&${a.mmRoleId}> t'a été donné.`, `Welcome to the middleman team! You were given <@&${a.mmRoleId}>.`);
         } else done = t("Bienvenue dans l'équipe middleman ! Le staff va te donner ton rôle.", "Welcome to the middleman team! Staff will give you your role.");
       } else {
-        const target = await i.guild.channels.fetch(a.access[info.kind].channelId).catch(() => null);
-        if (!target?.permissionOverwrites) return reply(i, no(t(`Le salon ${a.access[info.kind].label} est introuvable. Règle-le avec \`/apps access\`.`, `The ${a.access[info.kind].label} channel was not found. Set it with \`/apps access\`.`)));
-        await target.permissionOverwrites.edit(info.userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }, { reason: `${info.kind} access accepted by ${i.user.username}` });
-        done = t(`Accès accordé : tu peux maintenant voir <#${target.id}>.`, `Access granted: you can now see <#${target.id}>.`);
+        const grant = a.access[info.kind];
+        const seen = grant.channelId ? t(` Tu peux maintenant voir <#${grant.channelId}>.`, ` You can now see <#${grant.channelId}>.`) : "";
+        if (grant.roleId) {
+          await member.roles.add(grant.roleId, `${info.kind} access accepted by ${i.user.username}`);
+          done = t(`Accès **${grant.label}** accordé : le rôle <@&${grant.roleId}> t'a été donné.${seen}`, `**${grant.label}** access granted: you were given <@&${grant.roleId}>.${seen}`);
+        } else {
+          const target = await i.guild.channels.fetch(grant.channelId).catch(() => null);
+          if (!target?.permissionOverwrites) return reply(i, no(t(`Le salon ${grant.label} est introuvable. Règle-le avec \`/apps access\`.`, `The ${grant.label} channel was not found. Set it with \`/apps access\`.`)));
+          await target.permissionOverwrites.edit(info.userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }, { reason: `${info.kind} access accepted by ${i.user.username}` });
+          done = t(`Accès **${grant.label}** accordé.${seen}`, `**${grant.label}** access granted.${seen}`);
+        }
       }
     } catch (error) {
       console.error("⚠️ Application accept error:", error?.message || error);
