@@ -3234,7 +3234,7 @@ const tools = (() => {
             s
               .setName("voc-create")
               .setDescription(t("Créer plein de salons vocaux d'un coup (catégories, trade, gaming, chill...)", "Create lots of voice channels at once (categories, trade, gaming, chill...)"))
-              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Steal a Brainrot (37 vocaux)", "Steal a Brainrot (37 voice channels)"), value: "brainrot" }, { name: t("Complet (17 vocaux)", "Full (17 voice channels)"), value: "full" }, { name: t("Minimal (4 vocaux)", "Minimal (4 voice channels)"), value: "minimal" }))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Serveur complet : trade, gaming, support, détente, staff (34 vocaux)", "Full server: trade, gaming, support, chill, staff (34 voice channels)"), value: "brainrot" }, { name: t("Complet (17 vocaux)", "Full (17 voice channels)"), value: "full" }, { name: t("Minimal (4 vocaux)", "Minimal (4 voice channels)"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
@@ -4242,10 +4242,12 @@ const tools = (() => {
   const VOICE_TEMPLATES = {
     brainrot: [
       { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3), one("lounge", "🛋️", "Lounge", "Lounge")] },
-      { category: t("🤝 TRADE", "🤝 TRADE"), channels: [...nums("trade", "🤝", "Trade", "Trade", 5), ...nums("mm", "🛡️", "Middleman", "Middleman", 3), one("wait", "⏳", "Salle d'attente", "Waiting room")] },
-      { category: t("🧠 STEAL A BRAINROT", "🧠 STEAL A BRAINROT"), channels: [...nums("sab", "🧠", "Steal a Brainrot", "Steal a Brainrot", 5), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4), ...nums("rbx", "🎮", "Roblox", "Roblox", 3)] },
-      { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music1", "🎵", "Musique 1", "Music 1"), one("music2", "🎵", "Musique 2", "Music 2"), one("chill", "😌", "Chill", "Chill"), one("lofi", "📻", "Lo-fi", "Lo-fi"), one("movie", "🎬", "Film", "Movie"), one("stream", "📺", "Stream", "Stream"), one("karaoke", "🎤", "Karaoké", "Karaoke"), one("talk", "💬", "Discussion", "Talk")] },
-      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting")] },
+      { category: t("🤝 TRADE", "🤝 TRADE"), channels: nums("trade", "🤝", "Trade", "Trade", 3) },
+      { category: t("🎮 GAMING", "🎮 GAMING"), channels: [...nums("game", "🎮", "Gaming", "Gaming", 4), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4), one("lfg", "🔎", "Recherche de team", "Looking for team")] },
+      { category: t("🆘 SUPPORT", "🆘 SUPPORT"), channels: nums("support", "🆘", "Support", "Support", 2) },
+      { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music1", "🎵", "Musique 1", "Music 1"), one("music2", "🎵", "Musique 2", "Music 2"), one("chill", "😌", "Chill", "Chill"), one("lofi", "📻", "Lo-fi", "Lo-fi"), one("movie", "🎬", "Film", "Movie"), one("stream", "📺", "Stream", "Stream"), one("karaoke", "🎤", "Karaoké", "Karaoke"), one("study", "📚", "Étude / Travail", "Study / Work")] },
+      { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [...nums("event", "🎉", "Événement", "Event", 2), one("party", "🥳", "Soirée", "Party")] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting"), one("interview", "🧑‍💼", "Entretien", "Interview")] },
       { category: t("😴 AFK", "😴 AFK"), channels: [one("afk", "😴", "AFK", "AFK")] },
     ],
     full: [
