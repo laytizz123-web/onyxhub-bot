@@ -3745,8 +3745,11 @@ const tools = (() => {
     EmbedBuilder,
     Events,
     MessageFlags,
+    ModalBuilder,
     PermissionFlagsBits: P,
     SlashCommandBuilder,
+    TextInputBuilder,
+    TextInputStyle,
   } = require("discord.js");
 
   const ON = !/^(off|no|false|0)$/i.test(String(process.env.TOOLS || "on").trim());
@@ -3770,6 +3773,12 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
+      apps: {
+        staffRoleId: "",
+        mmRoleId: "",
+        categoryId: "",
+        access: { trade: { channelId: "1570218139113758740", label: "Trade OG" }, shop: { channelId: "1570218143903912007", label: "Shop OG" } },
+      },
       security: { antiSpam: false, antiLink: "off", antiRaid: false },
     },
   });
@@ -3788,6 +3797,7 @@ const tools = (() => {
     next.cfg = { ...(raw.cfg || {}) };
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
+    next.cfg.apps.access = { trade: { ...base.cfg.apps.access.trade, ...(raw.cfg?.apps?.access?.trade || {}) }, shop: { ...base.cfg.apps.access.shop, ...(raw.cfg?.apps?.access?.shop || {}) } };
     next.voc = { ...base.voc, ...(raw.voc || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
@@ -4172,6 +4182,35 @@ const tools = (() => {
       cmd("serverinfo", t("Infos sur le serveur", "Server info")),
       cmd("ping", t("Latence du bot", "Bot latency")),
       cmd("help", t("Liste des commandes", "Command list")),
+      // application tickets
+      D(
+        P.ManageGuild,
+        cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" })
+        )
+      ),
+      D(
+        P.ManageGuild,
+        cmd("apps", t("Réglages des tickets de candidature et d'accès", "Settings of the application and access tickets"))
+          .addSubcommand((s) => s.setName("staff").setDescription(t("Le rôle qui voit et traite ces tickets", "The role that sees and handles these tickets")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle (vide = aucun)", "The role (empty = none)"))))
+          .addSubcommand((s) => s.setName("mmrole").setDescription(t("Le rôle donné quand une candidature middleman est acceptée", "The role given when a middleman application is accepted")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle (vide = aucun)", "The role (empty = none)"))))
+          .addSubcommand((s) => s.setName("category").setDescription(t("La catégorie où ces tickets sont créés", "The category where these tickets are created")).addChannelOption((o) => o.setName("categorie").setDescription(t("La catégorie (vide = aucune)", "The category (empty = none)")).addChannelTypes(ChannelType.GuildCategory)))
+          .addSubcommand((s) =>
+            s
+              .setName("access")
+              .setDescription(t("Changer le salon ouvert par une demande d'accès", "Change the channel opened by an access request"))
+              .addStringOption((o) => o.setName("type").setDescription(t("Quelle demande", "Which request")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon à ouvrir", "The channel to open")).setRequired(true))
+          )
+          .addSubcommand((s) =>
+            s
+              .setName("revoke")
+              .setDescription(t("Retirer l'accès d'un membre à un salon OG", "Take a member's access to an OG channel away"))
+              .addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))
+              .addStringOption((o) => o.setName("type").setDescription(t("Quel salon", "Which channel")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
+          )
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
+      ),
       // voice channels
       cmd("voc", t("Salons vocaux : en créer, ou gérer ton vocal", "Voice channels: create one, or manage yours"))
         .addSubcommand((s) =>
@@ -4231,7 +4270,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -5459,6 +5498,7 @@ const tools = (() => {
             { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
             { name: t("🔊 Vocaux", "🔊 Voice"), value: "`/voc create` `/voc hub` `/voc rename` `/voc limit` `/voc lock` `/voc unlock`" },
             { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup voc-create` `/setup voc-delete` `/setup status`" },
+            { name: t("🎫 Candidatures et accès", "🎫 Applications and access"), value: "`/ticketpanel` `/apps`" },
             { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
           ),
       ],
@@ -5521,6 +5561,249 @@ const tools = (() => {
     return false;
   }
 
+  /* ---------- application tickets: become a middleman, or ask for access to the OG channels ---------- */
+  const appStaff = (member) => Boolean(member?.permissions?.has?.(P.Administrator) || member?.permissions?.has?.(P.ManageGuild) || (db.cfg.apps.staffRoleId && member?.roles?.cache?.has?.(db.cfg.apps.staffRoleId)));
+  const APP_KINDS = {
+    mm: {
+      color: 0x19c7a0,
+      title: () => t("🛡️  Candidature middleman", "🛡️  Middleman application"),
+      modal: () => t("Devenir middleman", "Become a middleman"),
+      inputs: () => [
+        ["experience", t("Ton expérience comme middleman", "Your experience as a middleman"), TextInputStyle.Paragraph, true, 600],
+        ["deals", t("Nombre de deals / vouches (avec preuves)", "Number of deals / vouches (with proof)"), TextInputStyle.Paragraph, true, 600],
+        ["availability", t("Tes disponibilités et ton fuseau horaire", "Your availability and time zone"), TextInputStyle.Short, true, 200],
+        ["why", t("Pourquoi toi ?", "Why you?"), TextInputStyle.Paragraph, false, 500],
+      ],
+      channelName: (name) => `mm-candidature-${name}`,
+    },
+    trade: {
+      color: 0xf1c40f,
+      title: () => t("💎  Demande d'accès : Trade OG", "💎  Access request: Trade OG"),
+      modal: () => t("Accès Trade OG", "Trade OG access"),
+      inputs: () => [
+        ["why", t("Pourquoi veux-tu l'accès à Trade OG ?", "Why do you want access to Trade OG?"), TextInputStyle.Paragraph, true, 600],
+        ["proof", t("Preuves (vouches, liens, captures)", "Proof (vouches, links, screenshots)"), TextInputStyle.Paragraph, true, 600],
+      ],
+      channelName: (name) => `acces-trade-${name}`,
+    },
+    shop: {
+      color: 0x9b59b6,
+      title: () => t("🛍️  Demande d'accès : Shop OG", "🛍️  Access request: Shop OG"),
+      modal: () => t("Accès Shop OG", "Shop OG access"),
+      inputs: () => [
+        ["why", t("Pourquoi veux-tu l'accès à Shop OG ?", "Why do you want access to Shop OG?"), TextInputStyle.Paragraph, true, 600],
+        ["proof", t("Preuves (vouches, liens, captures)", "Proof (vouches, links, screenshots)"), TextInputStyle.Paragraph, true, 600],
+      ],
+      channelName: (name) => `acces-shop-${name}`,
+    },
+  };
+  const appRow = (...buttons) => new ActionRowBuilder().addComponents(buttons);
+  const appButton = (id, label, style, emoji) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style).setEmoji(emoji);
+  const appTicketOf = (channel) => {
+    const m = String(channel?.topic || "").match(/^app-ticket:(\w+):(mm|trade|shop)$/);
+    return m ? { userId: m[1], kind: m[2] } : null;
+  };
+
+  /* The panels people click to open a ticket. */
+  H.ticketpanel = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const type = i.options.getString("type");
+    const access = db.cfg.apps.access;
+    const embedFor = {
+      middleman: () =>
+        embed(0x19c7a0)
+          .setTitle(t("🛡️  Devenir middleman", "🛡️  Become a middleman"))
+          .setDescription(t("Tu veux rejoindre l'équipe middleman ? Dépose ta candidature : le staff la lit et te répond dans ton ticket.\n\n**À préparer :** ton expérience, tes deals ou vouches avec preuves, tes disponibilités.", "Do you want to join the middleman team? Send your application: staff reads it and answers in your ticket.\n\n**Get ready:** your experience, your deals or vouches with proof, your availability."))
+          .addFields({ name: t("1️⃣  Postule", "1️⃣  Apply"), value: t("Appuie sur le bouton et remplis le formulaire.", "Press the button and fill in the form."), inline: true }, { name: t("2️⃣  Le staff étudie", "2️⃣  Staff reviews"), value: t("Tu reçois la décision dans le ticket.", "You get the decision in the ticket."), inline: true }, { name: t("3️⃣  Bienvenue", "3️⃣  Welcome"), value: t("Si tu es accepté, tu reçois le rôle middleman.", "If accepted, you get the middleman role."), inline: true })
+          .setImage("attachment://apps-middleman.png"),
+      access: () =>
+        embed(0xf1c40f)
+          .setTitle(t("🔑  Accès aux salons OG", "🔑  OG channel access"))
+          .setDescription(t("Tu veux accéder à un salon réservé ? Ouvre un ticket pour le salon voulu : le staff vérifie ta demande et t'ouvre l'accès.", "Want access to a restricted channel? Open a ticket for the channel you want: staff checks your request and opens it for you."))
+          .addFields({ name: `💎  ${access.trade.label}`, value: t("Trade des objets rares entre membres de confiance.", "Trade rare items between trusted members."), inline: true }, { name: `🛍️  ${access.shop.label}`, value: t("Vends et achète dans le shop réservé.", "Sell and buy in the restricted shop."), inline: true })
+          .setImage("attachment://apps-access.png"),
+    };
+    const file = new AttachmentBuilder(type === "middleman" ? gfx.banner("KAZUKI MM", "MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0") : gfx.banner("KAZUKI MM", "OG ACCESS", "#5a3a08", "#c9871f"), { name: type === "middleman" ? "apps-middleman.png" : "apps-access.png" });
+    const row = type === "middleman" ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝")) : appRow(appButton("ap:open:trade", access.trade.label, ButtonStyle.Primary, "💎"), appButton("ap:open:shop", access.shop.label, ButtonStyle.Primary, "🛍️"));
+    await i.channel.send({ embeds: [embedFor[type]()], components: [row], files: [file] });
+    return reply(i, ok(t("Panneau posté.", "Panel posted.")));
+  };
+
+  /* /apps: who handles the tickets, which role / channels they give. */
+  H.apps = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const a = db.cfg.apps;
+    const sub = i.options.getSubcommand();
+    if (sub === "staff" || sub === "mmrole") {
+      const role = i.options.getRole("role");
+      a[sub === "staff" ? "staffRoleId" : "mmRoleId"] = role?.id || "";
+      save();
+      if (sub === "staff") return reply(i, ok(role ? t(`${role} voit et traite maintenant ces tickets.`, `${role} now sees and handles these tickets.`) : t("Plus de rôle staff : seuls les administrateurs les traitent.", "No staff role: only administrators handle them.")));
+      return reply(i, ok(role ? t(`${role} sera donné aux candidatures middleman acceptées.`, `${role} will be given to accepted middleman applications.`) : t("Aucun rôle donné automatiquement : le staff le donne à la main.", "No role given automatically: staff gives it by hand.")));
+    }
+    if (sub === "category") {
+      const cat = i.options.getChannel("categorie");
+      a.categoryId = cat?.id || "";
+      save();
+      return reply(i, ok(cat ? t(`Les tickets seront créés dans ${cat}.`, `Tickets will be created in ${cat}.`) : t("Les tickets seront créés sans catégorie.", "Tickets will be created with no category.")));
+    }
+    if (sub === "access") {
+      const kind = i.options.getString("type");
+      const channel = i.options.getChannel("salon");
+      a.access[kind].channelId = channel.id;
+      save();
+      return reply(i, ok(t(`${a.access[kind].label} ouvre maintenant ${channel}.`, `${a.access[kind].label} now opens ${channel}.`)));
+    }
+    if (sub === "revoke") {
+      const user = i.options.getUser("membre");
+      const kind = i.options.getString("type");
+      const channel = await i.guild.channels.fetch(a.access[kind].channelId).catch(() => null);
+      if (!channel?.permissionOverwrites) return reply(i, no(t("Salon introuvable : vérifie-le avec `/apps access`.", "Channel not found: check it with `/apps access`.")));
+      try {
+        await channel.permissionOverwrites.delete(user.id, `revoke by ${i.user.username}`);
+      } catch {
+        return reply(i, no(t("Je n'ai pas pu retirer l'accès (il me faut « Gérer les salons »).", "I could not take the access away (I need Manage Channels).")));
+      }
+      await log(i.guild, `🔒 **${a.access[kind].label}** ${t("retiré à", "removed from")} ${user}  ·  ${t("par", "by")} <@${i.user.id}>`, 0xe67e22);
+      return reply(i, ok(t(`Accès ${a.access[kind].label} retiré à ${user.username}.`, `${a.access[kind].label} access removed from ${user.username}.`)));
+    }
+    const line = (label, id, mention) => `${label} ${id ? mention(id) : t("*non réglé*", "*not set*")}`;
+    return i.reply({
+      flags: ephemeral,
+      allowedMentions: { parse: [] },
+      embeds: [
+        embed(0x5865f2)
+          .setTitle(t("🎫  Tickets de candidature et d'accès", "🎫  Application and access tickets"))
+          .setDescription(
+            [
+              line(t("**Rôle staff :**", "**Staff role:**"), a.staffRoleId, (id) => `<@&${id}>`),
+              line(t("**Rôle middleman donné :**", "**Middleman role given:**"), a.mmRoleId, (id) => `<@&${id}>`),
+              line(t("**Catégorie des tickets :**", "**Tickets category:**"), a.categoryId, (id) => `<#${id}>`),
+              line(`**${a.access.trade.label} :**`, a.access.trade.channelId, (id) => `<#${id}>`),
+              line(`**${a.access.shop.label} :**`, a.access.shop.channelId, (id) => `<#${id}>`),
+            ].join("\n")
+          ),
+      ],
+    });
+  };
+
+  /* A button of a panel: show the form. */
+  async function appOpen(i, kind) {
+    const k = APP_KINDS[kind];
+    if (!k) return;
+    const existing = [...(i.guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`app-ticket:${i.user.id}:${kind}`));
+    if (existing) return reply(i, no(t(`Tu as déjà un ticket ouvert : ${existing}`, `You already have an open ticket: ${existing}`)));
+    if (kind !== "mm" && !db.cfg.apps.access[kind]?.channelId) return reply(i, no(t("Cette demande n'est pas encore réglée. Préviens le staff.", "This request is not set up yet. Tell the staff.")));
+    const modal = new ModalBuilder().setCustomId(`ap:m:${kind}`).setTitle(k.modal().slice(0, 45));
+    for (const [id, label, style, required, max] of k.inputs()) modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setStyle(style).setRequired(required).setMaxLength(max)));
+    return i.showModal(modal);
+  }
+
+  /* The form is sent: create the private ticket with the answers and the staff buttons. */
+  async function appSubmit(i, kind) {
+    const k = APP_KINDS[kind];
+    if (!k) return;
+    await i.deferReply({ flags: ephemeral });
+    const guild = i.guild;
+    const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`app-ticket:${i.user.id}:${kind}`));
+    if (existing) return i.editReply(no(t(`Tu as déjà un ticket ouvert : ${existing}`, `You already have an open ticket: ${existing}`)));
+    const a = db.cfg.apps;
+    const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
+    const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
+    if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels, P.ManageRoles] });
+    if (a.staffRoleId && guild.roles.cache?.get?.(a.staffRoleId)) overwrites.push({ id: a.staffRoleId, allow });
+    const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
+    let channel;
+    try {
+      channel = await guild.channels.create({ name: k.channelName(safe), type: ChannelType.GuildText, parent: a.categoryId || undefined, topic: `app-ticket:${i.user.id}:${kind}`, permissionOverwrites: overwrites, reason: `${kind} ticket` });
+    } catch (error) {
+      console.error("⚠️ Application ticket error:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu créer le ticket (il me faut « Gérer les salons »).", "I could not create the ticket (I need Manage Channels).")));
+    }
+    const e = embed(k.color).setTitle(k.title()).setDescription(t(`Demande de <@${i.user.id}>. Le staff va la lire et te répondre ici.`, `Request from <@${i.user.id}>. Staff will read it and answer here.`)).setThumbnail(i.user.displayAvatarURL?.() || null);
+    for (const [id, label] of k.inputs()) {
+      const value = i.fields.getTextInputValue(id)?.trim();
+      if (value) e.addFields({ name: label.slice(0, 256), value: value.slice(0, 1000) });
+    }
+    if (kind !== "mm") e.addFields({ name: t("Salon demandé", "Requested channel"), value: `<#${a.access[kind].channelId}>`, inline: true });
+    e.addFields({ name: t("Statut", "Status"), value: t("⏳ En attente du staff", "⏳ Waiting for staff"), inline: true });
+    const staffPing = a.staffRoleId ? `<@&${a.staffRoleId}> ` : "";
+    await channel.send({
+      content: `${staffPing}<@${i.user.id}>`,
+      embeds: [e],
+      components: [appRow(appButton("ap:acc", t("Accepter", "Accept"), ButtonStyle.Success, "✅"), appButton("ap:dec", t("Refuser", "Decline"), ButtonStyle.Danger, "✖️"), appButton("ap:close", t("Fermer", "Close"), ButtonStyle.Secondary, "🔒"))],
+      allowedMentions: { users: [i.user.id], roles: a.staffRoleId ? [a.staffRoleId] : [] },
+    });
+    await log(guild, `🎫 **${k.title().replace(/^\S+\s+/, "")}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x3498db);
+    return i.editReply(ok(t(`Ticket créé : ${channel}`, `Ticket created: ${channel}`)));
+  }
+
+  /* Accept: the middleman role is given, or the requested channel is opened. */
+  async function appAccept(i) {
+    const info = appTicketOf(i.channel);
+    if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
+    if (!appStaff(i.member)) return reply(i, no(t("Réservé au staff.", "Staff only.")));
+    const a = db.cfg.apps;
+    const member = await i.guild.members.fetch(info.userId).catch(() => null);
+    if (!member) return reply(i, no(t("Cette personne a quitté le serveur.", "This person left the server.")));
+    let done;
+    try {
+      if (info.kind === "mm") {
+        if (a.mmRoleId) {
+          await member.roles.add(a.mmRoleId, `middleman application accepted by ${i.user.username}`);
+          done = t(`Bienvenue dans l'équipe middleman ! Le rôle <@&${a.mmRoleId}> t'a été donné.`, `Welcome to the middleman team! You were given <@&${a.mmRoleId}>.`);
+        } else done = t("Bienvenue dans l'équipe middleman ! Le staff va te donner ton rôle.", "Welcome to the middleman team! Staff will give you your role.");
+      } else {
+        const target = await i.guild.channels.fetch(a.access[info.kind].channelId).catch(() => null);
+        if (!target?.permissionOverwrites) return reply(i, no(t(`Le salon ${a.access[info.kind].label} est introuvable. Règle-le avec \`/apps access\`.`, `The ${a.access[info.kind].label} channel was not found. Set it with \`/apps access\`.`)));
+        await target.permissionOverwrites.edit(info.userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }, { reason: `${info.kind} access accepted by ${i.user.username}` });
+        done = t(`Accès accordé : tu peux maintenant voir <#${target.id}>.`, `Access granted: you can now see <#${target.id}>.`);
+      }
+    } catch (error) {
+      console.error("⚠️ Application accept error:", error?.message || error);
+      return reply(i, no(t("Je n'ai pas pu appliquer la décision (permissions du bot : « Gérer les rôles » et « Gérer les salons », et mon rôle doit être au-dessus).", "I could not apply the decision (bot permissions: Manage Roles and Manage Channels, and my role must be above).")));
+    }
+    const base = i.message.embeds?.[0]?.toJSON?.() || {};
+    const updated = EmbedBuilder.from(base).setColor(0x57f287).setFields((base.fields || []).filter((f) => f.name !== t("Statut", "Status")).concat({ name: t("Statut", "Status"), value: t(`✅ Accepté par <@${i.user.id}>`, `✅ Accepted by <@${i.user.id}>`), inline: true }));
+    await i.update({ embeds: [updated], components: [appRow(appButton("ap:close", t("Fermer le ticket", "Close the ticket"), ButtonStyle.Secondary, "🔒"))] });
+    await i.channel.send({ content: `<@${info.userId}>`, embeds: [embed(0x57f287).setDescription(`✅ ${done}`)], allowedMentions: { users: [info.userId] } }).catch(() => {});
+    await log(i.guild, `✅ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("accepté par", "accepted by")} <@${i.user.id}>`, 0x2ecc71);
+  }
+
+  /* Decline: ask the reason first. */
+  async function appDecline(i) {
+    if (!appTicketOf(i.channel)) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
+    if (!appStaff(i.member)) return reply(i, no(t("Réservé au staff.", "Staff only.")));
+    return i.showModal(new ModalBuilder().setCustomId("ap:m:dec").setTitle(t("Refuser", "Decline")).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("reason").setLabel(t("Raison (vue par la personne)", "Reason (seen by the person)")).setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500))));
+  }
+  async function appDeclined(i) {
+    const info = appTicketOf(i.channel);
+    if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
+    if (!appStaff(i.member)) return reply(i, no(t("Réservé au staff.", "Staff only.")));
+    const reason = i.fields.getTextInputValue("reason")?.trim() || t("Aucune raison donnée.", "No reason given.");
+    const base = i.message?.embeds?.[0]?.toJSON?.() || {};
+    const updated = EmbedBuilder.from(base).setColor(0xed4245).setFields((base.fields || []).filter((f) => f.name !== t("Statut", "Status")).concat({ name: t("Statut", "Status"), value: t(`✖️ Refusé par <@${i.user.id}>`, `✖️ Declined by <@${i.user.id}>`), inline: true }));
+    const closeRow = appRow(appButton("ap:close", t("Fermer le ticket", "Close the ticket"), ButtonStyle.Secondary, "🔒"));
+    if (i.isFromMessage?.()) await i.update({ embeds: [updated], components: [closeRow] });
+    else {
+      await i.message?.edit?.({ embeds: [updated], components: [closeRow] }).catch(() => {});
+      await i.reply({ content: ok(t("Décision enregistrée.", "Decision saved.")), flags: ephemeral });
+    }
+    await i.channel.send({ content: `<@${info.userId}>`, embeds: [embed(0xed4245).setDescription(t(`✖️ Ta demande est refusée.\n**Raison :** ${reason}`, `✖️ Your request was declined.\n**Reason:** ${reason}`))], allowedMentions: { users: [info.userId] } }).catch(() => {});
+    await log(i.guild, `✖️ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("refusé par", "declined by")} <@${i.user.id}>  ·  ${reason}`, 0xed4245);
+  }
+
+  async function appClose(i) {
+    const info = appTicketOf(i.channel);
+    if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
+    if (i.user.id !== info.userId && !appStaff(i.member)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
+    await i.reply({ content: t("🔒 Ticket fermé. Ce salon sera supprimé dans 5 secondes.", "🔒 Ticket closed. This channel will be deleted in 5 seconds.") });
+    await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d);
+    const channel = i.channel;
+    const timer = setTimeout(() => channel.delete("application ticket closed").catch(() => {}), 5000);
+    timer.unref?.();
+  }
+
   /* ---------- wiring ---------- */
   async function handleInteraction(i) {
     if (!ON) return false;
@@ -5528,6 +5811,19 @@ const tools = (() => {
       if (i.isChatInputCommand?.() && NAMES.has(i.commandName)) {
         if (!i.guild) return (await reply(i, no(t("Utilise cette commande sur le serveur.", "Use this command in the server."))), true);
         await H[i.commandName](i);
+        return true;
+      }
+      if (typeof i.customId === "string" && i.customId.startsWith("ap:")) {
+        const [, kind, arg] = i.customId.split(":");
+        if (i.isButton?.()) {
+          if (kind === "open") await appOpen(i, arg);
+          else if (kind === "acc") await appAccept(i);
+          else if (kind === "dec") await appDecline(i);
+          else if (kind === "close") await appClose(i);
+        } else if (i.isModalSubmit?.() && kind === "m") {
+          if (arg === "dec") await appDeclined(i);
+          else await appSubmit(i, arg);
+        }
         return true;
       }
       if (i.isButton?.() && typeof i.customId === "string" && i.customId.startsWith("tl:")) {
