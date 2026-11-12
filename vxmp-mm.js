@@ -3811,7 +3811,7 @@ const tools = (() => {
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
-      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false },
+      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100 },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
@@ -4034,11 +4034,29 @@ const tools = (() => {
   }
 
   /* Adds xp to a member (messages and quiz), gives the reward roles and announces a new level. */
+  /* Every `xpStep` xp (100 by default) a message is posted in the XP channel. One message even if several steps were passed at once. */
+  async function announceXp(member, xpBefore, xpAfter) {
+    const cfg = db.cfg.levels;
+    const step = Math.max(1, Number(cfg.xpStep) || 100);
+    if (!cfg.xpChannelId || Math.floor(xpAfter / step) <= Math.floor(xpBefore / step)) return;
+    const channel = await Promise.resolve(member.guild?.channels?.fetch?.(cfg.xpChannelId)).catch(() => null);
+    if (!channel?.isTextBased?.() || !channel.send) return;
+    const milestone = Math.floor(xpAfter / step) * step;
+    const l = levelOf(xpAfter);
+    const e = embed(0xf1c40f)
+      .setTitle(`⭐  ${milestone} XP`)
+      .setDescription(`<@${member.id}> ${t("a atteint", "reached")} **${milestone} XP** !\n${t("Niveau", "Level")} **${l.level}**  ·  ${bar(l.into, l.need)}  ·  ${l.into} / ${l.need} XP`)
+      .setThumbnail(member.displayAvatarURL?.() || member.user?.displayAvatarURL?.() || null);
+    await channel.send({ embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => {});
+  }
+
   async function addXp(member, amount, fallbackChannel) {
-    const before = levelOf(db.xp[member.id] || 0).level;
-    db.xp[member.id] = (db.xp[member.id] || 0) + amount;
+    const xpBefore = db.xp[member.id] || 0;
+    const before = levelOf(xpBefore).level;
+    db.xp[member.id] = xpBefore + amount;
     const after = levelOf(db.xp[member.id]).level;
     save();
+    await announceXp(member, xpBefore, db.xp[member.id]);
     await giveRewards(member, after);
     if (after > before && db.cfg.levels.announce) await announceLevel(member, after, fallbackChannel, before);
   }
@@ -4129,6 +4147,13 @@ const tools = (() => {
               .setDescription(t("Salon où les passages de niveau s'affichent", "Channel where level-ups are shown"))
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = là où la personne écrit)", "The channel (empty = where the person writes)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
           )
+          .addSubcommand((s) =>
+            s
+              .setName("xpchannel")
+              .setDescription(t("Salon où un message est posté à chaque palier d'XP (100 par défaut)", "Channel where a message is posted at every XP step (100 by default)"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = couper)", "The channel (empty = off)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+          )
+          .addSubcommand((s) => s.setName("xpstep").setDescription(t("Tous les combien d'XP un message est posté (100 par défaut)", "How many XP between two messages (100 by default)")).addIntegerOption((o) => o.setName("montant").setDescription("10-10000").setMinValue(10).setMaxValue(10000).setRequired(true)))
           .addSubcommand((s) => s.setName("quiz-xp").setDescription(t("XP gagnés avec une bonne réponse au quiz", "XP won with a right quiz answer")).addIntegerOption((o) => o.setName("montant").setDescription("1-500").setMinValue(1).setMaxValue(500).setRequired(true)))
       ),
       D(
@@ -4385,6 +4410,17 @@ const tools = (() => {
       cfg.channelId = channel?.id || "";
       save();
       return reply(i, ok(channel ? t(`Les passages de niveau s'afficheront dans ${channel}.`, `Level-ups will be shown in ${channel}.`) : t("Les passages de niveau s'afficheront là où la personne écrit.", "Level-ups will be shown where the person writes.")));
+    }
+    if (sub === "xpchannel") {
+      const channel = i.options.getChannel("salon");
+      cfg.xpChannelId = channel?.id || "";
+      save();
+      return reply(i, ok(channel ? t(`Un message sera posté dans ${channel} à chaque palier de ${cfg.xpStep} XP.`, `A message will be posted in ${channel} at every ${cfg.xpStep} XP.`) : t("Messages de palier d'XP coupés.", "XP step messages turned off.")));
+    }
+    if (sub === "xpstep") {
+      cfg.xpStep = i.options.getInteger("montant");
+      save();
+      return reply(i, ok(t(`Un message sera posté tous les ${cfg.xpStep} XP${cfg.xpChannelId ? "" : " (choisis aussi un salon avec `/levels xpchannel`)"}.`, `A message will be posted every ${cfg.xpStep} XP${cfg.xpChannelId ? "" : " (also pick a channel with `/levels xpchannel`)"}.`)));
     }
     if (sub === "quiz-xp") {
       cfg.quizXp = i.options.getInteger("montant");
@@ -5237,6 +5273,7 @@ const tools = (() => {
         { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text" },
         { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
         { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
+        { key: "xp", name: t("⭐│xp", "⭐│xp"), kind: "readonly", topic: t("Un message à chaque palier d'XP.", "A message at every XP step.") },
       ] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
         { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
@@ -5260,6 +5297,7 @@ const tools = (() => {
         { key: "clips", name: t("🎥│clips-steal", "🎥│steal-clips"), kind: "text", topic: t("Tes meilleurs vols et clips de Steal a Brainrot.", "Your best steals and Steal a Brainrot clips.") },
         { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text" },
         { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
+        { key: "xp", name: t("⭐│xp", "⭐│xp"), kind: "readonly", topic: t("Un message à chaque palier d'XP.", "A message at every XP step.") },
         { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
       ] },
       { category: t("🔄 TRADES", "🔄 TRADES"), channels: [
@@ -5426,6 +5464,7 @@ const tools = (() => {
     }
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
     if (made.levels) db.cfg.levels.channelId = made.levels.id;
+    if (made.xp) db.cfg.levels.xpChannelId = made.xp.id;
     if (made.suggestions) db.cfg.suggest.channelId = made.suggestions.id;
     if (made.quiz) {
       Object.assign(db.cfg.autoquiz, { on: true, channelId: made.quiz.id, minutes: db.cfg.autoquiz.minutes || 30, nextAt: Date.now() + 60_000 });
@@ -5520,6 +5559,7 @@ const tools = (() => {
     if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
     if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
+    if (ids.has(db.cfg.levels.xpChannelId)) db.cfg.levels.xpChannelId = "";
     if (ids.has(db.cfg.autoquiz.channelId)) Object.assign(db.cfg.autoquiz, { on: false, channelId: "", nextAt: 0 });
     db.cfg.levels.ignored = db.cfg.levels.ignored.filter((c) => !ids.has(c));
     db.setup.items = [];
