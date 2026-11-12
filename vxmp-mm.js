@@ -3808,10 +3808,11 @@ const tools = (() => {
     polls: {},
     giveaways: {},
     locks: {},
+    claims: {},
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
-      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100 },
+      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
       welcome: { channelId: "", message: "", leave: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
@@ -3820,6 +3821,7 @@ const tools = (() => {
         staffRoleId: "",
         mmRoleId: "",
         categoryId: "",
+        claim: { xp: 5000, reward: "Garama" },
         access: { trade: { channelId: "1570218139113758740", roleId: "1570262105309847642", label: "Trade OG" }, shop: { channelId: "1570218143903912007", roleId: "1570262023546339429", label: "Shop OG" } },
       },
       security: { antiSpam: false, antiLink: "off", antiRaid: false },
@@ -3840,11 +3842,12 @@ const tools = (() => {
     next.cfg = { ...(raw.cfg || {}) };
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
+    next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     next.cfg.apps.access = { trade: { ...base.cfg.apps.access.trade, ...(raw.cfg?.apps?.access?.trade || {}) }, shop: { ...base.cfg.apps.access.shop, ...(raw.cfg?.apps?.access?.shop || {}) } };
     next.voc = { ...base.voc, ...(raw.voc || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     db = next;
   }
@@ -4061,6 +4064,28 @@ const tools = (() => {
     if (after > before && db.cfg.levels.announce) await announceLevel(member, after, fallbackChannel, before);
   }
 
+  /* Voice activity: every minute, each person in a voice channel with enough other people (and not deafened) earns xp. */
+  let lastVoiceXp = 0;
+  async function tickVoiceXp() {
+    const cfg = db.cfg.levels;
+    if (!ON || !cfg.on || !cfg.voiceOn || !(cfg.voiceXp > 0) || !client?.guilds?.cache) return;
+    const now = Date.now();
+    if (now - lastVoiceXp < 55_000) return;
+    lastVoiceXp = now;
+    for (const guild of client.guilds.cache.values()) {
+      for (const channel of guild.channels.cache.values()) {
+        if (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice) continue;
+        if (channel.id === guild.afkChannelId || cfg.ignored.includes(channel.id)) continue;
+        const people = [...(channel.members?.values?.() || [])].filter((m) => !m.user?.bot);
+        if (people.length < Math.max(1, cfg.voiceMinPeople)) continue; // alone in a channel earns nothing
+        for (const m of people) {
+          if (m.voice?.selfDeaf || m.voice?.serverDeaf) continue; // deafened: not really there
+          await addXp(m, cfg.voiceXp, null).catch((e) => console.error("⚠️ voice xp:", e?.message || e));
+        }
+      }
+    }
+  }
+
   async function onXp(message) {
     const cfg = db.cfg.levels;
     if (!cfg.on || message.author.bot || !message.guild || !message.member) return;
@@ -4154,6 +4179,14 @@ const tools = (() => {
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = couper)", "The channel (empty = off)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
           )
           .addSubcommand((s) => s.setName("xpstep").setDescription(t("Tous les combien d'XP un message est posté (100 par défaut)", "How many XP between two messages (100 by default)")).addIntegerOption((o) => o.setName("montant").setDescription("10-10000").setMinValue(10).setMaxValue(10000).setRequired(true)))
+          .addSubcommand((s) =>
+            s
+              .setName("voice")
+              .setDescription(t("XP gagnés en vocal (reste actif avec d'autres membres)", "XP earned in voice (stay active with other members)"))
+              .addBooleanOption((o) => o.setName("actif").setDescription(t("Activer ou couper l'XP en vocal", "Turn voice XP on or off")))
+              .addIntegerOption((o) => o.setName("xp").setDescription(t("XP par minute (0-100)", "XP per minute (0-100)")).setMinValue(0).setMaxValue(100))
+              .addIntegerOption((o) => o.setName("personnes").setDescription(t("Minimum de personnes dans le vocal (bots exclus)", "Minimum people in the voice channel (bots excluded)")).setMinValue(1).setMaxValue(10))
+          )
           .addSubcommand((s) => s.setName("quiz-xp").setDescription(t("XP gagnés avec une bonne réponse au quiz", "XP won with a right quiz answer")).addIntegerOption((o) => o.setName("montant").setDescription("1-500").setMinValue(1).setMaxValue(500).setRequired(true)))
       ),
       D(
@@ -4254,7 +4287,7 @@ const tools = (() => {
       D(
         P.ManageGuild,
         cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
-          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" })
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" })
         )
       ),
       D(
@@ -4278,6 +4311,14 @@ const tools = (() => {
               .addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))
               .addStringOption((o) => o.setName("type").setDescription(t("Quel salon", "Which channel")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
           )
+          .addSubcommand((s) =>
+            s
+              .setName("claim")
+              .setDescription(t("Réglages de la réclamation (XP nécessaires et récompense)", "Claim settings (XP needed and reward)"))
+              .addIntegerOption((o) => o.setName("xp").setDescription(t("XP nécessaires", "XP needed")).setMinValue(1).setMaxValue(10000000))
+              .addStringOption((o) => o.setName("recompense").setDescription(t("Nom de la récompense", "Name of the reward")).setMaxLength(40))
+          )
+          .addSubcommand((s) => s.setName("claimreset").setDescription(t("Permettre à un membre de réclamer à nouveau", "Let a member claim again")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
       ),
       // voice channels
@@ -4421,6 +4462,18 @@ const tools = (() => {
       cfg.xpStep = i.options.getInteger("montant");
       save();
       return reply(i, ok(t(`Un message sera posté tous les ${cfg.xpStep} XP${cfg.xpChannelId ? "" : " (choisis aussi un salon avec `/levels xpchannel`)"}.`, `A message will be posted every ${cfg.xpStep} XP${cfg.xpChannelId ? "" : " (also pick a channel with `/levels xpchannel`)"}.`)));
+    }
+    if (sub === "voice") {
+      const on = i.options.getBoolean("actif");
+      const rate = i.options.getInteger("xp");
+      const people = i.options.getInteger("personnes");
+      if (on !== null && on !== undefined) cfg.voiceOn = on;
+      if (rate !== null && rate !== undefined) cfg.voiceXp = rate;
+      if (people !== null && people !== undefined) cfg.voiceMinPeople = people;
+      save();
+      return reply(i, cfg.voiceOn && cfg.voiceXp > 0
+        ? ok(t(`XP en vocal : **${cfg.voiceXp} XP par minute**, avec au moins **${cfg.voiceMinPeople} personne${cfg.voiceMinPeople > 1 ? "s" : ""}** dans le vocal (sourdine « casque » = rien, salon AFK = rien).`, `Voice XP: **${cfg.voiceXp} XP per minute**, with at least **${cfg.voiceMinPeople} ${cfg.voiceMinPeople > 1 ? "people" : "person"}** in the voice channel (deafened = nothing, AFK channel = nothing).`))
+        : ok(t("XP en vocal coupé.", "Voice XP turned off.")));
     }
     if (sub === "quiz-xp") {
       cfg.quizXp = i.options.getInteger("montant");
@@ -5670,6 +5723,13 @@ const tools = (() => {
       ],
       channelName: (name) => `acces-trade-${name}`,
     },
+    claim: {
+      color: 0xe67e22,
+      title: () => t(`🎁  Réclamer ${db.cfg.apps.claim.reward}`, `🎁  Claim ${db.cfg.apps.claim.reward}`),
+      modal: () => t(`Réclamer ${db.cfg.apps.claim.reward}`, `Claim ${db.cfg.apps.claim.reward}`),
+      inputs: () => [["roblox", t("Ton pseudo Roblox", "Your Roblox username"), TextInputStyle.Short, true, 60]],
+      channelName: (name) => `reclame-${String(db.cfg.apps.claim.reward).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 20) || "brainrot"}-${name}`,
+    },
     shop: {
       color: 0x9b59b6,
       title: () => t("🛍️  Demande d'accès : Shop OG", "🛍️  Access request: Shop OG"),
@@ -5681,10 +5741,20 @@ const tools = (() => {
       channelName: (name) => `acces-shop-${name}`,
     },
   };
+  /* "" when the person may claim, otherwise the refusal. The xp is not spent, but each person claims once. */
+  function claimGate(userId) {
+    const c = db.cfg.apps.claim;
+    const xp = db.xp[userId] || 0;
+    if (db.claims[userId]?.status === "accepted") return no(t(`Tu as déjà réclamé **${c.reward}**. Une seule réclamation par personne.`, `You already claimed **${c.reward}**. One claim per person.`));
+    if (xp < c.xp) {
+      return no(t(`Il te faut **${c.xp} XP** pour réclamer **${c.reward}**.\nTu as **${xp} XP** (il t'en manque **${c.xp - xp}**).\n${bar(xp, c.xp, 14)}  ${Math.floor((xp / c.xp) * 100)} %\n\n💬 Parle dans le chat et 🎙️ reste en vocal avec d'autres membres pour gagner de l'XP : sois actif !`, `You need **${c.xp} XP** to claim **${c.reward}**.\nYou have **${xp} XP** (**${c.xp - xp}** missing).\n${bar(xp, c.xp, 14)}  ${Math.floor((xp / c.xp) * 100)}%\n\n💬 Talk in the chat and 🎙️ stay in voice with other members to earn XP: be active!`));
+    }
+    return "";
+  }
   const appRow = (...buttons) => new ActionRowBuilder().addComponents(buttons);
   const appButton = (id, label, style, emoji) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style).setEmoji(emoji);
   const appTicketOf = (channel) => {
-    const m = String(channel?.topic || "").match(/^app-ticket:(\w+):(mm|trade|shop)$/);
+    const m = String(channel?.topic || "").match(/^app-ticket:(\w+):(mm|trade|shop|claim)$/);
     return m ? { userId: m[1], kind: m[2] } : null;
   };
 
@@ -5700,6 +5770,19 @@ const tools = (() => {
           .setDescription(t("Tu veux rejoindre l'équipe middleman ? Dépose ta candidature : le staff la lit et te répond dans ton ticket.\n\n**À préparer :** ton expérience, tes deals ou vouches avec preuves, tes disponibilités.", "Do you want to join the middleman team? Send your application: staff reads it and answers in your ticket.\n\n**Get ready:** your experience, your deals or vouches with proof, your availability."))
           .addFields({ name: t("1️⃣  Postule", "1️⃣  Apply"), value: t("Appuie sur le bouton et remplis le formulaire.", "Press the button and fill in the form."), inline: true }, { name: t("2️⃣  Le staff étudie", "2️⃣  Staff reviews"), value: t("Tu reçois la décision dans le ticket.", "You get the decision in the ticket."), inline: true }, { name: t("3️⃣  Bienvenue", "3️⃣  Welcome"), value: t("Si tu es accepté, tu reçois le rôle middleman.", "If accepted, you get the middleman role."), inline: true })
           .setImage("attachment://apps-middleman.png"),
+      claim: () => {
+        const c = db.cfg.apps.claim;
+        const lv = db.cfg.levels;
+        return embed(0xe67e22)
+          .setTitle(t(`🎁  Réclame ${c.reward}`, `🎁  Claim ${c.reward}`))
+          .setDescription(t(`Tu as **${c.xp} XP** ? Tu peux réclamer le brainrot **${c.reward}** en ouvrant un ticket. Sans assez d'XP, le ticket est refusé.\nUne seule réclamation par personne.`, `Do you have **${c.xp} XP**? You can claim the **${c.reward}** brainrot by opening a ticket. Without enough XP the ticket is refused.\nOne claim per person.`))
+          .addFields(
+            { name: t("💬  Chat", "💬  Chat"), value: t("Parle dans le chat : de l'XP à chaque message (1 par minute).", "Talk in the chat: XP for every message (one per minute)."), inline: true },
+            { name: t("🎙️  Vocal", "🎙️  Voice"), value: lv.voiceOn && lv.voiceXp > 0 ? t(`Reste en vocal avec d'autres membres : **${lv.voiceXp} XP par minute**.`, `Stay in voice with other members: **${lv.voiceXp} XP per minute**.`) : t("Pas d'XP en vocal pour le moment.", "No voice XP for now."), inline: true },
+            { name: t("🧭  Sois actif", "🧭  Be active"), value: t("Seuls ceux qui restent vraiment actifs gagnent : seul dans un vocal ou en sourdine, rien.", "Only people who really stay active earn: alone in a voice channel or deafened earns nothing."), inline: false }
+          )
+          .setImage("attachment://apps-claim.png");
+      },
       access: () =>
         embed(0xf1c40f)
           .setTitle(t("🔑  Accès aux salons OG", "🔑  OG channel access"))
@@ -5707,8 +5790,14 @@ const tools = (() => {
           .addFields({ name: `💎  ${access.trade.label}`, value: t("Trade des objets rares entre membres de confiance.", "Trade rare items between trusted members."), inline: true }, { name: `🛍️  ${access.shop.label}`, value: t("Vends et achète dans le shop réservé.", "Sell and buy in the restricted shop."), inline: true })
           .setImage("attachment://apps-access.png"),
     };
-    const file = new AttachmentBuilder(type === "middleman" ? gfx.banner("KAZUKI MM", "MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0") : gfx.banner("KAZUKI MM", "OG ACCESS", "#5a3a08", "#c9871f"), { name: type === "middleman" ? "apps-middleman.png" : "apps-access.png" });
-    const row = type === "middleman" ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝")) : appRow(appButton("ap:open:trade", access.trade.label, ButtonStyle.Primary, "💎"), appButton("ap:open:shop", access.shop.label, ButtonStyle.Primary, "🛍️"));
+    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"] }[type];
+    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2]), { name: banners[3] });
+    const row =
+      type === "middleman"
+        ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝"))
+        : type === "claim"
+          ? appRow(appButton("ap:open:claim", t(`Réclamer ${db.cfg.apps.claim.reward}`, `Claim ${db.cfg.apps.claim.reward}`), ButtonStyle.Success, "🎁"), appButton("ap:myxp", t("Mon XP", "My XP"), ButtonStyle.Secondary, "📊"))
+          : appRow(appButton("ap:open:trade", access.trade.label, ButtonStyle.Primary, "💎"), appButton("ap:open:shop", access.shop.label, ButtonStyle.Primary, "🛍️"));
     await i.channel.send({ embeds: [embedFor[type]()], components: [row], files: [file] });
     return reply(i, ok(t("Panneau posté.", "Panel posted.")));
   };
@@ -5742,6 +5831,21 @@ const tools = (() => {
       const bits = [role ? t(`donne maintenant ${role}`, `now gives ${role}`) : "", channel ? t(`affiche ${channel}`, `shows ${channel}`) : ""].filter(Boolean).join(t(" et ", " and "));
       return reply(i, ok(`${a.access[kind].label} ${bits}.`));
     }
+    if (sub === "claim") {
+      const xp = i.options.getInteger("xp");
+      const reward = i.options.getString("recompense")?.trim();
+      if (xp) a.claim.xp = xp;
+      if (reward) a.claim.reward = reward;
+      save();
+      return reply(i, ok(t(`Réclamation : **${a.claim.reward}** à partir de **${a.claim.xp} XP**.`, `Claim: **${a.claim.reward}** from **${a.claim.xp} XP**.`)));
+    }
+    if (sub === "claimreset") {
+      const user = i.options.getUser("membre");
+      const had = Boolean(db.claims[user.id]);
+      delete db.claims[user.id];
+      save(true);
+      return reply(i, had ? ok(t(`${user.username} peut réclamer à nouveau.`, `${user.username} can claim again.`)) : no(t(`${user.username} n'a aucune réclamation.`, `${user.username} has no claim.`)));
+    }
     if (sub === "revoke") {
       const user = i.options.getUser("membre");
       const kind = i.options.getString("type");
@@ -5771,6 +5875,7 @@ const tools = (() => {
               line(t("**Rôle staff :**", "**Staff role:**"), a.staffRoleId, (id) => `<@&${id}>`),
               line(t("**Rôle middleman donné :**", "**Middleman role given:**"), a.mmRoleId, (id) => `<@&${id}>`),
               line(t("**Catégorie des tickets :**", "**Tickets category:**"), a.categoryId, (id) => `<#${id}>`),
+              t(`**Réclamation :** ${a.claim.reward} à ${a.claim.xp} XP`, `**Claim:** ${a.claim.reward} at ${a.claim.xp} XP`),
               line(t(`**${a.access.trade.label} : rôle**`, `**${a.access.trade.label}: role**`), a.access.trade.roleId, (id) => `<@&${id}>`) + (a.access.trade.channelId ? `  ·  <#${a.access.trade.channelId}>` : ""),
               line(t(`**${a.access.shop.label} : rôle**`, `**${a.access.shop.label}: role**`), a.access.shop.roleId, (id) => `<@&${id}>`) + (a.access.shop.channelId ? `  ·  <#${a.access.shop.channelId}>` : ""),
             ].join("\n")
@@ -5779,13 +5884,32 @@ const tools = (() => {
     });
   };
 
+  /* "My XP": where the person stands against the XP needed to claim. */
+  async function appMyXp(i) {
+    const c = db.cfg.apps.claim;
+    const xp = db.xp[i.user.id] || 0;
+    const l = levelOf(xp);
+    const ready = xp >= c.xp;
+    return i.reply({
+      flags: ephemeral,
+      embeds: [
+        embed(ready ? 0x57f287 : 0xe67e22)
+          .setTitle(t("📊  Ton XP", "📊  Your XP"))
+          .setDescription(`**${xp} / ${c.xp} XP**\n${bar(Math.min(xp, c.xp), c.xp, 16)}  ${Math.min(100, Math.floor((xp / c.xp) * 100))}${FR ? " %" : "%"}\n${t("Niveau", "Level")} **${l.level}**\n\n${ready ? t(`✅ Tu peux réclamer **${c.reward}** !`, `✅ You can claim **${c.reward}**!`) : t(`Il t'en manque **${c.xp - xp} XP** pour **${c.reward}**. 💬 Chat et 🎙️ vocal = de l'XP.`, `**${c.xp - xp} XP** to go for **${c.reward}**. 💬 Chat and 🎙️ voice = XP.`)}`),
+      ],
+    });
+  }
+
   /* A button of a panel: show the form. */
   async function appOpen(i, kind) {
     const k = APP_KINDS[kind];
     if (!k) return;
     const existing = [...(i.guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`app-ticket:${i.user.id}:${kind}`));
     if (existing) return reply(i, no(t(`Tu as déjà un ticket ouvert : ${existing}`, `You already have an open ticket: ${existing}`)));
-    if (kind !== "mm" && !db.cfg.apps.access[kind]?.roleId && !db.cfg.apps.access[kind]?.channelId) return reply(i, no(t("Cette demande n'est pas encore réglée. Préviens le staff.", "This request is not set up yet. Tell the staff.")));
+    if (kind === "claim") {
+      const refusal = claimGate(i.user.id);
+      if (refusal) return reply(i, refusal);
+    } else if (kind !== "mm" && !db.cfg.apps.access[kind]?.roleId && !db.cfg.apps.access[kind]?.channelId) return reply(i, no(t("Cette demande n'est pas encore réglée. Préviens le staff.", "This request is not set up yet. Tell the staff.")));
     const modal = new ModalBuilder().setCustomId(`ap:m:${kind}`).setTitle(k.modal().slice(0, 45));
     for (const [id, label, style, required, max] of k.inputs()) modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setStyle(style).setRequired(required).setMaxLength(max)));
     return i.showModal(modal);
@@ -5799,6 +5923,10 @@ const tools = (() => {
     const guild = i.guild;
     const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`app-ticket:${i.user.id}:${kind}`));
     if (existing) return i.editReply(no(t(`Tu as déjà un ticket ouvert : ${existing}`, `You already have an open ticket: ${existing}`)));
+    if (kind === "claim") {
+      const refusal = claimGate(i.user.id);
+      if (refusal) return i.editReply(refusal);
+    }
     const a = db.cfg.apps;
     const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
     const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
@@ -5812,12 +5940,17 @@ const tools = (() => {
       console.error("⚠️ Application ticket error:", error?.message || error);
       return i.editReply(no(t("Je n'ai pas pu créer le ticket (il me faut « Gérer les salons »).", "I could not create the ticket (I need Manage Channels).")));
     }
+    if (kind === "claim") {
+      db.claims[i.user.id] = { status: "pending", channelId: channel.id, at: Date.now() };
+      save(true);
+    }
     const e = embed(k.color).setTitle(k.title()).setDescription(t(`Demande de <@${i.user.id}>. Le staff va la lire et te répondre ici.`, `Request from <@${i.user.id}>. Staff will read it and answer here.`)).setThumbnail(i.user.displayAvatarURL?.() || null);
     for (const [id, label] of k.inputs()) {
       const value = i.fields.getTextInputValue(id)?.trim();
       if (value) e.addFields({ name: label.slice(0, 256), value: value.slice(0, 1000) });
     }
-    if (kind !== "mm") e.addFields({ name: t("Salon demandé", "Requested channel"), value: `<#${a.access[kind].channelId}>`, inline: true });
+    if (kind === "claim") e.addFields({ name: "XP", value: `**${db.xp[i.user.id] || 0}** / ${a.claim.xp}`, inline: true }, { name: t("Récompense", "Reward"), value: a.claim.reward, inline: true });
+    else if (kind !== "mm") e.addFields({ name: t("Salon demandé", "Requested channel"), value: `<#${a.access[kind].channelId}>`, inline: true });
     e.addFields({ name: t("Statut", "Status"), value: t("⏳ En attente du staff", "⏳ Waiting for staff"), inline: true });
     const staffPing = a.staffRoleId ? `<@&${a.staffRoleId}> ` : "";
     await channel.send({
@@ -5845,6 +5978,10 @@ const tools = (() => {
           await member.roles.add(a.mmRoleId, `middleman application accepted by ${i.user.username}`);
           done = t(`Bienvenue dans l'équipe middleman ! Le rôle <@&${a.mmRoleId}> t'a été donné.`, `Welcome to the middleman team! You were given <@&${a.mmRoleId}>.`);
         } else done = t("Bienvenue dans l'équipe middleman ! Le staff va te donner ton rôle.", "Welcome to the middleman team! Staff will give you your role.");
+      } else if (info.kind === "claim") {
+        db.claims[info.userId] = { ...(db.claims[info.userId] || {}), status: "accepted", at: Date.now(), by: i.user.id };
+        save(true);
+        done = t(`Ta réclamation de **${a.claim.reward}** est validée : le staff te le remet en jeu.`, `Your claim of **${a.claim.reward}** is approved: staff gives it to you in the game.`);
       } else {
         const grant = a.access[info.kind];
         const seen = grant.channelId ? t(` Tu peux maintenant voir <#${grant.channelId}>.`, ` You can now see <#${grant.channelId}>.`) : "";
@@ -5880,6 +6017,10 @@ const tools = (() => {
     if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
     if (!appStaff(i.member)) return reply(i, no(t("Réservé au staff.", "Staff only.")));
     const reason = i.fields.getTextInputValue("reason")?.trim() || t("Aucune raison donnée.", "No reason given.");
+    if (info.kind === "claim" && db.claims[info.userId]?.status !== "accepted") {
+      delete db.claims[info.userId]; // declined: the person may try again
+      save(true);
+    }
     const base = i.message?.embeds?.[0]?.toJSON?.() || {};
     const updated = EmbedBuilder.from(base).setColor(0xed4245).setFields((base.fields || []).filter((f) => f.name !== t("Statut", "Status")).concat({ name: t("Statut", "Status"), value: t(`✖️ Refusé par <@${i.user.id}>`, `✖️ Declined by <@${i.user.id}>`), inline: true }));
     const closeRow = appRow(appButton("ap:close", t("Fermer le ticket", "Close the ticket"), ButtonStyle.Secondary, "🔒"));
@@ -5896,6 +6037,10 @@ const tools = (() => {
     const info = appTicketOf(i.channel);
     if (!info) return reply(i, no(t("Ce n'est pas un ticket de candidature.", "This is not an application ticket.")));
     if (i.user.id !== info.userId && !appStaff(i.member)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
+    if (info.kind === "claim" && db.claims[info.userId]?.status !== "accepted") {
+      delete db.claims[info.userId]; // closed with no decision: the claim is given back
+      save(true);
+    }
     await i.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
     await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d);
     await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
@@ -5914,6 +6059,7 @@ const tools = (() => {
         const [, kind, arg] = i.customId.split(":");
         if (i.isButton?.()) {
           if (kind === "open") await appOpen(i, arg);
+          else if (kind === "myxp") await appMyXp(i);
           else if (kind === "acc") await appAccept(i);
           else if (kind === "dec") await appDecline(i);
           else if (kind === "close") await appClose(i);
@@ -5974,6 +6120,7 @@ const tools = (() => {
       tickGiveaways().catch(() => {});
       tickLocks().catch((e) => console.error("⚠️ locks:", e?.message || e));
       tickVoc().catch((e) => console.error("⚠️ voc:", e?.message || e));
+      tickVoiceXp().catch((e) => console.error("⚠️ voice xp:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
@@ -5985,7 +6132,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
