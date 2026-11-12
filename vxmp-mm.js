@@ -4242,19 +4242,19 @@ const tools = (() => {
   const VOICE_TEMPLATES = {
     brainrot: [
       { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3), one("lounge", "🛋️", "Lounge", "Lounge")] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting"), one("interview", "🧑‍💼", "Entretien", "Interview")] },
       { category: t("🤝 TRADE", "🤝 TRADE"), channels: nums("trade", "🤝", "Trade", "Trade", 3) },
       { category: t("🎮 GAMING", "🎮 GAMING"), channels: [...nums("game", "🎮", "Gaming", "Gaming", 4), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4), one("lfg", "🔎", "Recherche de team", "Looking for team")] },
       { category: t("🆘 SUPPORT", "🆘 SUPPORT"), channels: nums("support", "🆘", "Support", "Support", 2) },
       { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music1", "🎵", "Musique 1", "Music 1"), one("music2", "🎵", "Musique 2", "Music 2"), one("chill", "😌", "Chill", "Chill"), one("lofi", "📻", "Lo-fi", "Lo-fi"), one("movie", "🎬", "Film", "Movie"), one("stream", "📺", "Stream", "Stream"), one("karaoke", "🎤", "Karaoké", "Karaoke"), one("study", "📚", "Étude / Travail", "Study / Work")] },
       { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [...nums("event", "🎉", "Événement", "Event", 2), one("party", "🥳", "Soirée", "Party")] },
-      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting"), one("interview", "🧑‍💼", "Entretien", "Interview")] },
       { category: t("😴 AFK", "😴 AFK"), channels: [one("afk", "😴", "AFK", "AFK")] },
     ],
     full: [
       { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3)] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [one("meeting", "📋", "Réunion", "Meeting"), one("staff", "🛡️", "Staff", "Staff")] },
       { category: t("🎮 GAMING", "🎮 GAMING"), channels: [...nums("game", "🎮", "Gaming", "Gaming", 4), one("duo", "👥", "Duo", "Duo", 2), one("trio", "👥", "Trio", "Trio", 3), one("squad", "👥", "Squad", "Squad", 4)] },
       { category: t("🎵 DÉTENTE", "🎵 CHILL"), channels: [one("music", "🎵", "Musique", "Music"), one("chill", "😌", "Chill", "Chill"), one("movie", "🎬", "Film", "Movie")] },
-      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [one("meeting", "📋", "Réunion", "Meeting"), one("staff", "🛡️", "Staff", "Staff")] },
       { category: t("😴 AFK", "😴 AFK"), channels: [one("afk", "😴", "AFK", "AFK")] },
     ],
     minimal: [
