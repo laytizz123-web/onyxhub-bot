@@ -4005,6 +4005,17 @@ const tools = (() => {
     for (const [k, v] of Object.entries(next.vouches)) if (!Array.isArray(v)) delete next.vouches[k];
     if (!Number.isFinite(next.vouchN)) next.vouchN = 0;
     db = next;
+    syncLadder();
+  }
+  /* The level roles made by the bot keep their place in the ladder when the ladder's levels change. */
+  function syncLadder() {
+    const ids = db.setup.levelRoles;
+    if (!ids.length) return;
+    for (const r of db.cfg.levels.rewards) {
+      const k = ids.indexOf(r.roleId);
+      if (k >= 0 && LADDER[k]) r.level = LADDER[k][0];
+    }
+    db.cfg.levels.rewards.sort((a, b) => a.level - b.level);
   }
   function save(now = false) {
     const write = () => {
@@ -4054,8 +4065,8 @@ const tools = (() => {
   async function giveRewards(member, level) {
     const cfg = db.cfg.levels;
     const eligible = cfg.rewards.filter((r) => r.level <= level);
-    if (!eligible.length || !member?.roles) return;
-    const keep = cfg.stack ? eligible.map((r) => r.roleId) : [eligible[eligible.length - 1].roleId];
+    if (!member?.roles || (!eligible.length && cfg.stack)) return;
+    const keep = cfg.stack ? eligible.map((r) => r.roleId) : eligible.length ? [eligible[eligible.length - 1].roleId] : [];
     for (const roleId of keep) {
       if (member.roles.cache.has(roleId)) continue;
       await member.roles.add(roleId, "level reward").catch(() => {});
@@ -4069,11 +4080,11 @@ const tools = (() => {
 
   /* The ladder of level roles the bot can create: [level, name, colour]. Always in English. */
   const LADDER = [
-    [1, "🌱 Newcomer", 0x95a5a6],
-    [5, "⭐ Rookie", 0x3498db],
-    [10, "🔥 Active", 0x1abc9c],
-    [15, "💠 Regular", 0x2ecc71],
-    [20, "⚔️ Veteran", 0x9b59b6],
+    [5, "🌱 Newcomer", 0x95a5a6],
+    [10, "⭐ Rookie", 0x3498db],
+    [15, "🔥 Active", 0x1abc9c],
+    [20, "💠 Regular", 0x2ecc71],
+    [25, "⚔️ Veteran", 0x9b59b6],
     [30, "💎 Elite", 0xe91e63],
     [40, "👑 Master", 0xe67e22],
     [50, "🏆 Legend", 0xf1c40f],
@@ -4099,7 +4110,7 @@ const tools = (() => {
   async function refreshLevelRoles(guild) {
     let changed = 0;
     for (const [level, name, color] of LADDER) {
-      const reward = db.cfg.levels.rewards.find((r) => r.level === level && db.setup.levelRoles.includes(r.roleId));
+      const reward = db.cfg.levels.rewards.find((r) => r.roleId === db.setup.levelRoles[LADDER.findIndex((x) => x[0] === level)]);
       if (!reward) continue;
       const role = await Promise.resolve(guild.roles.fetch?.(reward.roleId)).catch(() => null);
       if (!role || (role.name === name && role.color === color)) continue;
