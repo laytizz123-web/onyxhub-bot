@@ -4396,18 +4396,23 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("end").setDescription(t("Terminer maintenant", "End now")).addStringOption((o) => o.setName("message_id").setDescription(t("ID du message du concours", "Giveaway message ID")).setRequired(true)))
           .addSubcommand((s) => s.setName("reroll").setDescription(t("Retirer au sort", "Draw again")).addStringOption((o) => o.setName("message_id").setDescription(t("ID du message du concours", "Giveaway message ID")).setRequired(true)))
       ),
+      D(
+        P.ManageGuild,
+        cmd("vouchadmin", t("Gérer les vouches : salon, retirer, reset (staff)", "Manage vouches: channel, remove, reset (staff)"))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les vouches sont postés (admin)", "Channel where vouches are posted (admin)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un vouch (staff)", "Remove a vouch (staff)")).addIntegerOption((o) => o.setName("numero").setDescription(t("Le numéro du vouch (#)", "The vouch number (#)")).setRequired(true).setMinValue(1)))
+          .addSubcommand((s) => s.setName("reset").setDescription(t("Effacer tous les vouches d'un membre (staff)", "Clear all of a member's vouches (staff)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)))
+      ),
       strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
       cmd("vouch", t("Laisser un vouch (avis) à quelqu'un après un trade", "Leave a vouch (review) for someone after a trade"))
         .addUserOption((o) => o.setName("membre").setDescription(t("La personne que tu vouch", "The person you vouch for")).setRequired(true))
         .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
         .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Garama, Middleman, Shop…)", "What was traded, or the service (e.g. Garama, Middleman, Shop…)")).setRequired(true).setMinLength(2).setMaxLength(100))
         .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : rapide et fiable)", "What happened (e.g. fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500)),
-      cmd("vouches", t("Voir les vouches, le top, et réglages", "See vouches, the top, and settings"))
+      cmd("vouches", t("Voir les vouches et le top", "See vouches and the top"))
         .addSubcommand((s) => s.setName("voir").setDescription(t("Le profil de vouches d'un membre", "A member's vouch profile")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre (vide = toi)", "The member (empty = you)"))))
-        .addSubcommand((s) => s.setName("top").setDescription(t("Les membres les plus vouchés", "The most vouched members")))
-        .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les vouches sont postés (admin)", "Channel where vouches are posted (admin)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
-        .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un vouch (staff)", "Remove a vouch (staff)")).addIntegerOption((o) => o.setName("numero").setDescription(t("Le numéro du vouch (#)", "The vouch number (#)")).setRequired(true).setMinValue(1)))
-        .addSubcommand((s) => s.setName("reset").setDescription(t("Effacer tous les vouches d'un membre (staff)", "Clear all of a member's vouches (staff)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))),
+        .addSubcommand((s) => s.setName("top").setDescription(t("Les membres les plus vouchés", "The most vouched members"))),
+
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
       strOpt(cmd("8ball", t("Boule magique, ou sans question : un quiz à image qui rapporte de l'XP", "Magic 8-ball, or with no question: a picture quiz that wins XP")), "question", t("Ta question (vide = lancer un quiz)", "Your question (empty = start a quiz)"), false, 200),
       D(
@@ -4472,17 +4477,21 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
       ),
       // voice channels
-      cmd("voc", t("Salons vocaux : en créer, ou gérer ton vocal", "Voice channels: create one, or manage yours"))
+      D(
+        P.ManageChannels,
+        cmd("vocadmin", t("Créer des salons vocaux (staff)", "Create voice channels (staff)"))
         .addSubcommand((s) =>
-          s
-            .setName("create")
-            .setDescription(t("Créer un salon vocal", "Create a voice channel"))
-            .addStringOption((o) => o.setName("nom").setDescription(t("Nom du vocal", "Voice channel name")).setRequired(true).setMaxLength(80))
-            .addIntegerOption((o) => o.setName("limite").setDescription(t("Nombre de places (0 = illimité)", "Number of seats (0 = unlimited)")).setMinValue(0).setMaxValue(99))
-            .addBooleanOption((o) => o.setName("prive").setDescription(t("Privé : personne ne peut le rejoindre sans invitation", "Private: nobody can join without an invite")))
-            .addIntegerOption((o) => o.setName("nombre").setDescription(t("Combien en créer d'un coup (numérotés, 1-25)", "How many to create at once (numbered, 1-25)")).setMinValue(1).setMaxValue(25))
-        )
-        .addSubcommand((s) => s.setName("hub").setDescription(t("Créer le salon « ➕ Créer ton vocal » (chacun obtient son vocal)", "Create the \"➕ Create your voice\" channel (everyone gets their own)")))
+            s
+              .setName("create")
+              .setDescription(t("Créer un salon vocal", "Create a voice channel"))
+              .addStringOption((o) => o.setName("nom").setDescription(t("Nom du vocal", "Voice channel name")).setRequired(true).setMaxLength(80))
+              .addIntegerOption((o) => o.setName("limite").setDescription(t("Nombre de places (0 = illimité)", "Number of seats (0 = unlimited)")).setMinValue(0).setMaxValue(99))
+              .addBooleanOption((o) => o.setName("prive").setDescription(t("Privé : personne ne peut le rejoindre sans invitation", "Private: nobody can join without an invite")))
+              .addIntegerOption((o) => o.setName("nombre").setDescription(t("Combien en créer d'un coup (numérotés, 1-25)", "How many to create at once (numbered, 1-25)")).setMinValue(1).setMaxValue(25))
+          )
+          .addSubcommand((s) => s.setName("hub").setDescription(t("Créer le salon « ➕ Créer ton vocal » (chacun obtient son vocal)", "Create the \"➕ Create your voice\" channel (everyone gets their own)")))
+      ),
+      cmd("voc", t("Gérer ton vocal", "Manage your voice channel"))
         .addSubcommand((s) => s.setName("rename").setDescription(t("Renommer ton vocal", "Rename your voice channel")).addStringOption((o) => o.setName("nom").setDescription(t("Nouveau nom", "New name")).setRequired(true).setMaxLength(80)))
         .addSubcommand((s) => s.setName("limit").setDescription(t("Limiter les places de ton vocal", "Limit the seats of your voice channel")).addIntegerOption((o) => o.setName("places").setDescription(t("0 = illimité", "0 = unlimited")).setRequired(true).setMinValue(0).setMaxValue(99)))
         .addSubcommand((s) => s.setName("lock").setDescription(t("Fermer ton vocal : plus personne ne peut le rejoindre", "Close your voice channel: nobody else can join")))
@@ -4530,7 +4539,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps", "vouch", "vouches"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps", "vouch", "vouches", "vouchadmin", "vocadmin"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -4854,6 +4863,7 @@ const tools = (() => {
     if (room.owner !== i.user.id && !i.member.permissions?.has?.(P.ManageChannels)) return reply(i, no(t("Ce vocal appartient à quelqu'un d'autre.", "This voice room belongs to someone else.")));
     return i.member.voice.channel || (await i.guild.channels.fetch(id).catch(() => null)) || reply(i, no(t("Vocal introuvable.", "Voice channel not found.")));
   }
+  H.vocadmin = (i) => H.voc(i);
   H.voc = async (i) => {
     const sub = i.options.getSubcommand();
     if (sub === "create" || sub === "hub") {
@@ -5332,7 +5342,7 @@ const tools = (() => {
     }
     const channelId = vouchChannelId();
     const channel = channelId ? await Promise.resolve(i.guild.channels.fetch(channelId)).catch(() => null) : i.channel;
-    if (!channel?.isTextBased?.() || !channel.send) return reply(i, no(t("Le salon des vouches n'existe plus. Un admin doit faire `/vouches salon`.", "The vouch channel no longer exists. An admin must use `/vouches salon`.")));
+    if (!channel?.isTextBased?.() || !channel.send) return reply(i, no(t("Le salon des vouches n'existe plus. Un admin doit faire `/vouchadmin salon`.", "The vouch channel no longer exists. An admin must use `/vouchadmin salon`.")));
     const n = (db.vouchN || 0) + 1;
     const v = { n, from: i.user.id, stars: note, text, item, at: Date.now(), channelId: channel.id, msgId: "" };
     const after = vouchStats(target.id);
@@ -5359,6 +5369,7 @@ const tools = (() => {
     await log(i.guild, `⭐ **Vouch #${n}**  ·  <@${i.user.id}> ➜ <@${target.id}>  ·  ${note}/5`, 0xf1c40f);
     return reply(i, ok(channel.id === i.channelId ? t(`Vouch #${n} envoyé pour <@${target.id}> !`, `Vouch #${n} sent for <@${target.id}>!`) : t(`Vouch #${n} envoyé pour <@${target.id}> dans <#${channel.id}> !`, `Vouch #${n} sent for <@${target.id}> in <#${channel.id}>!`)));
   };
+  H.vouchadmin = (i) => H.vouches(i);
   H.vouches = async (i) => {
     const sub = i.options.getSubcommand();
     if (sub === "voir") {
@@ -5948,26 +5959,31 @@ const tools = (() => {
     return i.editReply({ content: ok(t(`${removed} salon(s) et catégorie(s) supprimé(s)${rolesRemoved ? `, ${rolesRemoved} rôle(s) de niveau` : ""}.`, `${removed} channel(s) and category(ies) deleted${rolesRemoved ? `, ${rolesRemoved} level role(s)` : ""}.`)), components: [] });
   }
 
-  H.help = (i) =>
-    i.reply({
+  /* /help lists only the commands the person can use (the others are hidden from them in Discord too). */
+  H.help = (i) => {
+    const can = (flag) => !flag || Boolean(i.memberPermissions?.has?.(flag));
+    const sections = [
+      [t("📈 Niveaux", "📈 Levels"), "`/rank` `/leaderboard` `/quiz`"],
+      [t("📈 Niveaux (staff)", "📈 Levels (staff)"), "`/levels` `/xp` `/autoquiz`", P.ManageGuild],
+      [t("⭐ Vouches", "⭐ Vouches"), "`/vouch` `/vouches voir` `/vouches top`"],
+      [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+      [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
+      [t("🔊 Ton vocal", "🔊 Your voice channel"), "`/voc rename` `/voc limit` `/voc lock` `/voc unlock`"],
+      [t("🔨 Bannir", "🔨 Ban"), "`/ban` `/unban`", P.BanMembers],
+      [t("🔨 Expulser", "🔨 Kick"), "`/kick`", P.KickMembers],
+      [t("🔨 Sanctions", "🔨 Sanctions"), "`/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns`", P.ModerateMembers],
+      [t("🧹 Messages", "🧹 Messages"), "`/clear`", P.ManageMessages],
+      [t("🔒 Salons", "🔒 Channels"), "`/lock` `/unlock` `/vocadmin create` `/vocadmin hub`", P.ManageChannels],
+      [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
+      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/ticketpanel` `/apps`", P.ManageGuild],
+      [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
+      [t("👑 Admin", "👑 Admin"), "`/setup` `/panel` `/access` `/tiers`", P.Administrator],
+    ];
+    return i.reply({
       flags: ephemeral,
-      embeds: [
-        embed()
-          .setTitle(t("🧰 Commandes", "🧰 Commands"))
-          .addFields(
-            { name: t("📈 Niveaux", "📈 Levels"), value: "`/rank` `/leaderboard` `/levels` `/xp` `/quiz` `/autoquiz`" },
-            { name: t("🔨 Modération", "🔨 Moderation"), value: "`/ban` `/unban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/clear` `/lock` `/unlock`" },
-            { name: t("👋 Bienvenue et rôles", "👋 Welcome and roles"), value: "`/welcome` `/rolepanel`" },
-            { name: t("🎉 Fun et outils", "🎉 Fun and tools"), value: "`/poll` `/giveaway` `/suggest` `/suggestions` `/8ball` `/quiz` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`" },
-            { name: t("🛡️ Logs et sécurité", "🛡️ Logs and security"), value: "`/logs` `/security`" },
-            { name: t("🔊 Vocaux", "🔊 Voice"), value: "`/voc create` `/voc hub` `/voc rename` `/voc limit` `/voc lock` `/voc unlock`" },
-            { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup voc-create` `/setup voc-delete` `/setup status`" },
-            { name: t("🎫 Candidatures et accès", "🎫 Applications and access"), value: "`/ticketpanel` `/apps`" },
-            { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" },
-            { name: t("⭐ Vouches", "⭐ Vouches"), value: "`/vouch` `/vouches voir` `/vouches top` `/vouches salon` `/vouches retirer` `/vouches reset`" }
-          ),
-      ],
+      embeds: [embed().setTitle(t("🧰 Tes commandes", "🧰 Your commands")).addFields(sections.filter((x) => can(x[2])).map(([name, value]) => ({ name, value })))],
     });
+  };
 
   /* logs and security settings */
   H.logs = async (i) => {
@@ -7253,6 +7269,7 @@ async function loginWithFallback() {
         new SlashCommandBuilder()
           .setName("panel")
           .setDescription("Post a middleman ticket panel here.")
+          .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
           .addStringOption((option) =>
             option
               .setName("type")
@@ -7260,9 +7277,9 @@ async function loginWithFallback() {
               .addChoices({ name: "Litecoin (automatic)", value: "ltc" }, { name: "PayPal (manual, checked by staff)", value: "paypal" })
           )
           .toJSON(),
-        new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").toJSON(),
-        new SlashCommandBuilder().setName("access").setDescription("Choose which roles can see the private Litecoin tickets").toJSON(),
-        new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").toJSON(),
+        new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages).toJSON(),
+        new SlashCommandBuilder().setName("access").setDescription("Choose which roles can see the private Litecoin tickets").setDefaultMemberPermissions(PermissionFlagsBits.Administrator).toJSON(),
+        new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").setDefaultMemberPermissions(PermissionFlagsBits.Administrator).toJSON(),
         ...tools.commands(),
       ],
     });
