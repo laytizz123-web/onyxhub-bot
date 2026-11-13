@@ -3936,6 +3936,8 @@ const tools = (() => {
     claims: {},
     crosstrades: {},
     crossStats: { opened: 0, done: 0 },
+    vouches: {},
+    vouchN: 0,
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
@@ -3943,6 +3945,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
+      vouch: { channelId: "", cooldownH: 24 },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
         staffRoleId: "",
@@ -3975,8 +3978,10 @@ const tools = (() => {
     next.crossStats = { ...base.crossStats, ...(raw.crossStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
+    for (const [k, v] of Object.entries(next.vouches)) if (!Array.isArray(v)) delete next.vouches[k];
+    if (!Number.isFinite(next.vouchN)) next.vouchN = 0;
     db = next;
   }
   function save(now = false) {
@@ -4392,6 +4397,17 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("reroll").setDescription(t("Retirer au sort", "Draw again")).addStringOption((o) => o.setName("message_id").setDescription(t("ID du message du concours", "Giveaway message ID")).setRequired(true)))
       ),
       strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
+      cmd("vouch", t("Laisser un vouch (avis) à quelqu'un après un trade", "Leave a vouch (review) for someone after a trade"))
+        .addUserOption((o) => o.setName("membre").setDescription(t("La personne que tu vouch", "The person you vouch for")).setRequired(true))
+        .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
+        .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : trade Garama, rapide et fiable)", "What happened (e.g. Garama trade, fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500))
+        .addAttachmentOption((o) => o.setName("preuve").setDescription(t("Capture d'écran du trade (facultatif)", "Screenshot of the trade (optional)"))),
+      cmd("vouches", t("Voir les vouches, le top, et réglages", "See vouches, the top, and settings"))
+        .addSubcommand((s) => s.setName("voir").setDescription(t("Le profil de vouches d'un membre", "A member's vouch profile")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre (vide = toi)", "The member (empty = you)"))))
+        .addSubcommand((s) => s.setName("top").setDescription(t("Les membres les plus vouchés", "The most vouched members")))
+        .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les vouches sont postés (admin)", "Channel where vouches are posted (admin)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+        .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un vouch (staff)", "Remove a vouch (staff)")).addIntegerOption((o) => o.setName("numero").setDescription(t("Le numéro du vouch (#)", "The vouch number (#)")).setRequired(true).setMinValue(1)))
+        .addSubcommand((s) => s.setName("reset").setDescription(t("Effacer tous les vouches d'un membre (staff)", "Clear all of a member's vouches (staff)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))),
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
       strOpt(cmd("8ball", t("Boule magique, ou sans question : un quiz à image qui rapporte de l'XP", "Magic 8-ball, or with no question: a picture quiz that wins XP")), "question", t("Ta question (vide = lancer un quiz)", "Your question (empty = start a quiz)"), false, 200),
       D(
@@ -4514,7 +4530,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps", "vouch", "vouches"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -5290,6 +5306,115 @@ const tools = (() => {
     return reply(i, ok(t("Suggestion envoyée !", "Suggestion sent!")));
   };
 
+  /* ---------- vouches: a review with stars for the person you traded with ---------- */
+  const stars = (n) => "★".repeat(n) + "☆".repeat(5 - n);
+  const vouchStats = (id) => {
+    const list = db.vouches[id] || [];
+    const avg = list.length ? list.reduce((a, v) => a + v.stars, 0) / list.length : 0;
+    return { list, count: list.length, avg };
+  };
+  const vouchChannelId = () => db.cfg.vouch.channelId || db.setup.items.find((x) => x.key === "vouches")?.id || "";
+  H.vouch = async (i) => {
+    const target = i.options.getUser("membre");
+    const note = i.options.getInteger("note");
+    const text = String(i.options.getString("commentaire") || "").trim().slice(0, 500);
+    const proof = i.options.getAttachment?.("preuve");
+    if (!target) return reply(i, no(t("Choisis la personne à vouch.", "Pick the person to vouch for.")));
+    if (target.id === i.user.id) return reply(i, no(t("Tu ne peux pas te vouch toi-même.", "You cannot vouch for yourself.")));
+    if (target.bot) return reply(i, no(t("On ne vouch pas un bot.", "You cannot vouch for a bot.")));
+    if (!(note >= 1 && note <= 5)) return reply(i, no(t("La note va de 1 à 5.", "The rating goes from 1 to 5.")));
+    if (text.length < 3) return reply(i, no(t("Écris un vrai commentaire (3 caractères minimum).", "Write a real comment (3 characters minimum).")));
+    if (proof && !String(proof.contentType || "").startsWith("image/")) return reply(i, no(t("La preuve doit être une image.", "The proof must be an image.")));
+    const wait = Math.max(0, Number(db.cfg.vouch.cooldownH) || 0) * 3_600_000;
+    const last = (db.vouches[target.id] || []).filter((v) => v.from === i.user.id).at(-1);
+    if (last && wait && Date.now() - last.at < wait) {
+      return reply(i, no(t(`Tu as déjà vouch <@${target.id}> récemment. Tu pourras recommencer <t:${Math.floor((last.at + wait) / 1000)}:R>.`, `You already vouched for <@${target.id}> recently. You can do it again <t:${Math.floor((last.at + wait) / 1000)}:R>.`)));
+    }
+    const channelId = vouchChannelId();
+    const channel = channelId ? await Promise.resolve(i.guild.channels.fetch(channelId)).catch(() => null) : i.channel;
+    if (!channel?.isTextBased?.() || !channel.send) return reply(i, no(t("Le salon des vouches n'existe plus. Un admin doit faire `/vouches salon`.", "The vouch channel no longer exists. An admin must use `/vouches salon`.")));
+    const n = (db.vouchN || 0) + 1;
+    const v = { n, from: i.user.id, stars: note, text, at: Date.now(), proof: proof?.url || "", channelId: channel.id, msgId: "" };
+    const after = vouchStats(target.id);
+    const count = after.count + 1;
+    const avg = (after.avg * after.count + note) / count;
+    const e = embed(note >= 4 ? 0xf1c40f : note === 3 ? 0xe67e22 : 0xed4245)
+      .setAuthor({ name: `${i.member?.displayName || i.user.username}`, iconURL: i.user.displayAvatarURL?.() || undefined })
+      .setTitle(`⭐  Vouch #${n}`)
+      .setDescription(`<@${i.user.id}> ➜ <@${target.id}>\n\n**${stars(note)}**  ${note}/5\n\n> ${text.replace(/\n/g, "\n> ")}`)
+      .setThumbnail(target.displayAvatarURL?.() || null)
+      .addFields({ name: t("📊 Total", "📊 Total"), value: t(`**${count}** vouch(es) · moyenne **${avg.toFixed(1)}/5**`, `**${count}** vouch(es) · average **${avg.toFixed(1)}/5**`) })
+      .setFooter({ text: t("Kazuki MM · /vouch pour laisser le tien", "Kazuki MM · /vouch to leave yours") });
+    if (proof?.url) e.setImage(proof.url);
+    let message;
+    try {
+      message = await channel.send({ content: `<@${target.id}>`, embeds: [e], allowedMentions: { users: [target.id] } });
+    } catch (error) {
+      console.error("⚠️ Vouch could not be posted:", error?.message || error);
+      return reply(i, no(t(`Je ne peux pas écrire dans <#${channel.id}>.`, `I cannot write in <#${channel.id}>.`)));
+    }
+    v.msgId = message?.id || "";
+    db.vouchN = n;
+    (db.vouches[target.id] ||= []).push(v);
+    save(true);
+    await log(i.guild, `⭐ **Vouch #${n}**  ·  <@${i.user.id}> ➜ <@${target.id}>  ·  ${note}/5`, 0xf1c40f);
+    return reply(i, ok(channel.id === i.channelId ? t(`Vouch #${n} envoyé pour <@${target.id}> !`, `Vouch #${n} sent for <@${target.id}>!`) : t(`Vouch #${n} envoyé pour <@${target.id}> dans <#${channel.id}> !`, `Vouch #${n} sent for <@${target.id}> in <#${channel.id}>!`)));
+  };
+  H.vouches = async (i) => {
+    const sub = i.options.getSubcommand();
+    if (sub === "voir") {
+      const user = i.options.getUser("membre") || i.user;
+      const { list, count, avg } = vouchStats(user.id);
+      const e = embed(0xf1c40f).setTitle(t(`⭐ Vouches de ${user.username}`, `⭐ ${user.username}'s vouches`)).setThumbnail(user.displayAvatarURL?.() || null);
+      if (!count) return i.reply({ embeds: [e.setDescription(t(`<@${user.id}> n'a encore aucun vouch.`, `<@${user.id}> has no vouch yet.`))] });
+      const dist = [5, 4, 3, 2, 1].map((s) => {
+        const k = list.filter((v) => v.stars === s).length;
+        return `${s}★ ${bar(k, count, 10)} ${k}`;
+      });
+      const last = list.slice(-5).reverse().map((v) => `**#${v.n}** ${stars(v.stars)} <@${v.from}> <t:${Math.floor(v.at / 1000)}:R>\n> ${v.text.slice(0, 120)}`);
+      const buyers = new Set(list.map((v) => v.from)).size;
+      e.setDescription(t(`**${count}** vouch(es) de **${buyers}** personne(s)\nMoyenne : **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`, `**${count}** vouch(es) from **${buyers}** people\nAverage: **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`))
+        .addFields({ name: t("📊 Répartition", "📊 Breakdown"), value: dist.join("\n") }, { name: t("🕒 Derniers vouches", "🕒 Latest vouches"), value: last.join("\n").slice(0, 1024) });
+      return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+    }
+    if (sub === "top") {
+      const rows = Object.entries(db.vouches).map(([id, list]) => ({ id, ...vouchStats(id) })).filter((r) => r.count).sort((a, b) => b.count - a.count || b.avg - a.avg).slice(0, 10);
+      const medal = ["🥇", "🥈", "🥉"];
+      const e = embed(0xf1c40f).setTitle(t("🏆 Top vouches", "🏆 Top vouches")).setDescription(rows.length ? rows.map((r, k) => `${medal[k] || `**${k + 1}.**`} <@${r.id}> · **${r.count}** vouch(es) · ${r.avg.toFixed(1)}/5`).join("\n") : t("Aucun vouch pour le moment.", "No vouch yet."));
+      return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+    }
+    if (need_perm(i, P.ManageGuild)) return;
+    if (sub === "salon") {
+      const channel = i.options.getChannel?.("salon");
+      db.cfg.vouch.channelId = channel?.id || i.channelId;
+      save();
+      return reply(i, ok(t(`Les vouches seront postés dans <#${db.cfg.vouch.channelId}>.`, `Vouches will be posted in <#${db.cfg.vouch.channelId}>.`)));
+    }
+    if (sub === "retirer") {
+      const n = i.options.getInteger("numero");
+      for (const [id, list] of Object.entries(db.vouches)) {
+        const k = list.findIndex((v) => v.n === n);
+        if (k < 0) continue;
+        const [v] = list.splice(k, 1);
+        if (!list.length) delete db.vouches[id];
+        save(true);
+        const channel = await Promise.resolve(i.guild.channels.fetch(v.channelId)).catch(() => null);
+        const message = await channel?.messages?.fetch?.(v.msgId).catch(() => null);
+        await message?.delete?.().catch(() => {});
+        await log(i.guild, `🗑️ **Vouch #${n}** ${t("retiré par", "removed by")} <@${i.user.id}>  ·  <@${v.from}> ➜ <@${id}>`, 0xed4245);
+        return reply(i, ok(t(`Vouch #${n} retiré (de <@${v.from}> pour <@${id}>).`, `Vouch #${n} removed (from <@${v.from}> for <@${id}>).`)));
+      }
+      return reply(i, no(t(`Aucun vouch #${n}.`, `No vouch #${n}.`)));
+    }
+    if (sub === "reset") {
+      const user = i.options.getUser("membre");
+      const count = (db.vouches[user.id] || []).length;
+      delete db.vouches[user.id];
+      save(true);
+      return reply(i, count ? ok(t(`${count} vouch(es) de <@${user.id}> effacé(s).`, `${count} vouch(es) of <@${user.id}> cleared.`)) : no(t(`<@${user.id}> n'a aucun vouch.`, `<@${user.id}> has no vouch.`)));
+    }
+  };
+
   /* small fun */
   const BALL = {
     fr: ["Oui, sans aucun doute.", "C'est certain.", "Très probable.", "Les signes disent oui.", "Demande plus tard.", "Je ne peux pas te répondre maintenant.", "Peu probable.", "Mes sources disent non.", "Non.", "Certainement pas."],
@@ -5716,6 +5841,7 @@ const tools = (() => {
       if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
     }
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
+    if (made.vouches) db.cfg.vouch.channelId = made.vouches.id;
     if (made.levels) db.cfg.levels.channelId = made.levels.id;
     if (made.xp) db.cfg.levels.xpChannelId = made.xp.id;
     if (made.suggestions) db.cfg.suggest.channelId = made.suggestions.id;
@@ -5810,6 +5936,7 @@ const tools = (() => {
     // forget the settings that pointed to a removed channel
     if (ids.has(db.cfg.welcome.channelId)) db.cfg.welcome.channelId = "";
     if (ids.has(db.cfg.welcome.leaveChannelId)) db.cfg.welcome.leaveChannelId = "";
+    if (ids.has(db.cfg.vouch.channelId)) db.cfg.vouch.channelId = "";
     if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
     if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
@@ -5837,7 +5964,8 @@ const tools = (() => {
             { name: t("🔊 Vocaux", "🔊 Voice"), value: "`/voc create` `/voc hub` `/voc rename` `/voc limit` `/voc lock` `/voc unlock`" },
             { name: t("🏗️ Salons automatiques", "🏗️ Automatic channels"), value: "`/setup create` `/setup delete` `/setup voc-create` `/setup voc-delete` `/setup status`" },
             { name: t("🎫 Candidatures et accès", "🎫 Applications and access"), value: "`/ticketpanel` `/apps`" },
-            { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" }
+            { name: t("💱 Middleman", "💱 Middleman"), value: "`/panel` `/paypal` `/tiers` `/access`" },
+            { name: t("⭐ Vouches", "⭐ Vouches"), value: "`/vouch` `/vouches voir` `/vouches top` `/vouches salon` `/vouches retirer` `/vouches reset`" }
           ),
       ],
     });
@@ -6305,10 +6433,9 @@ const tools = (() => {
     const order = ["partner", "offers", "waiting_mm", "deposit", "delivery", "done"];
     const at = phase === "cancelled" ? -1 : Math.max(0, order.indexOf(phase) - 1);
     const progress = steps.map((name, n) => `${phase === "done" || n < at ? "✅" : n === at ? "▶️" : "▫️"} ${name}`).join("  ·  ");
-    const vouches = db.setup.items.find((x) => x.key === "vouches");
     const e = embed(phase === "done" ? 0x57f287 : phase === "cancelled" ? 0xed4245 : c.frozen ? 0x3498db : 0x19c7a0)
       .setTitle(`🔁  Cross-trade #${c.n}`)
-      .setDescription(`${c.frozen ? `${t("🧊  **GELÉ** : un litige est ouvert, le staff va décider.", "🧊  **FROZEN**: a dispute is open, staff will decide.")}\n\n` : ""}${next}${phase === "done" && vouches ? `\n${t("⭐ Laisse un vouch dans", "⭐ Leave a vouch in")} <#${vouches.id}>` : ""}\n\n${progress}`)
+      .setDescription(`${c.frozen ? `${t("🧊  **GELÉ** : un litige est ouvert, le staff va décider.", "🧊  **FROZEN**: a dispute is open, staff will decide.")}\n\n` : ""}${next}${phase === "done" ? `\n${t("⭐ Laisse un vouch avec `/vouch`", "⭐ Leave a vouch with `/vouch`")}${vouchChannelId() ? ` → <#${vouchChannelId()}>` : ""}` : ""}\n\n${progress}`)
       .addFields(
         { name: t("👤  Partie A", "👤  Side A"), value: side("A"), inline: true },
         { name: t("👤  Partie B", "👤  Side B"), value: side("B"), inline: true },
@@ -6659,7 +6786,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { vouchStats, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
