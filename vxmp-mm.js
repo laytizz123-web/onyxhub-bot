@@ -3676,6 +3676,17 @@ const gfx = (() => {
       c.circle(103, 95, 50, "#000000", 0.32);
       c.circle(100, 88, 50, "#ffffff");
       c.image(picture, 100, 88, mark === "ltc" ? 88 : 64);
+    } else if (mark === "swap") {
+      // two arrows going opposite ways on a white disc: a trade
+      c.glow(100, 88, 92, "#ffffff", 0.3);
+      c.circle(103, 95, 50, "#000000", 0.32);
+      c.circle(100, 88, 50, "#ffffff");
+      const arrow = (dir, y, color) => {
+        c.segment(100 - dir * 24, y, 100 + dir * 14, y, 8, color);
+        c.polygons([[[100 + dir * 30, y], [100 + dir * 12, y - 14], [100 + dir * 12, y + 14]]], color);
+      };
+      arrow(1, 74, "#19c7a0");
+      arrow(-1, 102, "#7c4dff");
     } else shield(c, 100, 88, 92, [[0, "#ffffff"], [0.5, "#bfa8ff"], [1, "#6c4dff"]]);
     c.text(title, 170, 64, fitSize(c, title, 680, 82), { gradient: [[0, "#ffffff"], [1, "#d9ccff"]], glow: { blur: 14, color: "#9b7bff", alpha: 0.6 }, shadow: { dy: 4, blur: 7, alpha: 0.55 } });
     const w = Math.min(600, c.measure(subtitle, 22, "bold", 4) + 44);
@@ -3906,6 +3917,7 @@ const tools = (() => {
     SlashCommandBuilder,
     TextInputBuilder,
     TextInputStyle,
+    UserSelectMenuBuilder,
   } = require("discord.js");
 
   const ON = !/^(off|no|false|0)$/i.test(String(process.env.TOOLS || "on").trim());
@@ -3922,6 +3934,8 @@ const tools = (() => {
     giveaways: {},
     locks: {},
     claims: {},
+    crosstrades: {},
+    crossStats: { opened: 0, done: 0 },
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
@@ -3958,9 +3972,10 @@ const tools = (() => {
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     next.cfg.apps.access = { trade: { ...base.cfg.apps.access.trade, ...(raw.cfg?.apps?.access?.trade || {}) }, shop: { ...base.cfg.apps.access.shop, ...(raw.cfg?.apps?.access?.shop || {}) } };
     next.voc = { ...base.voc, ...(raw.voc || {}) };
+    next.crossStats = { ...base.crossStats, ...(raw.crossStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     db = next;
   }
@@ -4400,7 +4415,7 @@ const tools = (() => {
       D(
         P.ManageGuild,
         cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
-          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" })
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" })
         )
       ),
       D(
@@ -5937,6 +5952,18 @@ const tools = (() => {
           .setDescription(t("Tu veux rejoindre l'équipe middleman ? Dépose ta candidature : le staff la lit et te répond dans ton ticket.\n\n**À préparer :** ton expérience, tes deals ou vouches avec preuves, tes disponibilités.", "Do you want to join the middleman team? Send your application: staff reads it and answers in your ticket.\n\n**Get ready:** your experience, your deals or vouches with proof, your availability."))
           .addFields({ name: t("1️⃣  Postule", "1️⃣  Apply"), value: t("Appuie sur le bouton et remplis le formulaire.", "Press the button and fill in the form."), inline: true }, { name: t("2️⃣  Le staff étudie", "2️⃣  Staff reviews"), value: t("Tu reçois la décision dans le ticket.", "You get the decision in the ticket."), inline: true }, { name: t("3️⃣  Bienvenue", "3️⃣  Welcome"), value: t("Si tu es accepté, tu reçois le rôle middleman.", "If accepted, you get the middleman role."), inline: true })
           .setImage("attachment://apps-middleman.png"),
+      crosstrade: () =>
+        embed(0x19c7a0)
+          .setTitle(t("🔁  Cross-trade", "🔁  Cross-trade"))
+          .setDescription(t("Échange un objet contre un autre **sans risque** : un **middleman** reçoit les deux objets, vérifie, puis remet chacun à l'autre.", "Swap one item for another **safely**: a **middleman** receives both items, checks them, then hands each one to the other person."))
+          .addFields(
+            { name: t("1️⃣  Ouvre", "1️⃣  Open"), value: t("Ouvre un ticket et ajoute l'autre personne.", "Open a ticket and add the other person."), inline: true },
+            { name: t("2️⃣  Offres", "2️⃣  Offers"), value: t("Chacun écrit son offre, puis confirme.", "Each person writes their offer, then confirms."), inline: true },
+            { name: t("3️⃣  Middleman", "3️⃣  Middleman"), value: t("Il prend le ticket, reçoit les objets, les remet.", "He takes the ticket, receives the items, hands them over."), inline: true },
+            { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** avant que le middleman soit **annoncé dans le ticket**, et jamais en dehors du ticket.", "Give **nothing** before the middleman is **announced in the ticket**, and never outside the ticket."), inline: false }
+          )
+          .setFooter({ text: t(`${db.crossStats.done} cross-trade(s) terminé(s)`, `${db.crossStats.done} cross-trade(s) completed`) })
+          .setImage("attachment://apps-crosstrade.png"),
       claim: () => {
         const c = db.cfg.apps.claim;
         const lv = db.cfg.levels;
@@ -5957,12 +5984,14 @@ const tools = (() => {
           .addFields({ name: `💎  ${access.trade.label}`, value: t("Trade des objets rares entre membres de confiance.", "Trade rare items between trusted members."), inline: true }, { name: `🛍️  ${access.shop.label}`, value: t("Vends et achète dans le shop réservé.", "Sell and buy in the restricted shop."), inline: true })
           .setImage("attachment://apps-access.png"),
     };
-    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"] }[type];
-    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2]), { name: banners[3] });
+    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"] }[type];
+    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2], type === "crosstrade" ? "swap" : undefined), { name: banners[3] });
     const row =
       type === "middleman"
         ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝"))
-        : type === "claim"
+        : type === "crosstrade"
+          ? appRow(appButton("ct:open", t("Ouvrir un cross-trade", "Open a cross-trade"), ButtonStyle.Success, "🔁"))
+          : type === "claim"
           ? appRow(appButton("ap:open:claim", t(`Réclamer ${db.cfg.apps.claim.reward}`, `Claim ${db.cfg.apps.claim.reward}`), ButtonStyle.Success, "🎁"), appButton("ap:myxp", t("Mon XP", "My XP"), ButtonStyle.Secondary, "📊"))
           : appRow(appButton("ap:open:trade", access.trade.label, ButtonStyle.Primary, "💎"), appButton("ap:open:shop", access.shop.label, ButtonStyle.Primary, "🛍️"));
     await i.channel.send({ embeds: [embedFor[type]()], components: [row], files: [file] });
@@ -6213,6 +6242,299 @@ const tools = (() => {
     await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
+  /* ---------- cross-trade: item for item. A middleman takes the ticket, receives both items, hands each over ---------- */
+  const ctPhase = (c) => {
+    if (c.state === "cancelled") return "cancelled";
+    if (!c.b) return "partner";
+    if (!(c.confA && c.confB)) return "offers";
+    if (!c.mm) return "waiting_mm";
+    if (!(c.recvA && c.recvB)) return "deposit";
+    if (!(c.delA && c.delB)) return "delivery";
+    return "done";
+  };
+  const ctFinal = (c) => ["done", "cancelled"].includes(ctPhase(c));
+  const ctParty = (c, id) => id === c.a || id === c.b;
+  const ctSide = (c, id) => (id === c.a ? "A" : id === c.b ? "B" : null);
+  /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
+  const ctCanClaim = (member) => appStaff(member) || Boolean(db.cfg.apps.mmRoleId && member?.roles?.cache?.has?.(db.cfg.apps.mmRoleId));
+  const ctTicketOf = (channel) => db.crosstrades[channel?.id] || null;
+
+  const ctBtn = (id, label, style, emoji, disabled = false) => new ButtonBuilder().setCustomId(`ct:${id}`).setLabel(String(label).slice(0, 80)).setStyle(style).setEmoji(emoji).setDisabled(disabled);
+
+  /* The card: both offers side by side, who confirmed, the middleman, the next step, the buttons that fit the step. */
+  function ctBody(c) {
+    const phase = ctPhase(c);
+    const side = (who) => {
+      const id = c[who === "A" ? "a" : "b"];
+      if (!id) return t("⏳ En attente de l'autre personne…", "⏳ Waiting for the other person…");
+      const give = c[`give${who}`];
+      const conf = c[`conf${who}`];
+      const got = c[`recv${who}`] ? t("📥 reçu par le middleman", "📥 received by the middleman") : "";
+      const sent = c[`del${who}`] ? t("📤 remis à l'autre", "📤 handed over") : "";
+      return [`<@${id}>`, give ? `📦 ${give}` : t("📦 *offre pas encore écrite*", "📦 *offer not written yet*"), c[`roblox${who}`] ? `🎮 ${c[`roblox${who}`]}` : "", conf ? t("✅ confirmé", "✅ confirmed") : t("⏳ pas confirmé", "⏳ not confirmed"), got, sent].filter(Boolean).join("\n");
+    };
+    const next = {
+      partner: t("👤 Ajoute la personne avec qui tu échanges (bouton ci-dessous).", "👤 Add the person you trade with (button below)."),
+      offers: t("📦 Chacun écrit **son offre** (bouton *Mon offre*), puis les deux appuient sur **✅ Je confirme**.", "📦 Each person writes **their offer** (*My offer* button), then both press **✅ I confirm**."),
+      waiting_mm: t("🛡️ Offres confirmées. En attente d'un **middleman** : les middlemen et le staff sont prévenus.", "🛡️ Offers confirmed. Waiting for a **middleman**: middlemen and staff were notified."),
+      deposit: t(`📤 Chacun **remet son objet à ${c.mm ? `<@${c.mm}>` : "le middleman"}** en jeu. Le middleman coche la réception ci-dessous.`, `📤 Each person **hands their item to ${c.mm ? `<@${c.mm}>` : "the middleman"}** in the game. The middleman ticks the reception below.`),
+      delivery: t("📥 Le middleman **remet chaque objet** à l'autre personne, puis coche la livraison.", "📥 The middleman **hands each item over** to the other person, then ticks the delivery."),
+      done: t("🎉 **Cross-trade terminé !** Merci à vous.", "🎉 **Cross-trade completed!** Thank you both."),
+      cancelled: t("✖️ **Cross-trade annulé.**", "✖️ **Cross-trade cancelled.**") + (c.recvA || c.recvB ? t(`\n⚠️ Des objets ont été reçus : ${c.mm ? `<@${c.mm}>` : "le middleman"} doit les **rendre** à leur propriétaire.`, `\n⚠️ Items were received: ${c.mm ? `<@${c.mm}>` : "the middleman"} must **give them back** to their owners.`) : ""),
+    }[phase];
+    const steps = [t("Offres", "Offers"), t("Confirmation", "Confirm"), t("Middleman", "Middleman"), t("Dépôt", "Deposit"), t("Livraison", "Delivery")];
+    const order = ["partner", "offers", "waiting_mm", "deposit", "delivery", "done"];
+    const at = phase === "cancelled" ? -1 : Math.max(0, order.indexOf(phase) - 1);
+    const progress = steps.map((name, n) => `${phase === "done" || n < at ? "✅" : n === at ? "▶️" : "▫️"} ${name}`).join("  ·  ");
+    const vouches = db.setup.items.find((x) => x.key === "vouches");
+    const e = embed(phase === "done" ? 0x57f287 : phase === "cancelled" ? 0xed4245 : c.frozen ? 0x3498db : 0x19c7a0)
+      .setTitle(`🔁  Cross-trade #${c.n}`)
+      .setDescription(`${c.frozen ? `${t("🧊  **GELÉ** : un litige est ouvert, le staff va décider.", "🧊  **FROZEN**: a dispute is open, staff will decide.")}\n\n` : ""}${next}${phase === "done" && vouches ? `\n${t("⭐ Laisse un vouch dans", "⭐ Leave a vouch in")} <#${vouches.id}>` : ""}\n\n${progress}`)
+      .addFields(
+        { name: t("👤  Partie A", "👤  Side A"), value: side("A"), inline: true },
+        { name: t("👤  Partie B", "👤  Side B"), value: side("B"), inline: true },
+        { name: t("🛡️  Middleman", "🛡️  Middleman"), value: c.mm ? `<@${c.mm}>\n${t("✅ **annoncé et légitime**", "✅ **announced and legitimate**")}` : t("⏳ pas encore pris en charge", "⏳ not taken yet"), inline: false },
+        { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Seul le middleman **annoncé ici** est légitime. Ne donne **rien** à quelqu'un d'autre ni en dehors de ce ticket.", "Only the middleman **announced here** is legitimate. Give **nothing** to anyone else or outside this ticket."), inline: false }
+      )
+      .setFooter({ text: `Kazuki MM  ·  Cross-trade #${c.n}` });
+    const rows = [];
+    if (!ctFinal(c)) {
+      const locked = ["waiting_mm", "deposit", "delivery"].includes(phase);
+      const r1 = [];
+      if (phase === "partner") r1.push(ctBtn("add", t("Ajouter l'autre personne", "Add the other person"), ButtonStyle.Primary, "➕"));
+      else r1.push(ctBtn("offer", t("Mon offre", "My offer"), ButtonStyle.Primary, "📦", locked || c.frozen), ctBtn("confirm", t("Je confirme", "I confirm"), ButtonStyle.Success, "✅", locked || c.frozen));
+      r1.push(ctBtn("cancel", t("Annuler", "Cancel"), ButtonStyle.Danger, "✖️"), c.frozen ? ctBtn("unfreeze", t("Dégeler (staff)", "Unfreeze (staff)"), ButtonStyle.Secondary, "🧊") : ctBtn("freeze", t("Appeler le staff", "Call staff"), ButtonStyle.Danger, "🚨"));
+      rows.push(new ActionRowBuilder().addComponents(r1));
+      const r2 = [];
+      if (!c.mm) r2.push(ctBtn("claim", t("Prendre en charge", "Take this ticket"), ButtonStyle.Secondary, "🛡️", phase !== "waiting_mm" || c.frozen));
+      else {
+        r2.push(ctBtn("release", t("Se retirer", "Step down"), ButtonStyle.Secondary, "↩️"));
+        const tick = (key, label, emoji) => ctBtn(key, label, c[key] ? ButtonStyle.Success : ButtonStyle.Secondary, emoji, c.frozen);
+        if (phase === "deposit") r2.push(tick("recvA", t("Reçu de A", "Got from A"), "📥"), tick("recvB", t("Reçu de B", "Got from B"), "📥"));
+        if (phase === "delivery") r2.push(tick("delA", t("Remis à A", "Gave to A"), "📤"), tick("delB", t("Remis à B", "Gave to B"), "📤"));
+      }
+      rows.push(new ActionRowBuilder().addComponents(r2));
+    } else rows.push(new ActionRowBuilder().addComponents(ctBtn("close", t("Fermer le ticket", "Close the ticket"), ButtonStyle.Secondary, "🔒")));
+    return { embeds: [e], components: rows };
+  }
+
+  /* Shows the new state of the card: edits the message the click came from, or fetches it. */
+  async function ctPush(i, c, ack) {
+    const body = ctBody(c);
+    if (i.isFromMessage?.() && i.message?.id === c.msgId) return i.update(body);
+    const message = await i.channel.messages?.fetch?.(c.msgId).catch(() => null);
+    await message?.edit?.(body).catch(() => {});
+    if (ack !== undefined && !i.replied && !i.deferred) await i.reply({ content: ack, flags: ephemeral });
+  }
+  const ctSay = (i, text, mentions = []) => i.channel.send({ content: text, allowedMentions: { users: mentions, roles: [] } }).catch(() => {});
+  const ctNeed = (i, c) => {
+    if (!c) { reply(i, no(t("Ce n'est pas un ticket de cross-trade.", "This is not a cross-trade ticket."))); return false; }
+    return true;
+  };
+
+  /* The panel button: a private ticket for the person. */
+  async function ctOpen(i) {
+    const guild = i.guild;
+    const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`ct-ticket:${i.user.id}`));
+    if (existing) return reply(i, no(t(`Tu as déjà un cross-trade ouvert : ${existing}`, `You already have an open cross-trade: ${existing}`)));
+    await i.deferReply({ flags: ephemeral });
+    const a = db.cfg.apps;
+    const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
+    const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
+    if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels, P.ManageRoles] });
+    for (const roleId of [a.staffRoleId, a.mmRoleId]) if (roleId && guild.roles.cache?.get?.(roleId) && !overwrites.some((o) => o.id === roleId)) overwrites.push({ id: roleId, allow });
+    const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
+    const n = (db.crossStats.opened || 0) + 1;
+    let channel;
+    try {
+      channel = await guild.channels.create({ name: `crosstrade-${n}-${safe}`.slice(0, 90), type: ChannelType.GuildText, parent: a.categoryId || undefined, topic: `ct-ticket:${i.user.id}`, permissionOverwrites: overwrites, reason: "cross-trade" });
+    } catch (error) {
+      console.error("⚠️ Cross-trade ticket error:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu créer le ticket (il me faut « Gérer les salons »).", "I could not create the ticket (I need Manage Channels).")));
+    }
+    db.crossStats.opened = n;
+    const c = { n, a: i.user.id, nameA: i.member?.displayName || i.user.username, b: "", nameB: "", giveA: "", giveB: "", robloxA: "", robloxB: "", confA: false, confB: false, mm: "", mmName: "", recvA: false, recvB: false, delA: false, delB: false, frozen: false, state: "open", msgId: "", at: Date.now() };
+    db.crosstrades[channel.id] = c;
+    const ping = a.mmRoleId || a.staffRoleId;
+    const message = await channel.send({ content: `<@${i.user.id}>`, ...ctBody(c), allowedMentions: { users: [i.user.id] } });
+    c.msgId = message?.id || "";
+    save(true);
+    await log(guild, `🔁 **Cross-trade #${n}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x19c7a0);
+    return i.editReply(ok(t(`Cross-trade créé : ${channel}${ping ? "" : ""}`, `Cross-trade created: ${channel}`)));
+  }
+
+  /* A adds the other person (a member menu: no typing of an @mention). */
+  async function ctAdd(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (i.user.id !== c.a) return reply(i, no(t("Seule la personne qui a ouvert le ticket ajoute l'autre.", "Only the person who opened the ticket adds the other one.")));
+    if (ctPhase(c) !== "partner") return reply(i, no(t("L'autre personne est déjà ajoutée.", "The other person is already added.")));
+    return i.reply({ flags: ephemeral, content: t("👤 **Avec qui échanges-tu ?** Choisis la personne dans la liste.", "👤 **Who do you trade with?** Pick the person in the list."), components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId("ct:pick").setPlaceholder(t("Cherche un membre", "Search a member")).setMinValues(1).setMaxValues(1))] });
+  }
+  async function ctPick(i) {
+    const c = ctTicketOf(i.channel);
+    if (!c) return i.update({ content: no(t("Ce n'est pas un ticket de cross-trade.", "This is not a cross-trade ticket.")), components: [] });
+    const fail = (text) => i.update({ content: no(text), components: i.message?.components || [] });
+    if (i.user.id !== c.a || ctPhase(c) !== "partner") return i.update({ content: no(t("Impossible pour le moment.", "Not possible right now.")), components: [] });
+    const id = i.values?.[0];
+    if (!id) return;
+    if (id === c.a) return fail(t("Tu ne peux pas échanger avec toi-même.", "You cannot trade with yourself."));
+    const person = await i.guild.members.fetch(id).catch(() => null);
+    if (!person || person.user?.bot) return fail(t("Je ne trouve pas cette personne (les bots ne sont pas autorisés).", "I could not find that person (bots are not allowed)."));
+    await i.channel.permissionOverwrites.edit(id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true });
+    c.b = id;
+    c.nameB = person.displayName || person.user?.username || "B";
+    save(true);
+    await i.update({ content: ok(t(`<@${id}> est ajouté.`, `<@${id}> is added.`)), components: [] });
+    const card = await i.channel.messages?.fetch?.(c.msgId).catch(() => null);
+    await card?.edit?.(ctBody(c)).catch(() => {});
+    await ctSay(i, t(`<@${id}> tu es invité à un cross-trade avec <@${c.a}>. Écris **ton offre** avec le bouton *Mon offre* !`, `<@${id}> you are invited to a cross-trade with <@${c.a}>. Write **your offer** with the *My offer* button!`), [id]);
+  }
+
+  /* Each person writes what they give (and their Roblox name, to find them in the game). */
+  async function ctOffer(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!ctParty(c, i.user.id)) return reply(i, no(t("Réservé aux deux personnes du cross-trade.", "Only for the two people of the cross-trade.")));
+    if (ctPhase(c) !== "offers" || c.frozen) return reply(i, no(t("Les offres ne peuvent plus être modifiées.", "Offers can no longer be changed.")));
+    const who = ctSide(c, i.user.id);
+    const modal = new ModalBuilder().setCustomId("ct:m:offer").setTitle(t("Mon offre", "My offer"));
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("give").setLabel(t("Ce que tu donnes", "What you give")).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(300).setValue(c[`give${who}`] || "")),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("roblox").setLabel(t("Ton pseudo Roblox", "Your Roblox username")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(60).setValue(c[`roblox${who}`] || ""))
+    );
+    return i.showModal(modal);
+  }
+  async function ctOfferSubmit(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!ctParty(c, i.user.id) || ctPhase(c) !== "offers" || c.frozen) return reply(i, no(t("Impossible pour le moment.", "Not possible right now.")));
+    const who = ctSide(c, i.user.id);
+    const give = i.fields.getTextInputValue("give").trim().slice(0, 300);
+    const roblox = i.fields.getTextInputValue("roblox").trim().slice(0, 60);
+    if (!give || !roblox) return reply(i, no(t("Écris ton offre et ton pseudo Roblox.", "Write your offer and your Roblox username.")));
+    const changed = c[`give${who}`] && (c[`give${who}`] !== give);
+    c[`give${who}`] = give;
+    c[`roblox${who}`] = roblox;
+    const hadConf = c.confA || c.confB;
+    c.confA = false; // any change means both look at it again
+    c.confB = false;
+    save(true);
+    await ctPush(i, c, ok(t("Offre enregistrée.", "Offer saved.")));
+    if (changed || hadConf) await ctSay(i, t(`✏️ <@${i.user.id}> a modifié son offre : **les confirmations sont remises à zéro**, relisez et confirmez à nouveau.`, `✏️ <@${i.user.id}> changed their offer: **confirmations are reset**, read again and confirm again.`), [i.user.id]);
+  }
+  async function ctConfirm(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!ctParty(c, i.user.id)) return reply(i, no(t("Réservé aux deux personnes du cross-trade.", "Only for the two people of the cross-trade.")));
+    if (ctPhase(c) !== "offers" || c.frozen) return reply(i, no(t("Rien à confirmer pour le moment.", "Nothing to confirm right now.")));
+    if (!c.giveA || !c.giveB) return reply(i, no(t("Les deux offres doivent d'abord être écrites.", "Both offers must be written first.")));
+    const who = ctSide(c, i.user.id);
+    c[`conf${who}`] = true;
+    save(true);
+    const both = c.confA && c.confB;
+    await i.update(ctBody(c));
+    if (both) {
+      const ping = db.cfg.apps.mmRoleId || db.cfg.apps.staffRoleId;
+      await i.channel.send({ content: t(`✅ Les deux offres sont confirmées. ${ping ? `<@&${ping}>` : "Un middleman"} : qui prend ce cross-trade en charge ?`, `✅ Both offers are confirmed. ${ping ? `<@&${ping}>` : "A middleman"}: who takes this cross-trade?`), allowedMentions: { roles: ping ? [ping] : [] } }).catch(() => {});
+    }
+  }
+
+  /* A middleman (holder of the middleman role, or staff) takes the ticket: announced in the card. */
+  async function ctClaim(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!ctCanClaim(i.member)) return reply(i, no(t("Seuls les middlemen et le staff peuvent prendre un cross-trade en charge.", "Only middlemen and staff can take a cross-trade.")));
+    if (ctParty(c, i.user.id)) return reply(i, no(t("Tu ne peux pas être middleman de ton propre échange.", "You cannot be the middleman of your own trade.")));
+    if (c.mm) return reply(i, no(t(`<@${c.mm}> a déjà pris ce cross-trade en charge.`, `<@${c.mm}> already took this cross-trade.`)));
+    if (ctPhase(c) !== "waiting_mm" || c.frozen) return reply(i, no(t("Impossible pour le moment.", "Not possible right now.")));
+    await i.channel.permissionOverwrites.edit(i.user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true }).catch(() => {});
+    c.mm = i.user.id;
+    c.mmName = i.member?.displayName || i.user.username;
+    save(true);
+    await i.update(ctBody(c));
+    await ctSay(i, t(`🛡️ <@${i.user.id}> prend ce cross-trade en charge : **il est le seul middleman légitime de ce ticket**.`, `🛡️ <@${i.user.id}> takes this cross-trade: **he is the only legitimate middleman of this ticket**.`), [i.user.id]);
+    await log(i.guild, `🛡️ **Cross-trade #${c.n}**  ·  ${t("pris en charge par", "taken by")} <@${i.user.id}>`, 0x19c7a0);
+  }
+  async function ctRelease(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!c.mm) return reply(i, no(t("Aucun middleman à retirer.", "No middleman to remove.")));
+    if (i.user.id !== c.mm && !appStaff(i.member)) return reply(i, no(t("Seuls le middleman ou le staff peuvent le retirer.", "Only the middleman or staff can remove him.")));
+    if ((c.recvA || c.recvB) && !appStaff(i.member)) return reply(i, no(t("Des objets sont déjà chez le middleman : le staff doit reprendre la main.", "Items are already with the middleman: staff has to take over.")));
+    const old = c.mm;
+    c.mm = "";
+    c.mmName = "";
+    c.recvA = c.recvB = c.delA = c.delB = false;
+    save(true);
+    await i.update(ctBody(c));
+    await ctSay(i, t(`↩️ <@${old}> n'est plus le middleman de ce ticket. Un autre middleman peut le prendre en charge.`, `↩️ <@${old}> is no longer the middleman of this ticket. Another middleman can take it.`), []);
+  }
+
+  /* The middleman ticks what he received and what he handed over. */
+  async function ctTick(i, key) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (i.user.id !== c.mm && !appStaff(i.member)) return reply(i, no(t("Seul le middleman du ticket peut cocher ça.", "Only the middleman of this ticket can tick this.")));
+    if (c.frozen) return reply(i, no(t("Le ticket est gelé : le staff décide.", "The ticket is frozen: staff decides.")));
+    const phase = ctPhase(c);
+    const ok1 = (phase === "deposit" && (key === "recvA" || key === "recvB")) || (phase === "delivery" && (key === "delA" || key === "delB"));
+    if (!ok1) return reply(i, no(t("Pas possible à cette étape.", "Not possible at this step.")));
+    c[key] = !c[key];
+    save(true);
+    const after = ctPhase(c);
+    await i.update(ctBody(c));
+    const who = key.endsWith("A") ? c.a : c.b;
+    if (key.startsWith("recv") && c[key]) await ctSay(i, t(`📥 Le middleman a **reçu l'objet de** <@${who}>.`, `📥 The middleman **received the item from** <@${who}>.`), []);
+    if (key.startsWith("recv") && c.recvA && c.recvB && after === "delivery") await ctSay(i, t(`✅ Les deux objets sont chez <@${c.mm}>. Il va maintenant les remettre.`, `✅ Both items are with <@${c.mm}>. He will now hand them over.`), []);
+    if (key.startsWith("del") && c[key]) await ctSay(i, t(`📤 L'objet a été **remis à** <@${who}>.`, `📤 The item was **handed to** <@${who}>.`), []);
+    if (after === "done") {
+      db.crossStats.done = (db.crossStats.done || 0) + 1;
+      save(true);
+      await ctSay(i, t(`🎉 **Cross-trade #${c.n} terminé** entre <@${c.a}> et <@${c.b}> ! Merci à <@${c.mm}>.`, `🎉 **Cross-trade #${c.n} completed** between <@${c.a}> and <@${c.b}>! Thanks to <@${c.mm}>.`), []);
+      await log(i.guild, `🎉 **Cross-trade #${c.n}**  ·  <@${c.a}> ⇄ <@${c.b}>  ·  ${t("middleman", "middleman")} <@${c.mm}>`, 0x57f287);
+    }
+  }
+
+  async function ctCancel(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    const priv = i.user.id === c.mm || appStaff(i.member);
+    if (!ctParty(c, i.user.id) && !priv) return reply(i, no(t("Réservé aux personnes du cross-trade, au middleman et au staff.", "Only for the people of the cross-trade, the middleman and staff.")));
+    if (ctFinal(c)) return reply(i, no(t("C'est déjà terminé.", "It is already over.")));
+    if ((c.recvA || c.recvB) && !priv) return reply(i, no(t("Des objets sont déjà chez le middleman : lui ou le staff doit annuler.", "Items are already with the middleman: he or staff has to cancel.")));
+    c.state = "cancelled";
+    save(true);
+    await i.update(ctBody(c));
+    await ctSay(i, t(`✖️ <@${i.user.id}> a annulé le cross-trade.${c.recvA || c.recvB ? " Le middleman rend les objets reçus." : ""}`, `✖️ <@${i.user.id}> cancelled the cross-trade.${c.recvA || c.recvB ? " The middleman gives back the items received." : ""}`), []);
+    await log(i.guild, `✖️ **Cross-trade #${c.n}**  ·  ${t("annulé par", "cancelled by")} <@${i.user.id}>`, 0xed4245);
+  }
+  async function ctFreeze(i, on) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (ctFinal(c)) return reply(i, no(t("C'est déjà terminé.", "It is already over.")));
+    if (on && !ctParty(c, i.user.id) && i.user.id !== c.mm && !appStaff(i.member)) return reply(i, no(t("Réservé aux personnes du cross-trade, au middleman et au staff.", "Only for the people of the cross-trade, the middleman and staff.")));
+    if (!on && !appStaff(i.member)) return reply(i, no(t("Seul le staff peut dégeler.", "Only staff can unfreeze.")));
+    if (c.frozen === on) return reply(i, no(t("Déjà dans cet état.", "Already in that state.")));
+    c.frozen = on;
+    save(true);
+    await i.update(ctBody(c));
+    const staff = db.cfg.apps.staffRoleId;
+    await i.channel.send({ content: on ? t(`🚨 <@${i.user.id}> appelle le staff : le cross-trade est **gelé**. ${staff ? `<@&${staff}>` : "Staff"}, merci de regarder.`, `🚨 <@${i.user.id}> calls staff: the cross-trade is **frozen**. ${staff ? `<@&${staff}>` : "Staff"}, please look.`) : t("🧊 Le staff a dégelé le cross-trade.", "🧊 Staff unfroze the cross-trade."), allowedMentions: { roles: on && staff ? [staff] : [] } }).catch(() => {});
+    await log(i.guild, `${on ? "🚨" : "🧊"} **Cross-trade #${c.n}**  ·  ${on ? t("gelé par", "frozen by") : t("dégelé par", "unfrozen by")} <@${i.user.id}>`, 0x3498db);
+  }
+  async function ctClose(i) {
+    const c = ctTicketOf(i.channel);
+    if (!ctNeed(i, c)) return;
+    if (!ctParty(c, i.user.id) && i.user.id !== c.mm && !appStaff(i.member)) return reply(i, no(t("Réservé aux personnes du cross-trade, au middleman et au staff.", "Only for the people of the cross-trade, the middleman and staff.")));
+    if ((c.recvA || c.recvB) && !ctFinal(c)) return reply(i, no(t("Des objets sont chez le middleman : termine ou annule le cross-trade avant de fermer.", "Items are with the middleman: finish or cancel the cross-trade before closing.")));
+    await i.deferUpdate().catch(() => {});
+    delete db.crosstrades[i.channel.id];
+    save(true);
+    await log(i.guild, `🔒 **Cross-trade #${c.n}**  ·  ${t("ticket fermé par", "ticket closed by")} <@${i.user.id}>`, 0x747f8d);
+    await i.channel.delete("cross-trade closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
+  }
+
   /* ---------- wiring ---------- */
   async function handleInteraction(i) {
     if (!ON) return false;
@@ -6220,6 +6542,24 @@ const tools = (() => {
       if (i.isChatInputCommand?.() && NAMES.has(i.commandName)) {
         if (!i.guild) return (await reply(i, no(t("Utilise cette commande sur le serveur.", "Use this command in the server."))), true);
         await H[i.commandName](i);
+        return true;
+      }
+      if (typeof i.customId === "string" && i.customId.startsWith("ct:")) {
+        const [, kind, arg] = i.customId.split(":");
+        if (i.isButton?.()) {
+          if (kind === "open") await ctOpen(i);
+          else if (kind === "add") await ctAdd(i);
+          else if (kind === "offer") await ctOffer(i);
+          else if (kind === "confirm") await ctConfirm(i);
+          else if (kind === "claim") await ctClaim(i);
+          else if (kind === "release") await ctRelease(i);
+          else if (["recvA", "recvB", "delA", "delB"].includes(kind)) await ctTick(i, kind);
+          else if (kind === "cancel") await ctCancel(i);
+          else if (kind === "freeze") await ctFreeze(i, true);
+          else if (kind === "unfreeze") await ctFreeze(i, false);
+          else if (kind === "close") await ctClose(i);
+        } else if (i.isModalSubmit?.() && kind === "m" && arg === "offer") await ctOfferSubmit(i);
+        else if (i.isUserSelectMenu?.() && kind === "pick") await ctPick(i);
         return true;
       }
       if (typeof i.customId === "string" && i.customId.startsWith("ap:")) {
@@ -6300,7 +6640,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
