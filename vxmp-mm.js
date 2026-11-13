@@ -3547,7 +3547,7 @@ const gfx = (() => {
       c.bar(206, cy + 12, 330, 12, r.into / r.need);
       c.text(label.level, 836, cy - 18, 18, { align: "right", spacing: 4, font: "regular", alpha: 0.75 });
       c.text(String(r.level), 836, cy + 11, fitSize(c, String(r.level), 110, 42), { align: "right", gradient: GOLD, glow: { blur: 8, color: "#ffb02e", alpha: 0.4 } });
-      c.text(`${r.xp} XP`, 700, cy + 4, 22, { align: "right", font: "regular", alpha: 0.85 });
+      c.text(r.sub ?? `${r.xp} XP`, 700, cy + 4, 22, { align: "right", font: "regular", alpha: 0.85 });
     });
     return c.png();
   }
@@ -3945,7 +3945,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
-      vouch: { channelId: "", cooldownH: 24 },
+      vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", period: "month", periodStart: 0, nextReset: 0 },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
         staffRoleId: "",
@@ -4400,6 +4400,14 @@ const tools = (() => {
         P.ManageGuild,
         cmd("vouchadmin", t("Gérer les vouches : salon, retirer, reset (staff)", "Manage vouches: channel, remove, reset (staff)"))
           .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les vouches sont postés (admin)", "Channel where vouches are posted (admin)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) =>
+            s
+              .setName("panel")
+              .setDescription(t("Poster le classement des vouches (mis à jour tout seul)", "Post the vouch ranking (updates by itself)"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+              .addStringOption((o) => o.setName("reset").setDescription(t("Quand le classement repart à zéro (défaut : chaque mois)", "When the ranking starts again from zero (default: every month)")).addChoices({ name: t("Chaque semaine (lundi)", "Every week (Monday)"), value: "week" }, { name: t("Chaque mois (le 1er)", "Every month (the 1st)"), value: "month" }, { name: t("Jamais", "Never"), value: "never" }))
+          )
+          .addSubcommand((s) => s.setName("reset-classement").setDescription(t("Remettre le classement à zéro maintenant (les vouches restent)", "Reset the ranking now (vouches are kept)")))
           .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un vouch (staff)", "Remove a vouch (staff)")).addIntegerOption((o) => o.setName("numero").setDescription(t("Le numéro du vouch (#)", "The vouch number (#)")).setRequired(true).setMinValue(1)))
           .addSubcommand((s) => s.setName("reset").setDescription(t("Effacer tous les vouches d'un membre (staff)", "Clear all of a member's vouches (staff)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)))
       ),
@@ -4409,9 +4417,6 @@ const tools = (() => {
         .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
         .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Garama, Middleman, Shop…)", "What was traded, or the service (e.g. Garama, Middleman, Shop…)")).setRequired(true).setMinLength(2).setMaxLength(100))
         .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : rapide et fiable)", "What happened (e.g. fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500)),
-      cmd("vouches", t("Voir les vouches et le top", "See vouches and the top"))
-        .addSubcommand((s) => s.setName("voir").setDescription(t("Le profil de vouches d'un membre", "A member's vouch profile")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre (vide = toi)", "The member (empty = you)"))))
-        .addSubcommand((s) => s.setName("top").setDescription(t("Les membres les plus vouchés", "The most vouched members"))),
 
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
       strOpt(cmd("8ball", t("Boule magique, ou sans question : un quiz à image qui rapporte de l'XP", "Magic 8-ball, or with no question: a picture quiz that wins XP")), "question", t("Ta question (vide = lancer un quiz)", "Your question (empty = start a quiz)"), false, 200),
@@ -4491,11 +4496,6 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("hub").setDescription(t("Créer le salon « ➕ Créer ton vocal » (chacun obtient son vocal)", "Create the \"➕ Create your voice\" channel (everyone gets their own)")))
       ),
-      cmd("voc", t("Gérer ton vocal", "Manage your voice channel"))
-        .addSubcommand((s) => s.setName("rename").setDescription(t("Renommer ton vocal", "Rename your voice channel")).addStringOption((o) => o.setName("nom").setDescription(t("Nouveau nom", "New name")).setRequired(true).setMaxLength(80)))
-        .addSubcommand((s) => s.setName("limit").setDescription(t("Limiter les places de ton vocal", "Limit the seats of your voice channel")).addIntegerOption((o) => o.setName("places").setDescription(t("0 = illimité", "0 = unlimited")).setRequired(true).setMinValue(0).setMaxValue(99)))
-        .addSubcommand((s) => s.setName("lock").setDescription(t("Fermer ton vocal : plus personne ne peut le rejoindre", "Close your voice channel: nobody else can join")))
-        .addSubcommand((s) => s.setName("unlock").setDescription(t("Rouvrir ton vocal", "Open your voice channel again"))),
       // channels made by the bot
       D(
         P.Administrator,
@@ -4539,7 +4539,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "voc", "ticketpanel", "apps", "vouch", "vouches", "vouchadmin", "vocadmin"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -4816,6 +4816,7 @@ const tools = (() => {
       try {
         room = await createRoom(guild, member, hub);
         await member.voice.setChannel(room, "voice room");
+        await Promise.resolve(room.send?.({ content: `<@${member.id}>`, ...roomPanel(room, member.id), allowedMentions: { users: [member.id] } })).catch(() => {});
       } catch (error) {
         console.error("⚠️ Voice room error:", error?.message || error);
         if (room) {
@@ -4856,12 +4857,89 @@ const tools = (() => {
     }
   }
   /* The voice room of the member, when it is one of the bot's rooms and they own it (or manage channels). */
-  async function ownRoom(i) {
-    const id = i.member?.voice?.channelId;
-    const room = id ? db.voc.rooms[id] : null;
-    if (!room) return reply(i, no(t("Rejoins d'abord ton vocal (créé avec « ➕ Créer ton vocal »).", "Join your own voice room first (made with \"➕ Create your voice\").")));
-    if (room.owner !== i.user.id && !i.member.permissions?.has?.(P.ManageChannels)) return reply(i, no(t("Ce vocal appartient à quelqu'un d'autre.", "This voice room belongs to someone else.")));
-    return i.member.voice.channel || (await i.guild.channels.fetch(id).catch(() => null)) || reply(i, no(t("Vocal introuvable.", "Voice channel not found.")));
+  /* The control panel posted in the chat of a voice room: only its owner (or staff) can use it. */
+  function roomPanel(room, ownerId) {
+    const r = db.voc.rooms[room.id] || {};
+    const state = [r.locked ? t("🔒 Fermé", "🔒 Closed") : t("🔓 Ouvert", "🔓 Open"), r.hidden ? t("🙈 Caché", "🙈 Hidden") : t("👁️ Visible", "👁️ Visible"), room.userLimit ? `👥 ${room.userLimit} ${t("places", "seats")}` : t("👥 Illimité", "👥 Unlimited")].join("  ·  ");
+    const e = embed(0x5865f2)
+      .setTitle(t("🎛️  Ton vocal", "🎛️  Your voice room"))
+      .setDescription(t(`Propriétaire : <@${ownerId}>\nGère ton vocal avec les boutons ci-dessous.\n\n${state}`, `Owner: <@${ownerId}>\nManage your voice room with the buttons below.\n\n${state}`))
+      .setFooter({ text: t("Le vocal est supprimé quand il est vide.", "The room is deleted when it is empty.") });
+    const b = (id, label, emoji, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(`tl:vr:${id}`).setLabel(label).setEmoji(emoji).setStyle(style);
+    return {
+      embeds: [e],
+      components: [
+        new ActionRowBuilder().addComponents(
+          b("rename", t("Renommer", "Rename"), "✏️"),
+          b("limit", t("Places", "Seats"), "👥"),
+          r.locked ? b("unlock", t("Ouvrir", "Open"), "🔓", ButtonStyle.Success) : b("lock", t("Fermer", "Close"), "🔒", ButtonStyle.Danger),
+          r.hidden ? b("show", t("Afficher", "Show"), "👁️", ButtonStyle.Success) : b("hide", t("Cacher", "Hide"), "🙈"),
+          b("claim", t("Récupérer", "Claim"), "👑", ButtonStyle.Primary)
+        ),
+      ],
+      allowedMentions: { parse: [] },
+    };
+  }
+  async function roomButton(i, action) {
+    const room = db.voc.rooms[i.channelId];
+    if (!room) return reply(i, no(t("Ce n'est pas un vocal créé avec « ➕ Créer ton vocal ».", "This is not a room made with \"➕ Create your voice\".")));
+    const channel = i.channel;
+    const staff = Boolean(i.member?.permissions?.has?.(P.ManageChannels));
+    if (action === "claim") {
+      if (room.owner === i.user.id) return reply(i, no(t("C'est déjà ton vocal.", "It is already your room.")));
+      const ownerHere = channel?.members?.has?.(room.owner);
+      if (ownerHere && !staff) return reply(i, no(t("Le propriétaire est encore dans le vocal.", "The owner is still in the room.")));
+      if (i.member?.voice?.channelId !== channel.id && !staff) return reply(i, no(t("Rejoins le vocal pour le récupérer.", "Join the room to claim it.")));
+      await channel.permissionOverwrites.edit(i.user.id, { ViewChannel: true, Connect: true, Speak: true, ManageChannels: true, MoveMembers: true }).catch(() => {});
+      await channel.permissionOverwrites.delete?.(room.owner).catch(() => {});
+      room.owner = i.user.id;
+      save();
+      return i.update(roomPanel(channel, room.owner));
+    }
+    if (room.owner !== i.user.id && !staff) return reply(i, no(t("Seul le propriétaire du vocal peut faire ça.", "Only the owner of the room can do that.")));
+    if (action === "rename" || action === "limit") {
+      const modal = new ModalBuilder().setCustomId(`tl:vrm:${action}`).setTitle(action === "rename" ? t("Renommer le vocal", "Rename the room") : t("Nombre de places", "Number of seats"));
+      const input = action === "rename"
+        ? new TextInputBuilder().setCustomId("v").setLabel(t("Nouveau nom", "New name")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80).setValue(String(channel.name || "").replace(/^🔊│/, "").slice(0, 80))
+        : new TextInputBuilder().setCustomId("v").setLabel(t("Places (0 = illimité, max 99)", "Seats (0 = unlimited, max 99)")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(2).setValue(String(channel.userLimit || 0));
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return i.showModal(modal);
+    }
+    const everyone = i.guild.roles.everyone.id;
+    try {
+      if (action === "lock" || action === "unlock") {
+        await channel.permissionOverwrites.edit(everyone, { Connect: action === "lock" ? false : null });
+        room.locked = action === "lock";
+      }
+      if (action === "hide" || action === "show") {
+        await channel.permissionOverwrites.edit(everyone, { ViewChannel: action === "hide" ? false : null });
+        room.hidden = action === "hide";
+      }
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu modifier ce vocal.", "I could not change this voice room.")));
+    }
+    save();
+    return i.update(roomPanel(channel, room.owner));
+  }
+  async function roomModal(i, action) {
+    const room = db.voc.rooms[i.channelId];
+    if (!room) return reply(i, no(t("Ce vocal n'existe plus.", "This room no longer exists.")));
+    if (room.owner !== i.user.id && !i.member?.permissions?.has?.(P.ManageChannels)) return reply(i, no(t("Seul le propriétaire du vocal peut faire ça.", "Only the owner of the room can do that.")));
+    const value = String(i.fields.getTextInputValue("v") || "").trim();
+    try {
+      if (action === "rename") {
+        if (!value) return reply(i, no(t("Écris un nom.", "Write a name.")));
+        await i.channel.setName(`🔊│${value}`.slice(0, 100));
+      } else {
+        const n = Number(value);
+        if (!Number.isInteger(n) || n < 0 || n > 99) return reply(i, no(t("Écris un nombre entre 0 et 99.", "Write a number from 0 to 99.")));
+        await i.channel.setUserLimit(n);
+      }
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu modifier ce vocal (Discord limite les renommages à 2 toutes les 10 minutes).", "I could not change this room (Discord allows 2 renames every 10 minutes).")));
+    }
+    if (i.isFromMessage?.()) return i.update(roomPanel(i.channel, room.owner));
+    return reply(i, ok(t("C'est fait.", "Done.")));
   }
   H.vocadmin = (i) => H.voc(i);
   H.voc = async (i) => {
@@ -4908,18 +4986,6 @@ const tools = (() => {
         return reply(i, no(t("Je n'ai pas pu le créer (il me faut « Gérer les salons »).", "I could not create it (I need Manage Channels).")));
       }
     }
-    const channel = await ownRoom(i);
-    if (!channel?.id) return; // ownRoom already answered
-    try {
-      if (sub === "rename") await channel.setName(`🔊│${i.options.getString("nom")}`.slice(0, 100));
-      if (sub === "limit") await channel.setUserLimit(i.options.getInteger("places"));
-      if (sub === "lock") await channel.permissionOverwrites.edit(i.guild.roles.everyone.id, { Connect: false });
-      if (sub === "unlock") await channel.permissionOverwrites.edit(i.guild.roles.everyone.id, { Connect: null });
-    } catch {
-      return reply(i, no(t("Je n'ai pas pu modifier ce vocal.", "I could not change this voice room.")));
-    }
-    const done = { rename: t("Vocal renommé.", "Voice room renamed."), limit: t("Nombre de places modifié.", "Seats changed."), lock: t("🔒 Vocal fermé : plus personne ne peut le rejoindre.", "🔒 Voice room closed: nobody else can join."), unlock: t("🔓 Vocal rouvert.", "🔓 Voice room open again.") };
-    return reply(i, ok(done[sub]));
   };
 
   /* ---------- lock / unlock a channel ---------- */
@@ -5366,34 +5432,167 @@ const tools = (() => {
     db.vouchN = n;
     (db.vouches[target.id] ||= []).push(v);
     save(true);
+    queueVouchPanel();
     await log(i.guild, `⭐ **Vouch #${n}**  ·  <@${i.user.id}> ➜ <@${target.id}>  ·  ${note}/5`, 0xf1c40f);
     return reply(i, ok(channel.id === i.channelId ? t(`Vouch #${n} envoyé pour <@${target.id}> !`, `Vouch #${n} sent for <@${target.id}>!`) : t(`Vouch #${n} envoyé pour <@${target.id}> dans <#${channel.id}> !`, `Vouch #${n} sent for <@${target.id}> in <#${channel.id}>!`)));
   };
-  H.vouchadmin = (i) => H.vouches(i);
-  H.vouches = async (i) => {
-    const sub = i.options.getSubcommand();
-    if (sub === "voir") {
-      const user = i.options.getUser("membre") || i.user;
-      const { list, count, avg } = vouchStats(user.id);
-      const e = embed(0xf1c40f).setTitle(t(`⭐ Vouches de ${user.username}`, `⭐ ${user.username}'s vouches`)).setThumbnail(user.displayAvatarURL?.() || null);
-      if (!count) return i.reply({ embeds: [e.setDescription(t(`<@${user.id}> n'a encore aucun vouch.`, `<@${user.id}> has no vouch yet.`))] });
-      const dist = [5, 4, 3, 2, 1].map((s) => {
-        const k = list.filter((v) => v.stars === s).length;
-        return `${s}★ ${bar(k, count, 10)} ${k}`;
-      });
-      const last = list.slice(-5).reverse().map((v) => `**#${v.n}** ${stars(v.stars)} <@${v.from}> <t:${Math.floor(v.at / 1000)}:R>${v.item ? ` · 📦 **${v.item}**` : ""}\n> ${v.text.slice(0, 120)}`);
-      const buyers = new Set(list.map((v) => v.from)).size;
-      e.setDescription(t(`**${count}** vouch(es) de **${buyers}** personne(s)\nMoyenne : **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`, `**${count}** vouch(es) from **${buyers}** people\nAverage: **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`))
-        .addFields({ name: t("📊 Répartition", "📊 Breakdown"), value: dist.join("\n") }, { name: t("🕒 Derniers vouches", "🕒 Latest vouches"), value: last.join("\n").slice(0, 1024) });
-      return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+  /* The profile of one member: shown by the "My profile" button of the panel. */
+  function vouchProfile(user) {
+    const { list, count, avg } = vouchStats(user.id);
+    const e = embed(0xf1c40f).setTitle(t(`⭐ Vouches de ${user.username}`, `⭐ ${user.username}'s vouches`)).setThumbnail(user.displayAvatarURL?.() || null);
+    if (!count) return e.setDescription(t(`<@${user.id}> n'a encore aucun vouch. Fais un trade et demande un \`/vouch\` !`, `<@${user.id}> has no vouch yet. Trade and ask for a \`/vouch\`!`));
+    const dist = [5, 4, 3, 2, 1].map((s) => {
+      const k = list.filter((v) => v.stars === s).length;
+      return `${s}★ ${bar(k, count, 10)} ${k}`;
+    });
+    const last = list.slice(-5).reverse().map((v) => `**#${v.n}** ${stars(v.stars)} <@${v.from}> <t:${Math.floor(v.at / 1000)}:R>${v.item ? ` · 📦 **${v.item}**` : ""}\n> ${v.text.slice(0, 120)}`);
+    const people = new Set(list.map((v) => v.from)).size;
+    const rows = vouchRanking();
+    const place = rows.findIndex((r) => r.id === user.id);
+    const period = rows.find((r) => r.id === user.id)?.count || 0;
+    return e
+      .setDescription(t(`**${count}** vouch(es) de **${people}** personne(s)\nMoyenne : **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}\n🏆 Classement actuel : ${place >= 0 ? `**#${place + 1}** (${period} vouch(es) ${periodName()})` : t("pas encore classé", "not ranked yet")}`, `**${count}** vouch(es) from **${people}** people\nAverage: **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}\n🏆 Current ranking: ${place >= 0 ? `**#${place + 1}** (${period} vouch(es) ${periodName()})` : "not ranked yet"}`))
+      .addFields({ name: t("📊 Répartition", "📊 Breakdown"), value: dist.join("\n") }, { name: t("🕒 Derniers vouches", "🕒 Latest vouches"), value: last.join("\n").slice(0, 1024) });
+  }
+
+  /* ---------- the vouch ranking panel: one message that updates itself, and starts again from zero every week or month ---------- */
+  const DAY = 86_400_000;
+  /* The current period: [start, next reset]. Weeks start on Monday, months on the 1st (UTC). */
+  function periodBounds(period, now = Date.now()) {
+    const d = new Date(now);
+    if (period === "week") {
+      const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - ((d.getUTCDay() + 6) % 7) * DAY;
+      return { start, next: start + 7 * DAY };
     }
-    if (sub === "top") {
-      const rows = Object.entries(db.vouches).map(([id, list]) => ({ id, ...vouchStats(id) })).filter((r) => r.count).sort((a, b) => b.count - a.count || b.avg - a.avg).slice(0, 10);
+    if (period === "month") return { start: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), next: Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) };
+    return { start: 0, next: 0 };
+  }
+  const periodName = () => ({ week: t("cette semaine", "this week"), month: t("ce mois-ci", "this month") })[db.cfg.vouch.period] || t("au total", "in total");
+  /* Members ranked by the vouches they got during the period (then by average). */
+  function vouchRanking() {
+    const from = db.cfg.vouch.period === "never" ? 0 : db.cfg.vouch.periodStart || 0;
+    return Object.entries(db.vouches)
+      .map(([id, list]) => {
+        const got = list.filter((v) => v.at >= from);
+        return { id, count: got.length, avg: got.length ? got.reduce((a, v) => a + v.stars, 0) / got.length : 0 };
+      })
+      .filter((r) => r.count)
+      .sort((a, b) => b.count - a.count || b.avg - a.avg);
+  }
+  async function vouchPanelBody(guild) {
+    const cfg = db.cfg.vouch;
+    const rows = vouchRanking().slice(0, 10);
+    const medal = ["🥇", "🥈", "🥉"];
+    const names = await Promise.all(
+      rows.map(async (r) => {
+        const m = await Promise.resolve(guild?.members?.fetch?.(r.id)).catch(() => null);
+        return { m, name: m?.displayName || m?.user?.username || t("Ancien membre", "Former member") };
+      })
+    );
+    let file;
+    if (rows.length) {
+      const cards = await Promise.all(rows.map(async (r, k) => ({ name: names[k].name, level: r.count, into: Math.round(r.avg * 100), need: 500, xp: 0, sub: `${r.avg.toFixed(1)}/5`, avatar: names[k].m ? await loadAvatar(names[k].m, 64).catch(() => null) : null })));
+      file = new AttachmentBuilder(gfx.leaderboard(cards, { title: t("TOP VOUCHES", "TOP VOUCHES"), level: "VOUCHES" }), { name: "vouches.png" });
+    } else file = new AttachmentBuilder(gfx.banner("KAZUKI MM", "TOP VOUCHES", "#5a3a05", "#f1c40f"), { name: "vouches.png" });
+    const list = rows.length ? rows.map((r, k) => `${medal[k] || `**${k + 1}.**`} <@${r.id}> · **${r.count}** vouch(es) · ${r.avg.toFixed(1)}★`).join("\n") : t("*Personne pour le moment : sois le premier à recevoir un vouch !*", "*Nobody yet: be the first to get a vouch!*");
+    const total = Object.values(db.vouches).reduce((a, l) => a + l.length, 0);
+    const reset = cfg.period !== "never" && cfg.nextReset ? `\n🔄 ${t("Remise à zéro", "Reset")} <t:${Math.floor(cfg.nextReset / 1000)}:R>` : "";
+    const e = embed(0xf1c40f)
+      .setTitle(t("🏆  Classement des vouches", "🏆  Vouch ranking"))
+      .setDescription(`**${periodName().replace(/^./, (c) => c.toUpperCase())}**${reset}\n\n${list}\n\n⭐ ${t("Laisse un vouch avec", "Leave a vouch with")} \`/vouch\``)
+      .setImage("attachment://vouches.png")
+      .setFooter({ text: t(`${total} vouch(es) au total · mis à jour`, `${total} vouch(es) in total · updated`) })
+      .setTimestamp(new Date());
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:vprof").setLabel(t("Mon profil", "My profile")).setEmoji("⭐").setStyle(ButtonStyle.Primary));
+    return { embeds: [e], files: [file], components: [row], allowedMentions: { parse: [] } };
+  }
+  async function refreshVouchPanel() {
+    const cfg = db.cfg.vouch;
+    if (!cfg.panelChannelId || !cfg.panelMsgId) return false;
+    const channel = await Promise.resolve(client?.channels?.fetch?.(cfg.panelChannelId)).catch(() => null);
+    const message = channel ? await Promise.resolve(channel.messages?.fetch?.(cfg.panelMsgId)).catch(() => null) : null;
+    if (!message) {
+      if (channel !== undefined) {
+        cfg.panelMsgId = ""; // the panel was deleted: stop updating it
+        save();
+      }
+      return false;
+    }
+    await message.edit({ ...(await vouchPanelBody(channel.guild)), attachments: [] });
+    return true;
+  }
+  let vouchPanelTimer = null;
+  /* Several vouches in a row = one update. */
+  function queueVouchPanel() {
+    if (vouchPanelTimer) return;
+    vouchPanelTimer = setTimeout(() => {
+      vouchPanelTimer = null;
+      refreshVouchPanel().catch((e) => console.error("⚠️ Vouch panel:", e?.message || e));
+    }, 3000);
+    vouchPanelTimer.unref?.();
+  }
+  /* End of a period: the winners are announced, then the ranking starts again from zero (the vouches themselves are kept). */
+  async function resetVouchRanking(now = Date.now(), manual = false) {
+    const cfg = db.cfg.vouch;
+    const winners = vouchRanking().slice(0, 3);
+    const channel = cfg.panelChannelId ? await Promise.resolve(client?.channels?.fetch?.(cfg.panelChannelId)).catch(() => null) : null;
+    if (winners.length && channel?.send) {
       const medal = ["🥇", "🥈", "🥉"];
-      const e = embed(0xf1c40f).setTitle(t("🏆 Top vouches", "🏆 Top vouches")).setDescription(rows.length ? rows.map((r, k) => `${medal[k] || `**${k + 1}.**`} <@${r.id}> · **${r.count}** vouch(es) · ${r.avg.toFixed(1)}/5`).join("\n") : t("Aucun vouch pour le moment.", "No vouch yet."));
-      return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+      await channel
+        .send({ embeds: [embed(0xf1c40f).setTitle(t("🏆  Fin du classement des vouches !", "🏆  The vouch ranking is over!")).setDescription(`${winners.map((r, k) => `${medal[k]} <@${r.id}> · **${r.count}** vouch(es) · ${r.avg.toFixed(1)}★`).join("\n")}\n\n${t("Bravo ! Le classement repart à zéro.", "Well done! The ranking starts again from zero.")}`)], allowedMentions: { users: winners.map((r) => r.id) } })
+        .catch(() => {});
     }
+    const b = periodBounds(cfg.period, now);
+    cfg.periodStart = manual ? now : b.start;
+    cfg.nextReset = b.next;
+    save(true);
+    await refreshVouchPanel().catch(() => {});
+    return winners;
+  }
+  async function tickVouchReset() {
+    const cfg = db.cfg.vouch;
+    if (cfg.period === "never" || !cfg.nextReset || Date.now() < cfg.nextReset) return;
+    await resetVouchRanking(Date.now());
+  }
+
+  H.vouchadmin = async (i) => {
+    const sub = i.options.getSubcommand();
     if (need_perm(i, P.ManageGuild)) return;
+    if (sub === "panel") {
+      const cfg = db.cfg.vouch;
+      const channel = i.options.getChannel?.("salon") || i.channel;
+      if (!channel?.send) return reply(i, no(t("Je ne peux pas écrire dans ce salon.", "I cannot write in that channel.")));
+      const period = i.options.getString("reset") || cfg.period || "month";
+      if (period !== cfg.period || !cfg.nextReset) {
+        cfg.period = period;
+        const b = periodBounds(period);
+        cfg.periodStart = b.start; // this week's / month's vouches already count
+        cfg.nextReset = b.next;
+      }
+      await i.deferReply({ flags: ephemeral });
+      // only one panel: the old one is removed
+      if (cfg.panelChannelId && cfg.panelMsgId) {
+        const old = await Promise.resolve(i.guild.channels.fetch(cfg.panelChannelId)).catch(() => null);
+        const message = await Promise.resolve(old?.messages?.fetch?.(cfg.panelMsgId)).catch(() => null);
+        await message?.delete?.().catch(() => {});
+      }
+      let message;
+      try {
+        message = await channel.send(await vouchPanelBody(i.guild));
+      } catch (error) {
+        console.error("⚠️ Vouch panel:", error?.message || error);
+        return i.editReply(no(t(`Je ne peux pas écrire dans <#${channel.id}>.`, `I cannot write in <#${channel.id}>.`)));
+      }
+      cfg.panelChannelId = channel.id;
+      cfg.panelMsgId = message?.id || "";
+      save(true);
+      const when = period === "never" ? t("jamais remis à zéro", "never reset") : period === "week" ? t("remis à zéro chaque lundi", "reset every Monday") : t("remis à zéro le 1er de chaque mois", "reset on the 1st of every month");
+      return i.editReply(ok(t(`Classement posté dans <#${channel.id}> : il se met à jour à chaque vouch et est ${when}.`, `Ranking posted in <#${channel.id}>: it updates on every vouch and is ${when}.`)));
+    }
+    if (sub === "reset-classement") {
+      const winners = await resetVouchRanking(Date.now(), true);
+      return reply(i, ok(t(`Classement remis à zéro${winners.length ? " (gagnants annoncés)" : ""}. Les vouches de chacun sont gardés.`, `Ranking reset${winners.length ? " (winners announced)" : ""}. Everyone's vouches are kept.`)));
+    }
     if (sub === "salon") {
       const channel = i.options.getChannel?.("salon");
       db.cfg.vouch.channelId = channel?.id || i.channelId;
@@ -5408,6 +5607,7 @@ const tools = (() => {
         const [v] = list.splice(k, 1);
         if (!list.length) delete db.vouches[id];
         save(true);
+        queueVouchPanel();
         const channel = await Promise.resolve(i.guild.channels.fetch(v.channelId)).catch(() => null);
         const message = await channel?.messages?.fetch?.(v.msgId).catch(() => null);
         await message?.delete?.().catch(() => {});
@@ -5421,6 +5621,7 @@ const tools = (() => {
       const count = (db.vouches[user.id] || []).length;
       delete db.vouches[user.id];
       save(true);
+      queueVouchPanel();
       return reply(i, count ? ok(t(`${count} vouch(es) de <@${user.id}> effacé(s).`, `${count} vouch(es) of <@${user.id}> cleared.`)) : no(t(`<@${user.id}> n'a aucun vouch.`, `<@${user.id}> has no vouch.`)));
     }
   };
@@ -5965,10 +6166,10 @@ const tools = (() => {
     const sections = [
       [t("📈 Niveaux", "📈 Levels"), "`/rank` `/leaderboard` `/quiz`"],
       [t("📈 Niveaux (staff)", "📈 Levels (staff)"), "`/levels` `/xp` `/autoquiz`", P.ManageGuild],
-      [t("⭐ Vouches", "⭐ Vouches"), "`/vouch` `/vouches voir` `/vouches top`"],
-      [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+      [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement et ton profil sont dans le panel des vouches", "`/vouch` · the ranking and your profile are in the vouch panel")],
+      [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin reset-classement` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
-      [t("🔊 Ton vocal", "🔊 Your voice channel"), "`/voc rename` `/voc limit` `/voc lock` `/voc unlock`"],
+      [t("🔊 Ton vocal", "🔊 Your voice channel"), t("Rejoins « ➕ Créer ton vocal » : les boutons pour le gérer sont dans le chat du vocal", "Join \"➕ Create your voice\": the buttons to manage it are in the room's chat")],
       [t("🔨 Bannir", "🔨 Ban"), "`/ban` `/unban`", P.BanMembers],
       [t("🔨 Expulser", "🔨 Kick"), "`/kick`", P.KickMembers],
       [t("🔨 Sanctions", "🔨 Sanctions"), "`/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns`", P.ModerateMembers],
@@ -6737,12 +6938,18 @@ const tools = (() => {
         }
         return true;
       }
+      if (i.isModalSubmit?.() && typeof i.customId === "string" && i.customId.startsWith("tl:vrm:")) {
+        await roomModal(i, i.customId.split(":")[2]);
+        return true;
+      }
       if (i.isButton?.() && typeof i.customId === "string" && i.customId.startsWith("tl:")) {
         const [, kind, arg] = i.customId.split(":");
         if (kind === "rr") await roleButton(i, arg);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
         else if (kind === "gwlist") await giveawayList(i);
+        else if (kind === "vprof") await i.reply({ embeds: [vouchProfile(i.user)], flags: ephemeral, allowedMentions: { parse: [] } });
+        else if (kind === "vr") await roomButton(i, arg);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
@@ -6791,6 +6998,7 @@ const tools = (() => {
       tickVoc().catch((e) => console.error("⚠️ voc:", e?.message || e));
       tickVoiceXp().catch((e) => console.error("⚠️ voice xp:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
+      tickVouchReset().catch((e) => console.error("⚠️ vouch reset:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
     if (!exitHooked) {
@@ -6801,7 +7009,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { vouchStats, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { vouchStats, vouchRanking, periodBounds, refreshVouchPanel, resetVouchRanking, tickVouchReset, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
