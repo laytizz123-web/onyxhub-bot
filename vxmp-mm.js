@@ -5489,20 +5489,21 @@ const tools = (() => {
   };
 
   /* ---------- the vouch channel: a reminder always at the bottom, and plain messages are turned into a hint ---------- */
-  const STICKY_WAIT = 4000;
+  const STICKY_WAIT = 1500;
   const stickyTimers = new Map();
-  function stickyBody() {
-    return {
-      embeds: [
-        embed(0xf1c40f)
-          .setTitle(t("⭐  Comment laisser un vouch ?", "⭐  How to leave a vouch?"))
-          .setDescription(t("Utilise la commande **`/vouch`** :\n\n> `/vouch` **membre** · **note** · **objet** · **commentaire**\n\n👤 la personne · ⭐ ta note de 1 à 5 · 📦 ce qui a été trade (ou le service) · 💬 ton avis", "Use the **`/vouch`** command:\n\n> `/vouch` **member** · **rating** · **item** · **comment**\n\n👤 the person · ⭐ your rating 1 to 5 · 📦 what was traded (or the service) · 💬 your review"))
-          .setFooter({ text: t("Les messages normaux ne sont pas acceptés ici.", "Normal messages are not accepted here.") }),
-      ],
-    };
-  }
+  /* A discreet reminder: one small grey line, no ping, no notification. */
+  const stickyBody = () => ({
+    content: t("-# ⭐ Pour laisser un vouch, utilise **`/vouch`** · membre · note · objet · commentaire", "-# ⭐ To leave a vouch, use **`/vouch`** · member · rating · item · comment"),
+    flags: MessageFlags.SuppressNotifications,
+    allowedMentions: { parse: [] },
+  });
   /* The reminder is moved to the bottom (old one deleted, new one posted). */
-  async function postSticky(channel) {
+  let stickyChain = Promise.resolve();
+  function postSticky(channel) {
+    stickyChain = stickyChain.then(() => moveSticky(channel)).catch(() => {});
+    return stickyChain;
+  }
+  async function moveSticky(channel) {
     const cfg = db.cfg.vouch;
     if (!channel?.send) return;
     if (cfg.stickyMsgId) {
