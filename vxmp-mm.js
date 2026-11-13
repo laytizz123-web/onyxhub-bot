@@ -3940,7 +3940,7 @@ const tools = (() => {
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
-      welcome: { channelId: "", message: "", leave: "", autorole: "" },
+      welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
@@ -4351,7 +4351,13 @@ const tools = (() => {
         cmd("welcome", t("Messages de bienvenue et rôle automatique", "Welcome messages and auto role"))
           .addSubcommand((s) => s.setName("channel").setDescription(t("Salon de bienvenue (celui-ci)", "Welcome channel (this one)")))
           .addSubcommand((s) => s.setName("message").setDescription(t("Texte de bienvenue : {user} {server} {count}", "Welcome text: {user} {server} {count}")).addStringOption((o) => o.setName("texte").setDescription("{user} {server} {count}").setRequired(true).setMaxLength(1000)))
-          .addSubcommand((s) => s.setName("leave").setDescription(t("Texte de départ : {user} {server}", "Leave text: {user} {server}")).addStringOption((o) => o.setName("texte").setDescription("{user} {server}").setRequired(true).setMaxLength(1000)))
+          .addSubcommand((s) =>
+            s
+              .setName("leave")
+              .setDescription(t("Au revoir : salon séparé de bienvenue + texte {user} {server}", "Goodbye: channel separate from welcome + text {user} {server}"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Salon des au revoir (vide = celui-ci)", "Goodbye channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+              .addStringOption((o) => o.setName("texte").setDescription("{user} {server}").setMaxLength(1000))
+          )
           .addSubcommand((s) => s.setName("autorole").setDescription(t("Rôle donné aux nouveaux", "Role given to new members")).addRoleOption((o) => o.setName("role").setDescription("Rôle (vide = aucun)")))
           .addSubcommand((s) => s.setName("off").setDescription(t("Tout couper", "Turn everything off")))
           .addSubcommand((s) => s.setName("test").setDescription(t("Tester le message", "Test the message")))
@@ -4998,9 +5004,13 @@ const tools = (() => {
       return reply(i, ok(t("Message de bienvenue enregistré.", "Welcome message saved.")));
     }
     if (sub === "leave") {
-      w.leave = i.options.getString("texte");
+      const text = i.options.getString("texte");
+      const channel = i.options.getChannel?.("salon");
+      if (text) w.leave = text;
+      if (!w.leave) w.leave = t("{user} a quitté {server}.", "{user} left {server}.");
+      w.leaveChannelId = channel?.id || i.channelId;
       save();
-      return reply(i, ok(t("Message de départ enregistré.", "Leave message saved.")));
+      return reply(i, ok(t(`Les au revoir arriveront dans <#${w.leaveChannelId}>, séparés de la bienvenue.`, `Goodbyes will go to <#${w.leaveChannelId}>, separate from the welcome.`)));
     }
     if (sub === "autorole") {
       const role = i.options.getRole("role");
@@ -5009,7 +5019,7 @@ const tools = (() => {
       return reply(i, ok(role ? t(`Les nouveaux recevront ${role}.`, `New members will get ${role}.`) : t("Plus de rôle automatique.", "No more auto role.")));
     }
     if (sub === "off") {
-      db.cfg.welcome = { channelId: "", message: "", leave: "", autorole: "" };
+      db.cfg.welcome = { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" };
       save();
       return reply(i, ok(t("Bienvenue coupé.", "Welcome turned off.")));
     }
@@ -5056,8 +5066,9 @@ const tools = (() => {
   }
   async function onLeave(member) {
     const w = db.cfg.welcome;
-    if (w.channelId && w.leave) {
-      const channel = await member.guild.channels.fetch(w.channelId).catch(() => null);
+    const target = w.leaveChannelId || w.channelId;
+    if (target && w.leave) {
+      const channel = await member.guild.channels.fetch(target).catch(() => null);
       if (channel?.isTextBased?.()) await channel.send({ content: fill(w.leave, member), allowedMentions: { parse: [] } }).catch(() => {});
     }
     await log(member.guild, `📤 ${member.user ? `${member.user.username}` : member.id} ${t("a quitté", "left")}`, 0xe67e22);
@@ -5501,6 +5512,7 @@ const tools = (() => {
         { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly" },
         { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly" },
         { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "goodbye", name: t("🚪│au-revoir", "🚪│goodbye"), kind: "readonly" },
       ] },
       { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
         { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
@@ -5524,6 +5536,7 @@ const tools = (() => {
         { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly", topic: t("Les règles du serveur. Lis-les avant de trader.", "The server rules. Read them before trading.") },
         { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly", topic: t("Les annonces du serveur.", "Server announcements.") },
         { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "goodbye", name: t("🚪│au-revoir", "🚪│goodbye"), kind: "readonly" },
         { key: "scam", name: t("🚨│anti-scam", "🚨│scam-alerts"), kind: "readonly", topic: t("Comment ne pas te faire arnaquer. Utilise toujours un middleman.", "How not to get scammed. Always use a middleman.") },
       ] },
       { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
@@ -5563,6 +5576,7 @@ const tools = (() => {
     minimal: [
       { category: t("💬 SERVEUR", "💬 SERVER"), channels: [
         { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "goodbye", name: t("🚪│au-revoir", "🚪│goodbye"), kind: "readonly" },
         { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
       ] },
       { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [{ key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" }] },
@@ -5697,6 +5711,10 @@ const tools = (() => {
       }
       if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
     }
+    if (made.goodbye) {
+      db.cfg.welcome.leaveChannelId = made.goodbye.id;
+      if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
+    }
     if (made.logs) db.cfg.logs.channelId = made.logs.id;
     if (made.levels) db.cfg.levels.channelId = made.levels.id;
     if (made.xp) db.cfg.levels.xpChannelId = made.xp.id;
@@ -5791,6 +5809,7 @@ const tools = (() => {
     }
     // forget the settings that pointed to a removed channel
     if (ids.has(db.cfg.welcome.channelId)) db.cfg.welcome.channelId = "";
+    if (ids.has(db.cfg.welcome.leaveChannelId)) db.cfg.welcome.leaveChannelId = "";
     if (ids.has(db.cfg.logs.channelId)) db.cfg.logs.channelId = "";
     if (ids.has(db.cfg.suggest.channelId)) db.cfg.suggest.channelId = "";
     if (ids.has(db.cfg.levels.channelId)) db.cfg.levels.channelId = "";
@@ -6640,7 +6659,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, _test: { onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
