@@ -4400,8 +4400,8 @@ const tools = (() => {
       cmd("vouch", t("Laisser un vouch (avis) à quelqu'un après un trade", "Leave a vouch (review) for someone after a trade"))
         .addUserOption((o) => o.setName("membre").setDescription(t("La personne que tu vouch", "The person you vouch for")).setRequired(true))
         .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
-        .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : trade Garama, rapide et fiable)", "What happened (e.g. Garama trade, fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500))
-        .addAttachmentOption((o) => o.setName("preuve").setDescription(t("Capture d'écran du trade (facultatif)", "Screenshot of the trade (optional)"))),
+        .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Garama, Middleman, Shop…)", "What was traded, or the service (e.g. Garama, Middleman, Shop…)")).setRequired(true).setMinLength(2).setMaxLength(100))
+        .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : rapide et fiable)", "What happened (e.g. fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500)),
       cmd("vouches", t("Voir les vouches, le top, et réglages", "See vouches, the top, and settings"))
         .addSubcommand((s) => s.setName("voir").setDescription(t("Le profil de vouches d'un membre", "A member's vouch profile")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre (vide = toi)", "The member (empty = you)"))))
         .addSubcommand((s) => s.setName("top").setDescription(t("Les membres les plus vouchés", "The most vouched members")))
@@ -5318,13 +5318,13 @@ const tools = (() => {
     const target = i.options.getUser("membre");
     const note = i.options.getInteger("note");
     const text = String(i.options.getString("commentaire") || "").trim().slice(0, 500);
-    const proof = i.options.getAttachment?.("preuve");
+    const item = String(i.options.getString("objet") || "").trim().slice(0, 100);
     if (!target) return reply(i, no(t("Choisis la personne à vouch.", "Pick the person to vouch for.")));
     if (target.id === i.user.id) return reply(i, no(t("Tu ne peux pas te vouch toi-même.", "You cannot vouch for yourself.")));
     if (target.bot) return reply(i, no(t("On ne vouch pas un bot.", "You cannot vouch for a bot.")));
     if (!(note >= 1 && note <= 5)) return reply(i, no(t("La note va de 1 à 5.", "The rating goes from 1 to 5.")));
     if (text.length < 3) return reply(i, no(t("Écris un vrai commentaire (3 caractères minimum).", "Write a real comment (3 characters minimum).")));
-    if (proof && !String(proof.contentType || "").startsWith("image/")) return reply(i, no(t("La preuve doit être une image.", "The proof must be an image.")));
+    if (item.length < 2) return reply(i, no(t("Écris l'objet trade ou le service (ex : Garama, Middleman).", "Write the traded item or the service (e.g. Garama, Middleman).")));
     const wait = Math.max(0, Number(db.cfg.vouch.cooldownH) || 0) * 3_600_000;
     const last = (db.vouches[target.id] || []).filter((v) => v.from === i.user.id).at(-1);
     if (last && wait && Date.now() - last.at < wait) {
@@ -5334,7 +5334,7 @@ const tools = (() => {
     const channel = channelId ? await Promise.resolve(i.guild.channels.fetch(channelId)).catch(() => null) : i.channel;
     if (!channel?.isTextBased?.() || !channel.send) return reply(i, no(t("Le salon des vouches n'existe plus. Un admin doit faire `/vouches salon`.", "The vouch channel no longer exists. An admin must use `/vouches salon`.")));
     const n = (db.vouchN || 0) + 1;
-    const v = { n, from: i.user.id, stars: note, text, at: Date.now(), proof: proof?.url || "", channelId: channel.id, msgId: "" };
+    const v = { n, from: i.user.id, stars: note, text, item, at: Date.now(), channelId: channel.id, msgId: "" };
     const after = vouchStats(target.id);
     const count = after.count + 1;
     const avg = (after.avg * after.count + note) / count;
@@ -5343,9 +5343,8 @@ const tools = (() => {
       .setTitle(`⭐  Vouch #${n}`)
       .setDescription(`<@${i.user.id}> ➜ <@${target.id}>\n\n**${stars(note)}**  ${note}/5\n\n> ${text.replace(/\n/g, "\n> ")}`)
       .setThumbnail(target.displayAvatarURL?.() || null)
-      .addFields({ name: t("📊 Total", "📊 Total"), value: t(`**${count}** vouch(es) · moyenne **${avg.toFixed(1)}/5**`, `**${count}** vouch(es) · average **${avg.toFixed(1)}/5**`) })
+      .addFields({ name: t("📦 Objet / service", "📦 Item / service"), value: `**${item}**`, inline: true }, { name: t("📊 Total", "📊 Total"), inline: true, value: t(`**${count}** vouch(es) · moyenne **${avg.toFixed(1)}/5**`, `**${count}** vouch(es) · average **${avg.toFixed(1)}/5**`) })
       .setFooter({ text: t("Kazuki MM · /vouch pour laisser le tien", "Kazuki MM · /vouch to leave yours") });
-    if (proof?.url) e.setImage(proof.url);
     let message;
     try {
       message = await channel.send({ content: `<@${target.id}>`, embeds: [e], allowedMentions: { users: [target.id] } });
@@ -5371,7 +5370,7 @@ const tools = (() => {
         const k = list.filter((v) => v.stars === s).length;
         return `${s}★ ${bar(k, count, 10)} ${k}`;
       });
-      const last = list.slice(-5).reverse().map((v) => `**#${v.n}** ${stars(v.stars)} <@${v.from}> <t:${Math.floor(v.at / 1000)}:R>\n> ${v.text.slice(0, 120)}`);
+      const last = list.slice(-5).reverse().map((v) => `**#${v.n}** ${stars(v.stars)} <@${v.from}> <t:${Math.floor(v.at / 1000)}:R>${v.item ? ` · 📦 **${v.item}**` : ""}\n> ${v.text.slice(0, 120)}`);
       const buyers = new Set(list.map((v) => v.from)).size;
       e.setDescription(t(`**${count}** vouch(es) de **${buyers}** personne(s)\nMoyenne : **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`, `**${count}** vouch(es) from **${buyers}** people\nAverage: **${avg.toFixed(2)}/5** ${stars(Math.round(avg))}`))
         .addFields({ name: t("📊 Répartition", "📊 Breakdown"), value: dist.join("\n") }, { name: t("🕒 Derniers vouches", "🕒 Latest vouches"), value: last.join("\n").slice(0, 1024) });
