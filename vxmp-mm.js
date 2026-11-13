@@ -3521,6 +3521,28 @@ const gfx = (() => {
     return c.png();
   }
 
+  /* The card of an XP step (every 100 XP by default): the colours change as the XP grows. */
+  function xpStep({ name, xp, gained, level, into, need, rank: place, next, avatar, label }) {
+    const c = new Canvas(860, 300);
+    const pal = PALETTES[Math.floor(xp / 500) % PALETTES.length];
+    aurora(c, `${name}${xp}`, pal, 18);
+    const r = rngOf(`${name}${xp}stars`);
+    const colors = [pal[2], pal[3], pal[4], "#ffffff", "#ffd34d"];
+    for (let k = 0; k < 34; k++) c.confetti(r() * 860, r() * 300, 7 + r() * 9, 3 + r() * 4, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.45 + r() * 0.4);
+    c.glass(22, 22, 816, 256, 34, 0.12);
+    portrait(c, 132, 150, 160, name, avatar, [[0, pal[3]], [1, pal[4]]], pal[2]);
+    c.pill(236, 44, 214, 38, lin(236, 0, 450, 0, [[0, pal[2]], [1, pal[3]]]), label.step, 19, { spacing: 3, glow: pal[2] });
+    const big = `${xp} XP`;
+    c.text(big, 236, 130, fitSize(c, big, 380, 78), { gradient: GOLD, glow: { blur: 18, color: "#ffb02e", alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
+    if (gained) c.text(`+${gained} XP`, 812, 66, 26, { align: "right", color: "#7cffb0", glow: { blur: 10, color: "#2effa8", alpha: 0.6 } });
+    c.text(cutText(c, name, 300, 30), 812, 118, 30, { align: "right", shadow: { dy: 2, blur: 5, alpha: 0.5 } });
+    c.text(`${label.level} ${level}${place ? `  ·  ${label.rank} #${place}` : ""}`, 236, 178, 22, { font: "regular", alpha: 0.9, spacing: 2 });
+    c.bar(236, 194, 576, 26, into / need);
+    c.text(`${into} / ${need} XP`, 236, 248, 20, { font: "regular", alpha: 0.85 });
+    c.text(`${label.next} ${next} XP`, 812, 248, 20, { align: "right", font: "regular", alpha: 0.85 });
+    return c.png();
+  }
+
   function leaderboard(rows, label) {
     const rowH = 90;
     const h = 150 + rows.length * rowH + 24;
@@ -3892,7 +3914,7 @@ const gfx = (() => {
     return c.png();
   }
 
-  return { Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+  return { Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
@@ -4179,12 +4201,26 @@ const tools = (() => {
     if (!channel?.isTextBased?.() || !channel.send) return;
     const milestone = Math.floor(xpAfter / step) * step;
     const l = levelOf(xpAfter);
-    const e = embed(0xf1c40f)
-      .setTitle(`⭐  ${milestone} XP`)
-      .setDescription(`<@${member.id}> ${t("a atteint", "reached")} **${milestone} XP** !\n${t("Niveau", "Level")} **${l.level}**  ·  ${bar(l.into, l.need)}  ·  ${l.into} / ${l.need} XP`)
-      .setThumbnail(member.displayAvatarURL?.() || member.user?.displayAvatarURL?.() || null);
-    await channel.send({ embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => {});
+    const place = rankOf(member.id);
+    const name = member.displayName || member.user?.username || "?";
+    const cheers = FR ? ["continue comme ça !", "quelle activité !", "personne ne t'arrête !", "tu montes vite !", "le serveur te remercie !"] : ["keep it up!", "what an activity!", "nobody can stop you!", "you climb fast!", "the server thanks you!"];
+    const cheer = cheers[Math.floor(milestone / step) % cheers.length];
+    let files = [];
+    const e = embed(PALETTE_COLORS[Math.floor(xpAfter / 500) % PALETTE_COLORS.length])
+      .setAuthor({ name: t("Nouveau palier d'XP", "New XP step"), iconURL: member.displayAvatarURL?.() || member.user?.displayAvatarURL?.() || undefined })
+      .setDescription(`🎉 <@${member.id}> ${t("passe à", "reaches")} **${milestone} XP**, ${cheer}`)
+      .setFooter({ text: t(`Prochain palier : ${milestone + step} XP · ${place ? `#${place} du classement` : ""}`, `Next step: ${milestone + step} XP · ${place ? `#${place} on the leaderboard` : ""}`).replace(/ · $/, "") });
+    try {
+      const card = picture("xp.png", gfx.xpStep({ name, xp: milestone, gained: xpAfter - xpBefore, level: l.level, into: l.into, need: l.need, rank: place, next: milestone + step, avatar: await loadAvatar(member.user || member).catch(() => null), label: { step: t("NOUVEAU PALIER", "NEW STEP"), level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), next: t("Prochain :", "Next:") } }));
+      e.setImage(card.url);
+      files = [card.file];
+    } catch (error) {
+      console.error("⚠️ XP card:", error?.message || error);
+      e.addFields({ name: t("Niveau", "Level"), value: `**${l.level}**  ·  ${bar(l.into, l.need)}  ·  ${l.into} / ${l.need} XP` });
+    }
+    await channel.send({ embeds: [e], files, allowedMentions: { users: [member.id] } }).catch(() => {});
   }
+  const PALETTE_COLORS = [0x7c4dff, 0x19c7ff, 0xff6a3d, 0x2effa8, 0xff5ccf];
 
   async function addXp(member, amount, fallbackChannel) {
     const xpBefore = db.xp[member.id] || 0;
