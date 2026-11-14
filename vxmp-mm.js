@@ -3983,7 +3983,7 @@ const tools = (() => {
         antiLink: "off",
         antiRaid: false,
         link: { action: "delete", minutes: 10, domains: [], channels: [], roles: [], gifs: true, text: "" },
-        spam: { messages: 5, seconds: 5, action: "timeout", minutes: 5, clean: true, mentions: 0, duplicates: 0, caps: 0, emojis: 0, channels: [], roles: [] },
+        spam: { messages: 5, seconds: 5, action: "timeout", minutes: 5, clean: true, mentions: 0, duplicates: 0, caps: 0, emojis: 0, words: 0, channels: [], roles: [] },
       },
     },
   });
@@ -4617,6 +4617,7 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("mentions").setDescription(t("Mentions max dans un message (0 = illimité)", "Max mentions in one message (0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-50").setMinValue(0).setMaxValue(50).setRequired(true)))
           .addSubcommand((s) => s.setName("doublons").setDescription(t("Même message répété max (en 30 s, 0 = illimité)", "Same message repeated max (in 30 s, 0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-20").setMinValue(0).setMaxValue(20).setRequired(true)))
           .addSubcommand((s) => s.setName("majuscules").setDescription(t("% de MAJUSCULES max dans un message (0 = illimité)", "Max % of CAPS in a message (0 = unlimited)")).addIntegerOption((o) => o.setName("pourcent").setDescription("0, 50-100").setMinValue(0).setMaxValue(100).setRequired(true)))
+          .addSubcommand((s) => s.setName("mots").setDescription(t("Mots max dans un message (0 = illimité)", "Max words in a message (0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0, 5-2000").setMinValue(0).setMaxValue(2000).setRequired(true)))
           .addSubcommand((s) => s.setName("emojis").setDescription(t("Emojis max dans un message (0 = illimité)", "Max emojis in a message (0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-100").setMinValue(0).setMaxValue(100).setRequired(true)))
           .addSubcommand((s) => s.setName("salon").setDescription(t("Ignorer / ne plus ignorer un salon", "Ignore / stop ignoring a channel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)"))))
           .addSubcommand((s) => s.setName("role").setDescription(t("Ignorer / ne plus ignorer un rôle", "Ignore / stop ignoring a role")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)))
@@ -6313,6 +6314,7 @@ const tools = (() => {
         { name: t("Doublons max", "Max duplicates"), value: off0(p.duplicates), inline: true },
         { name: t("Majuscules max", "Max caps"), value: off0(p.caps, " %"), inline: true },
         { name: t("Emojis max", "Max emojis"), value: off0(p.emojis), inline: true },
+        { name: t("Mots max", "Max words"), value: off0(p.words), inline: true },
         { name: t("Salons ignorés", "Ignored channels"), value: listOf(p.channels, "#") },
         { name: t("Rôles ignorés", "Ignored roles"), value: listOf(p.roles, "@&") }
       )
@@ -6371,6 +6373,11 @@ const tools = (() => {
     if (sub === "mentions") p.mentions = i.options.getInteger("max");
     if (sub === "doublons") p.duplicates = i.options.getInteger("max") === 1 ? 2 : i.options.getInteger("max"); // 1 would block every message
     if (sub === "emojis") p.emojis = i.options.getInteger("max");
+    if (sub === "mots") {
+      const n = i.options.getInteger("max");
+      if (n && n < 5) return reply(i, no(t("Choisis 0 (illimité) ou au moins 5 mots.", "Pick 0 (unlimited) or at least 5 words.")));
+      p.words = n;
+    }
     if (sub === "majuscules") {
       const n = i.options.getInteger("pourcent");
       if (n && n < 50) return reply(i, no(t("Choisis 0 (illimité) ou entre 50 et 100 %.", "Pick 0 (unlimited) or between 50 and 100%.")));
@@ -6487,6 +6494,8 @@ const tools = (() => {
     const letters = content.replace(/[^\p{L}]/gu, "");
     if (!why && p.caps && letters.length >= 10 && (letters.replace(/[^\p{Lu}]/gu, "").length / letters.length) * 100 > p.caps) why = t("trop de majuscules", "too many caps");
     if (!why && p.emojis && (content.match(EMOJI) || []).length > p.emojis) why = t("trop d'emojis", "too many emojis");
+    const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+    if (!why && p.words && words > p.words) why = t(`message trop long (${words} mots, max ${p.words})`, `message too long (${words} words, max ${p.words})`);
     if (!why) return false;
 
     spam.delete(message.author.id);
