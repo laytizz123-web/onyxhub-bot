@@ -3939,6 +3939,7 @@ const tools = (() => {
     ModalBuilder,
     PermissionFlagsBits: P,
     SlashCommandBuilder,
+    StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
     UserSelectMenuBuilder,
@@ -3969,6 +3970,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
+      cross: { cats: [] }, // cross-trade categories, lowest first: { id, label, roleId }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "" },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
@@ -4003,6 +4005,7 @@ const tools = (() => {
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
+    if (!Array.isArray(next.cfg.cross.cats)) next.cfg.cross.cats = [];
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
       for (const k of ["domains", "channels", "roles"]) if (k in base.cfg.security[part] && !Array.isArray(next.cfg.security[part][k])) next.cfg.security[part][k] = [];
@@ -4586,6 +4589,22 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
       ),
+      // cross-trade categories: each one has its own middleman role
+      D(
+        P.ManageGuild,
+        cmd("crosstrade", t("Catégories de cross-trade : chacune a son rôle middleman", "Cross-trade categories: each has its own middleman role"))
+          .addSubcommand((s) => s.setName("auto").setDescription(t("Trouver et mémoriser tous les rôles « MM » du serveur", "Find and remember every \"MM\" role of the server")))
+          .addSubcommand((s) =>
+            s
+              .setName("add")
+              .setDescription(t("Ajouter une catégorie (ou changer son nom)", "Add a category (or change its name)"))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle middleman de la catégorie", "The middleman role of the category")).setRequired(true))
+              .addStringOption((o) => o.setName("nom").setDescription(t("Nom affiché (vide = nom du rôle)", "Name shown (empty = role name)")).setMaxLength(90))
+          )
+          .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer une catégorie", "Remove a category")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle de la catégorie", "The role of the category")).setRequired(true)))
+          .addSubcommand((s) => s.setName("list").setDescription(t("Voir les catégories", "See the categories")))
+          .addSubcommand((s) => s.setName("clear").setDescription(t("Supprimer toutes les catégories (un seul rôle middleman comme avant)", "Remove every category (one middleman role as before)")))
+      ),
       // anti-links and anti-spam: everything can be tuned
       D(
         P.ManageGuild,
@@ -4639,7 +4658,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6251,7 +6270,7 @@ const tools = (() => {
       [t("🧹 Messages", "🧹 Messages"), "`/clear`", P.ManageMessages],
       [t("🔒 Salons", "🔒 Channels"), "`/lock` `/unlock` `/vocadmin create` `/vocadmin hub`", P.ManageChannels],
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
-      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps`", P.ManageGuild],
+      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
       [t("👑 Admin", "👑 Admin"), "`/setup` `/panel` `/access` `/tiers`", P.Administrator],
     ];
@@ -6594,6 +6613,7 @@ const tools = (() => {
             { name: t("3️⃣  Middleman", "3️⃣  Middleman"), value: t("Il prend le ticket, reçoit les objets, les remet.", "He takes the ticket, receives the items, hands them over."), inline: true },
             { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** avant que le middleman soit **annoncé dans le ticket**, et jamais en dehors du ticket.", "Give **nothing** before the middleman is **announced in the ticket**, and never outside the ticket."), inline: false }
           )
+          .addFields(ctCats().length ? [{ name: t("🏷️  Catégories", "🏷️  Categories"), value: ctCats().map((x) => `• ${x.label}`).join("\n").slice(0, 1024), inline: false }] : [])
           .setFooter({ text: t(`${db.crossStats.done} cross-trade(s) terminé(s)`, `${db.crossStats.done} cross-trade(s) completed`) })
           .setImage("attachment://apps-crosstrade.png"),
       claim: () => {
@@ -6888,7 +6908,70 @@ const tools = (() => {
   const ctParty = (c, id) => id === c.a || id === c.b;
   const ctSide = (c, id) => (id === c.a ? "A" : id === c.b ? "B" : null);
   /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
-  const ctCanClaim = (member) => appStaff(member) || Boolean(db.cfg.apps.mmRoleId && member?.roles?.cache?.has?.(db.cfg.apps.mmRoleId));
+  /* Categories (lowest first). The middlemen of a category, and of the higher ones, can take its tickets. */
+  const ctCats = () => db.cfg.cross.cats;
+  const ctCat = (c) => ctCats().find((x) => x.id === c?.cat) || null;
+  const ctRolesFor = (c) => {
+    const k = ctCats().findIndex((x) => x.id === c?.cat);
+    return k < 0 ? [] : ctCats().slice(k).map((x) => x.roleId);
+  };
+  const ctCanClaim = (member, c) => {
+    if (appStaff(member)) return true;
+    const roles = c?.cat && ctCat(c) ? ctRolesFor(c) : [db.cfg.apps.mmRoleId].filter(Boolean);
+    return roles.some((id) => member?.roles?.cache?.has?.(id));
+  };
+  /* Who is called when both offers are confirmed. */
+  const ctPingRole = (c) => ctCat(c)?.roleId || db.cfg.apps.mmRoleId || db.cfg.apps.staffRoleId || "";
+  const sortCats = (guild) => {
+    const pos = (id) => guild?.roles?.cache?.get?.(id)?.position ?? 0;
+    ctCats().sort((x, y) => pos(x.roleId) - pos(y.roleId));
+  };
+
+  H.crosstrade = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    const cats = ctCats();
+    const view = (note) => {
+      const e = embed(0x19c7a0)
+        .setTitle(t("🔁  Catégories de cross-trade", "🔁  Cross-trade categories"))
+        .setDescription(cats.length ? cats.map((x, k) => `**${k + 1}.** ${x.label}\n└ ${t("middleman", "middleman")} : <@&${x.roleId}>`).join("\n") : t("*Aucune catégorie : tous les cross-trades vont au rôle middleman de `/apps mmrole`.*\nUtilise `/crosstrade auto` ou `/crosstrade add`.", "*No category: every cross-trade goes to the middleman role of `/apps mmrole`.*\nUse `/crosstrade auto` or `/crosstrade add`."))
+        .setFooter({ text: t("De la plus petite à la plus grande. Un middleman d'une catégorie plus haute peut aussi prendre les plus petites.", "From the smallest to the biggest. A middleman of a higher category can also take the smaller ones.") });
+      return i.reply({ content: note || undefined, embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
+    };
+    if (sub === "list") return view();
+    if (sub === "clear") {
+      db.cfg.cross.cats = [];
+      save();
+      return reply(i, ok(t("Catégories supprimées : les cross-trades vont de nouveau au rôle de `/apps mmrole`.", "Categories removed: cross-trades go to the role of `/apps mmrole` again.")));
+    }
+    if (sub === "auto") {
+      const all = await Promise.resolve(i.guild.roles.fetch?.()).catch(() => null);
+      const list = [...(all?.values?.() || i.guild.roles.cache?.values?.() || [])].filter((r) => r && !r.managed && r.id !== i.guild.roles.everyone?.id && /(^|[^a-z])mm([^a-z]|$)/i.test(String(r.name)));
+      if (!list.length) return reply(i, no(t("Je ne trouve aucun rôle avec « MM » dans son nom.", "I found no role with \"MM\" in its name.")));
+      list.sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
+      db.cfg.cross.cats = list.slice(-25).map((r) => ({ id: r.id, label: String(r.name).slice(0, 90), roleId: r.id }));
+      save();
+      return view(ok(t(`${db.cfg.cross.cats.length} catégorie(s) mémorisée(s). Reposte le panel avec \`/ticketpanel\` pour afficher la liste.`, `${db.cfg.cross.cats.length} categories remembered. Post the panel again with \`/ticketpanel\` to show the list.`)));
+    }
+    const role = i.options.getRole("role");
+    if (sub === "add") {
+      const label = String(i.options.getString("nom") || role.name || "").trim().slice(0, 90);
+      const had = cats.find((x) => x.roleId === role.id);
+      if (!had && cats.length >= 25) return reply(i, no(t("25 catégories maximum.", "25 categories maximum.")));
+      if (had) had.label = label;
+      else cats.push({ id: role.id, label, roleId: role.id });
+      sortCats(i.guild);
+      save();
+      return view(ok(had ? t("Catégorie renommée.", "Category renamed.") : t("Catégorie ajoutée.", "Category added.")));
+    }
+    if (sub === "remove") {
+      const k = cats.findIndex((x) => x.roleId === role.id);
+      if (k < 0) return reply(i, no(t("Ce rôle n'est pas une catégorie.", "This role is not a category.")));
+      cats.splice(k, 1);
+      save();
+      return view(ok(t("Catégorie retirée.", "Category removed.")));
+    }
+  };
   const ctTicketOf = (channel) => db.crosstrades[channel?.id] || null;
 
   const ctBtn = (id, label, style, emoji, disabled = false) => new ButtonBuilder().setCustomId(`ct:${id}`).setLabel(String(label).slice(0, 80)).setStyle(style).setEmoji(emoji).setDisabled(disabled);
@@ -6924,6 +7007,7 @@ const tools = (() => {
       .addFields(
         { name: t("👤  Partie A", "👤  Side A"), value: side("A"), inline: true },
         { name: t("👤  Partie B", "👤  Side B"), value: side("B"), inline: true },
+        ...(ctCat(c) ? [{ name: t("🏷️  Catégorie", "🏷️  Category"), value: `**${ctCat(c).label}**\n${t("middleman", "middleman")} : <@&${ctCat(c).roleId}>`, inline: false }] : []),
         { name: t("🛡️  Middleman", "🛡️  Middleman"), value: c.mm ? `<@${c.mm}>\n${t("✅ **annoncé et légitime**", "✅ **announced and legitimate**")}` : t("⏳ pas encore pris en charge", "⏳ not taken yet"), inline: false },
         { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Seul le middleman **annoncé ici** est légitime. Ne donne **rien** à quelqu'un d'autre ni en dehors de ce ticket.", "Only the middleman **announced here** is legitimate. Give **nothing** to anyone else or outside this ticket."), inline: false }
       )
@@ -6964,16 +7048,31 @@ const tools = (() => {
   };
 
   /* The panel button: a private ticket for the person. */
-  async function ctOpen(i) {
+  const ctExisting = (i) => [...(i.guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`ct-ticket:${i.user.id}`));
+  /* The panel button. With categories, the person first picks one in a menu. */
+  async function ctOpen(i, catId = "") {
     const guild = i.guild;
-    const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`ct-ticket:${i.user.id}`));
-    if (existing) return reply(i, no(t(`Tu as déjà un cross-trade ouvert : ${existing}`, `You already have an open cross-trade: ${existing}`)));
-    await i.deferReply({ flags: ephemeral });
+    const existing = ctExisting(i);
+    const already = no(t(`Tu as déjà un cross-trade ouvert : ${existing}`, `You already have an open cross-trade: ${existing}`));
+    const picked = i.isStringSelectMenu?.();
+    if (existing) return picked ? i.update({ content: already, components: [] }) : reply(i, already);
+    if (ctCats().length && !picked) {
+      const menu = new StringSelectMenuBuilder().setCustomId("ct:cat").setPlaceholder(t("Choisis la catégorie", "Pick the category")).addOptions(ctCats().map((x) => ({ label: x.label.slice(0, 100), value: x.id })));
+      return i.reply({ flags: ephemeral, content: t("🏷️ **Quelle catégorie pour ton cross-trade ?** Chaque catégorie a ses propres middlemen.", "🏷️ **Which category for your cross-trade?** Each category has its own middlemen."), components: [new ActionRowBuilder().addComponents(menu)] });
+    }
+    const cat = ctCats().find((x) => x.id === catId) || null;
+    if (picked && !cat) return i.update({ content: no(t("Cette catégorie n'existe plus. Rappuie sur le bouton du panel.", "This category no longer exists. Press the panel button again.")), components: [] });
+    if (picked) {
+      await i.update({ content: t("⏳ Création du ticket…", "⏳ Creating the ticket…"), components: [] });
+      i.editReply = i.editReply || (async () => {});
+    } else await i.deferReply({ flags: ephemeral });
     const a = db.cfg.apps;
     const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
     const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
     if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels, P.ManageRoles] });
-    for (const roleId of [a.staffRoleId, a.mmRoleId]) if (roleId && guild.roles.cache?.get?.(roleId) && !overwrites.some((o) => o.id === roleId)) overwrites.push({ id: roleId, allow });
+    // with a category: its middlemen and the higher ones see the ticket; without: the single middleman role
+    const mmRoles = cat ? ctRolesFor({ cat: cat.id }) : [a.mmRoleId];
+    for (const roleId of [a.staffRoleId, ...mmRoles]) if (roleId && guild.roles.cache?.get?.(roleId) && !overwrites.some((o) => o.id === roleId)) overwrites.push({ id: roleId, allow });
     const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
     const n = (db.crossStats.opened || 0) + 1;
     let channel;
@@ -6984,14 +7083,13 @@ const tools = (() => {
       return i.editReply(no(t("Je n'ai pas pu créer le ticket (il me faut « Gérer les salons »).", "I could not create the ticket (I need Manage Channels).")));
     }
     db.crossStats.opened = n;
-    const c = { n, a: i.user.id, nameA: i.member?.displayName || i.user.username, b: "", nameB: "", giveA: "", giveB: "", robloxA: "", robloxB: "", confA: false, confB: false, mm: "", mmName: "", recvA: false, recvB: false, delA: false, delB: false, frozen: false, state: "open", msgId: "", at: Date.now() };
+    const c = { n, a: i.user.id, nameA: i.member?.displayName || i.user.username, b: "", nameB: "", giveA: "", giveB: "", robloxA: "", robloxB: "", confA: false, confB: false, mm: "", mmName: "", recvA: false, recvB: false, delA: false, delB: false, frozen: false, state: "open", msgId: "", at: Date.now(), cat: cat?.id || "" };
     db.crosstrades[channel.id] = c;
-    const ping = a.mmRoleId || a.staffRoleId;
     const message = await channel.send({ content: `<@${i.user.id}>`, ...ctBody(c), allowedMentions: { users: [i.user.id] } });
     c.msgId = message?.id || "";
     save(true);
     await log(guild, `🔁 **Cross-trade #${n}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x19c7a0, "ticket");
-    return i.editReply(ok(t(`Cross-trade créé : ${channel}${ping ? "" : ""}`, `Cross-trade created: ${channel}`)));
+    return i.editReply({ content: ok(t(`Cross-trade créé : ${channel}`, `Cross-trade created: ${channel}`)), components: [] });
   }
 
   /* A adds the other person (a member menu: no typing of an @mention). */
@@ -7066,7 +7164,7 @@ const tools = (() => {
     const both = c.confA && c.confB;
     await i.update(ctBody(c));
     if (both) {
-      const ping = db.cfg.apps.mmRoleId || db.cfg.apps.staffRoleId;
+      const ping = ctPingRole(c);
       await i.channel.send({ content: t(`✅ Les deux offres sont confirmées. ${ping ? `<@&${ping}>` : "Un middleman"} : qui prend ce cross-trade en charge ?`, `✅ Both offers are confirmed. ${ping ? `<@&${ping}>` : "A middleman"}: who takes this cross-trade?`), allowedMentions: { roles: ping ? [ping] : [] } }).catch(() => {});
     }
   }
@@ -7075,7 +7173,7 @@ const tools = (() => {
   async function ctClaim(i) {
     const c = ctTicketOf(i.channel);
     if (!ctNeed(i, c)) return;
-    if (!ctCanClaim(i.member)) return reply(i, no(t("Seuls les middlemen et le staff peuvent prendre un cross-trade en charge.", "Only middlemen and staff can take a cross-trade.")));
+    if (!ctCanClaim(i.member, c)) return reply(i, no(ctCat(c) ? t(`Seuls les middlemen de cette catégorie (<@&${ctCat(c).roleId}> ou plus haut) et le staff peuvent prendre ce cross-trade.`, `Only the middlemen of this category (<@&${ctCat(c).roleId}> or higher) and staff can take this cross-trade.`) : t("Seuls les middlemen et le staff peuvent prendre un cross-trade en charge.", "Only middlemen and staff can take a cross-trade.")));
     if (ctParty(c, i.user.id)) return reply(i, no(t("Tu ne peux pas être middleman de ton propre échange.", "You cannot be the middleman of your own trade.")));
     if (c.mm) return reply(i, no(t(`<@${c.mm}> a déjà pris ce cross-trade en charge.`, `<@${c.mm}> already took this cross-trade.`)));
     if (ctPhase(c) !== "waiting_mm" || c.frozen) return reply(i, no(t("Impossible pour le moment.", "Not possible right now.")));
@@ -7191,6 +7289,7 @@ const tools = (() => {
           else if (kind === "close") await ctClose(i);
         } else if (i.isModalSubmit?.() && kind === "m" && arg === "offer") await ctOfferSubmit(i);
         else if (i.isUserSelectMenu?.() && kind === "pick") await ctPick(i);
+        else if (i.isStringSelectMenu?.() && kind === "cat") await ctOpen(i, i.values?.[0] || "");
         return true;
       }
       if (typeof i.customId === "string" && i.customId.startsWith("ap:")) {
