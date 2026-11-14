@@ -4620,6 +4620,8 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer une valeur", "Remove a value")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur", "Number of the value")).setMinValue(1).setMaxValue(25).setRequired(true)))
           .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre les 5 valeurs de départ (rôles effacés)", "Back to the 5 starting values (roles cleared)")))
+          .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle middleman pour chaque valeur et le brancher", "Create a middleman role for each value and connect it")))
+          .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /crosstrade autorole", "Delete the roles made by /crosstrade autorole")))
       ),
       // anti-links and anti-spam: everything can be tuned
       D(
@@ -6925,6 +6927,8 @@ const tools = (() => {
   const ctSide = (c, id) => (id === c.a ? "A" : id === c.b ? "B" : null);
   /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
   /* The values of a trade (lowest first). The middlemen of a value, and of the higher ones, can take its tickets. */
+  /* emoji and colour of the role made for each starting value */
+  const CT_ROLE_LOOK = { less: ["🪙", 0x2ecc71], more: ["💰", 0x3498db], color: ["🌈", 0x9b59b6], dragon: ["🐉", 0xe67e22], og: ["👑", 0xf1c40f] };
   const ctCats = () => {
     if (!Array.isArray(db.cfg.cross.cats) || !db.cfg.cross.cats.length) db.cfg.cross.cats = CROSS_VALUES();
     return db.cfg.cross.cats;
@@ -6961,6 +6965,56 @@ const tools = (() => {
       db.cfg.cross.cats = CROSS_VALUES();
       save();
       return reply(i, ok(t("Les 5 valeurs de départ sont remises (sans rôle).", "The 5 starting values are back (without roles).")));
+    }
+    if (sub === "autorole") {
+      await i.deferReply({ flags: ephemeral });
+      let made = 0;
+      let kept = 0;
+      for (const [k, cat] of cats.entries()) {
+        const look = CT_ROLE_LOOK[cat.id] || ["🔁", [0x19c7a0, 0x1abc9c, 0x3498db][k % 3]];
+        const name = `${look[0]} MM · ${cat.label}`.slice(0, 100);
+        const existing = cat.autoRole ? await Promise.resolve(i.guild.roles.fetch?.(cat.autoRole)).catch(() => null) : null;
+        if (existing) {
+          if (existing.name !== name) await existing.edit?.({ name, reason: "cross-trade roles" }).catch(() => {});
+          if (!cat.roles.includes(existing.id)) cat.roles.push(existing.id);
+          kept++;
+          continue;
+        }
+        if (cat.autoRole) cat.roles = cat.roles.filter((id) => id !== cat.autoRole); // the old role was deleted by hand
+        try {
+          const role = await i.guild.roles.create({ name, color: look[1], mentionable: true, hoist: false, reason: "cross-trade roles" });
+          cat.autoRole = role.id;
+          if (!cat.roles.includes(role.id)) cat.roles.push(role.id);
+          made++;
+        } catch (error) {
+          console.error("⚠️ Cross-trade role:", error?.message || error);
+          save();
+          return i.editReply(no(t(`J'ai créé ${made} rôle(s) puis Discord a refusé (il me faut « Gérer les rôles »). Relance la commande après avoir corrigé.`, `I made ${made} role(s) then Discord refused (I need Manage Roles). Run the command again once fixed.`)));
+        }
+      }
+      save();
+      const lines = cats.map((x, k) => `**${k + 1}.** ${x.label} → ${x.autoRole ? `<@&${x.autoRole}>` : "—"}`).join("\n");
+      return i.editReply({ content: ok(t(`${made} rôle(s) créé(s)${kept ? `, ${kept} déjà là` : ""}. Donne ces rôles à tes middlemen :\n${lines}`, `${made} role(s) made${kept ? `, ${kept} already there` : ""}. Give these roles to your middlemen:\n${lines}`)), allowedMentions: { parse: [] } });
+    }
+    if (sub === "autorole-delete") {
+      await i.deferReply({ flags: ephemeral });
+      let removed = 0;
+      for (const cat of cats) {
+        if (!cat.autoRole) continue;
+        const role = await Promise.resolve(i.guild.roles.fetch?.(cat.autoRole)).catch(() => null);
+        if (role) {
+          try {
+            await role.delete("cross-trade roles removed");
+            removed++;
+          } catch {
+            continue; // kept: maybe the bot is too low; try again later
+          }
+        }
+        cat.roles = cat.roles.filter((id) => id !== cat.autoRole);
+        delete cat.autoRole;
+      }
+      save();
+      return i.editReply(removed ? ok(t(`${removed} rôle(s) de cross-trade supprimé(s).`, `${removed} cross-trade role(s) deleted.`)) : no(t("Aucun rôle créé par le bot à supprimer.", "No role made by the bot to delete.")));
     }
     if (sub === "add") {
       if (cats.length >= 25) return reply(i, no(t("25 valeurs maximum.", "25 values maximum.")));
