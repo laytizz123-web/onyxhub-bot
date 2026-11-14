@@ -3978,7 +3978,13 @@ const tools = (() => {
         claim: { xp: 5000, reward: "Garama" },
         access: { trade: { channelId: "1570218139113758740", roleId: "1570262105309847642", label: "Trade OG" }, shop: { channelId: "1570218143903912007", roleId: "1570262023546339429", label: "Shop OG" } },
       },
-      security: { antiSpam: false, antiLink: "off", antiRaid: false },
+      security: {
+        antiSpam: false,
+        antiLink: "off",
+        antiRaid: false,
+        link: { action: "delete", minutes: 10, domains: [], channels: [], roles: [], gifs: true, text: "" },
+        spam: { messages: 5, seconds: 5, action: "timeout", minutes: 5, clean: true, mentions: 0, duplicates: 0, caps: 0, emojis: 0, channels: [], roles: [] },
+      },
     },
   });
   let db = defaults();
@@ -3997,6 +4003,10 @@ const tools = (() => {
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
+    for (const part of ["link", "spam"]) {
+      next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
+      for (const k of ["domains", "channels", "roles"]) if (k in base.cfg.security[part] && !Array.isArray(next.cfg.security[part][k])) next.cfg.security[part][k] = [];
+    }
     next.cfg.apps.access = { trade: { ...base.cfg.apps.access.trade, ...(raw.cfg?.apps?.access?.trade || {}) }, shop: { ...base.cfg.apps.access.shop, ...(raw.cfg?.apps?.access?.shop || {}) } };
     next.voc = { ...base.voc, ...(raw.voc || {}) };
     next.crossStats = { ...base.crossStats, ...(raw.crossStats || {}) };
@@ -4327,6 +4337,18 @@ const tools = (() => {
   function commands() {
     if (!ON) return [];
     const D = (flag, b) => b.setDefaultMemberPermissions(flag);
+    const SANCTION = (sub) =>
+      sub
+        .addStringOption((o) =>
+          o.setName("sanction").setDescription(t("La sanction", "The sanction")).setRequired(true).addChoices(
+            { name: t("Supprimer seulement", "Delete only"), value: "delete" },
+            { name: t("Avertissement (/warn)", "Warning (/warn)"), value: "warn" },
+            { name: t("Sourdine (timeout)", "Timeout"), value: "timeout" },
+            { name: t("Expulsion (kick)", "Kick"), value: "kick" },
+            { name: t("Bannissement (ban)", "Ban"), value: "ban" }
+          )
+        )
+        .addIntegerOption((o) => o.setName("minutes").setDescription(t("Durée de la sourdine en minutes (1-40320)", "Timeout length in minutes (1-40320)")).setMinValue(1).setMaxValue(40320));
     const list = [
       // levels
       userOpt(cmd("rank", t("Affiche ton niveau et ton XP", "Show your level and XP")), false),
@@ -4564,6 +4586,42 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
       ),
+      // anti-links and anti-spam: everything can be tuned
+      D(
+        P.ManageGuild,
+        cmd("antilink", t("Anti-liens : mode, sanction, sites autorisés, exceptions", "Anti-links: mode, sanction, allowed sites, exceptions"))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir tous les réglages de l'anti-liens", "See every anti-link setting")))
+          .addSubcommand((s) => s.setName("mode").setDescription(t("Quoi bloquer", "What to block")).addStringOption((o) => o.setName("mode").setDescription("off / invites / all").setRequired(true).addChoices({ name: t("Désactivé", "Off"), value: "off" }, { name: t("Invitations Discord seulement", "Discord invites only"), value: "invites" }, { name: t("Tous les liens", "All links"), value: "all" })))
+          .addSubcommand((s) => SANCTION(s.setName("sanction").setDescription(t("Que faire à celui qui poste un lien (le message est toujours supprimé)", "What happens to whoever posts a link (the message is always deleted)"))))
+          .addSubcommand((s) => s.setName("site").setDescription(t("Autoriser ou retirer un site (ex : youtube.com)", "Allow or remove a site (e.g. youtube.com)")).addStringOption((o) => o.setName("site").setDescription("youtube.com, roblox.com...").setRequired(true).setMaxLength(100)))
+          .addSubcommand((s) => s.setName("gifs").setDescription(t("Autoriser les GIF (Tenor, Giphy) et les images Discord", "Allow GIFs (Tenor, Giphy) and Discord images")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Autoriser / ne plus autoriser les liens dans un salon", "Allow / stop allowing links in a channel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)"))))
+          .addSubcommand((s) => s.setName("role").setDescription(t("Autoriser / ne plus autoriser un rôle à poster des liens", "Allow / stop allowing a role to post links")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)))
+          .addSubcommand((s) => s.setName("message").setDescription(t("Le message affiché ({user} = la personne). Vide = message par défaut", "The message shown ({user} = the person). Empty = default")).addStringOption((o) => o.setName("texte").setDescription("{user}").setMaxLength(300)))
+          .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre tous les réglages de l'anti-liens par défaut", "Reset every anti-link setting")))
+      ),
+      D(
+        P.ManageGuild,
+        cmd("antispam", t("Anti-spam : limite, sanction, mentions, majuscules, exceptions", "Anti-spam: limit, sanction, mentions, caps, exceptions"))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir tous les réglages de l'anti-spam", "See every anti-spam setting")))
+          .addSubcommand((s) => s.setName("actif").setDescription(t("Activer ou couper l'anti-spam", "Turn the anti-spam on or off")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) =>
+            s
+              .setName("limite")
+              .setDescription(t("Combien de messages en combien de secondes = spam", "How many messages in how many seconds = spam"))
+              .addIntegerOption((o) => o.setName("messages").setDescription("2-30").setMinValue(2).setMaxValue(30).setRequired(true))
+              .addIntegerOption((o) => o.setName("secondes").setDescription("2-120").setMinValue(2).setMaxValue(120).setRequired(true))
+          )
+          .addSubcommand((s) => SANCTION(s.setName("sanction").setDescription(t("Que faire au spammeur", "What happens to the spammer"))))
+          .addSubcommand((s) => s.setName("nettoyage").setDescription(t("Supprimer aussi les messages du spam", "Also delete the spam messages")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) => s.setName("mentions").setDescription(t("Mentions max dans un message (0 = illimité)", "Max mentions in one message (0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-50").setMinValue(0).setMaxValue(50).setRequired(true)))
+          .addSubcommand((s) => s.setName("doublons").setDescription(t("Même message répété max (en 30 s, 0 = illimité)", "Same message repeated max (in 30 s, 0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-20").setMinValue(0).setMaxValue(20).setRequired(true)))
+          .addSubcommand((s) => s.setName("majuscules").setDescription(t("% de MAJUSCULES max dans un message (0 = illimité)", "Max % of CAPS in a message (0 = unlimited)")).addIntegerOption((o) => o.setName("pourcent").setDescription("0, 50-100").setMinValue(0).setMaxValue(100).setRequired(true)))
+          .addSubcommand((s) => s.setName("emojis").setDescription(t("Emojis max dans un message (0 = illimité)", "Max emojis in a message (0 = unlimited)")).addIntegerOption((o) => o.setName("max").setDescription("0-100").setMinValue(0).setMaxValue(100).setRequired(true)))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Ignorer / ne plus ignorer un salon", "Ignore / stop ignoring a channel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)"))))
+          .addSubcommand((s) => s.setName("role").setDescription(t("Ignorer / ne plus ignorer un rôle", "Ignore / stop ignoring a role")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)))
+          .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre tous les réglages de l'anti-spam par défaut", "Reset every anti-spam setting")))
+      ),
       // logs and security
       D(
         P.ManageGuild,
@@ -4573,21 +4631,14 @@ const tools = (() => {
       ),
       D(
         P.ManageGuild,
-        cmd("security", t("Anti-spam, anti-liens, anti-raid", "Anti-spam, anti-links, anti-raid"))
+        cmd("security", t("Anti-raid et résumé de la sécurité", "Anti-raid and security summary"))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
-          .addSubcommand((s) => s.setName("antispam").setDescription(t("Anti-spam (5 messages en 5 s = sourdine 5 min)", "Anti-spam (5 messages in 5 s = 5 min timeout)")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
-          .addSubcommand((s) =>
-            s
-              .setName("antilink")
-              .setDescription(t("Anti-liens", "Anti-links"))
-              .addStringOption((o) => o.setName("mode").setDescription("off / invites / all").setRequired(true).addChoices({ name: t("Désactivé", "Off"), value: "off" }, { name: t("Invitations Discord", "Discord invites"), value: "invites" }, { name: t("Tous les liens", "All links"), value: "all" }))
-          )
           .addSubcommand((s) => s.setName("antiraid").setDescription(t("Anti-raid (5 arrivées en 10 s)", "Anti-raid (5 joins in 10 s)")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
       ),
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6199,7 +6250,7 @@ const tools = (() => {
       [t("🧹 Messages", "🧹 Messages"), "`/clear`", P.ManageMessages],
       [t("🔒 Salons", "🔒 Channels"), "`/lock` `/unlock` `/vocadmin create` `/vocadmin hub`", P.ManageChannels],
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
-      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/ticketpanel` `/apps`", P.ManageGuild],
+      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
       [t("👑 Admin", "👑 Admin"), "`/setup` `/panel` `/access` `/tiers`", P.Administrator],
     ];
@@ -6217,53 +6268,239 @@ const tools = (() => {
     save();
     return reply(i, ok(db.cfg.logs.channelId ? t("Les logs des tickets arriveront ici (rien d'autre).", "Ticket logs will go here (nothing else).") : t("Logs coupés.", "Logs off.")));
   };
+  const SANCTIONS = () => ({ delete: t("supprimer seulement", "delete only"), warn: t("avertissement", "warning"), timeout: t("sourdine", "timeout"), kick: t("expulsion", "kick"), ban: t("bannissement", "ban") });
+  const sanctionText = (c) => (c.action === "timeout" ? `${SANCTIONS().timeout} ${c.minutes} min` : SANCTIONS()[c.action] || c.action);
+  const listOf = (ids, mark) => (ids.length ? ids.map((id) => `<${mark}${id}>`).join(" ") : t("aucun", "none"));
+  const onOff = (v) => (v ? "✅" : "❌");
+  const off0 = (n, unit = "") => (n ? `**${n}**${unit}` : t("illimité", "unlimited"));
+  /* add when absent, remove when present: returns true when it was added */
+  const toggle = (list, id) => {
+    const k = list.indexOf(id);
+    if (k >= 0) list.splice(k, 1);
+    else list.push(id);
+    return k < 0;
+  };
+  const cleanDomain = (raw) => String(raw || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#\s]/)[0];
+
+  function linkStatus() {
+    const s = db.cfg.security;
+    const l = s.link;
+    const mode = { off: t("❌ désactivé", "❌ off"), invites: t("✅ invitations Discord", "✅ Discord invites"), all: t("✅ tous les liens", "✅ all links") }[s.antiLink];
+    return embed(0x3498db)
+      .setTitle(t("🔗  Anti-liens", "🔗  Anti-links"))
+      .addFields(
+        { name: t("Mode", "Mode"), value: mode, inline: true },
+        { name: t("Sanction", "Sanction"), value: sanctionText(l), inline: true },
+        { name: t("GIF et images Discord", "GIFs and Discord images"), value: onOff(l.gifs), inline: true },
+        { name: t("Sites autorisés", "Allowed sites"), value: l.domains.length ? l.domains.map((d) => `\`${d}\``).join(" ") : t("aucun", "none") },
+        { name: t("Salons où les liens sont autorisés", "Channels where links are allowed"), value: listOf(l.channels, "#") },
+        { name: t("Rôles autorisés", "Allowed roles"), value: listOf(l.roles, "@&") },
+        { name: t("Message", "Message"), value: l.text || t("*par défaut*", "*default*") }
+      )
+      .setFooter({ text: t("Le staff (Gérer les messages) n'est jamais touché.", "Staff (Manage Messages) is never affected.") });
+  }
+  function spamStatus() {
+    const s = db.cfg.security;
+    const p = s.spam;
+    return embed(0xe67e22)
+      .setTitle(t("🔇  Anti-spam", "🔇  Anti-spam"))
+      .addFields(
+        { name: t("État", "State"), value: onOff(s.antiSpam), inline: true },
+        { name: t("Limite", "Limit"), value: t(`**${p.messages}** messages en **${p.seconds}** s`, `**${p.messages}** messages in **${p.seconds}** s`), inline: true },
+        { name: t("Sanction", "Sanction"), value: sanctionText(p), inline: true },
+        { name: t("Supprimer les messages du spam", "Delete the spam messages"), value: onOff(p.clean), inline: true },
+        { name: t("Mentions max", "Max mentions"), value: off0(p.mentions), inline: true },
+        { name: t("Doublons max", "Max duplicates"), value: off0(p.duplicates), inline: true },
+        { name: t("Majuscules max", "Max caps"), value: off0(p.caps, " %"), inline: true },
+        { name: t("Emojis max", "Max emojis"), value: off0(p.emojis), inline: true },
+        { name: t("Salons ignorés", "Ignored channels"), value: listOf(p.channels, "#") },
+        { name: t("Rôles ignorés", "Ignored roles"), value: listOf(p.roles, "@&") }
+      )
+      .setFooter({ text: t("Le staff (Gérer les messages) n'est jamais touché.", "Staff (Manage Messages) is never affected.") });
+  }
+  const setSanction = (i, c) => {
+    c.action = i.options.getString("sanction");
+    const minutes = i.options.getInteger("minutes");
+    if (minutes) c.minutes = minutes;
+  };
+
+  H.antilink = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const s = db.cfg.security;
+    const l = s.link;
+    const sub = i.options.getSubcommand();
+    let note = "";
+    if (sub === "mode") s.antiLink = i.options.getString("mode");
+    if (sub === "sanction") setSanction(i, l);
+    if (sub === "gifs") l.gifs = i.options.getBoolean("actif");
+    if (sub === "site") {
+      const domain = cleanDomain(i.options.getString("site"));
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) return reply(i, no(t("Écris un site comme `youtube.com`.", "Write a site like `youtube.com`.")));
+      if (!l.domains.includes(domain) && l.domains.length >= 50) return reply(i, no(t("50 sites maximum.", "50 sites maximum.")));
+      note = toggle(l.domains, domain) ? t(`\`${domain}\` est autorisé.`, `\`${domain}\` is allowed.`) : t(`\`${domain}\` n'est plus autorisé.`, `\`${domain}\` is no longer allowed.`);
+    }
+    if (sub === "salon") {
+      const id = i.options.getChannel?.("salon")?.id || i.channelId;
+      note = toggle(l.channels, id) ? t(`Les liens sont autorisés dans <#${id}>.`, `Links are allowed in <#${id}>.`) : t(`Les liens ne sont plus autorisés dans <#${id}>.`, `Links are no longer allowed in <#${id}>.`);
+    }
+    if (sub === "role") {
+      const id = i.options.getRole("role").id;
+      note = toggle(l.roles, id) ? t(`<@&${id}> peut poster des liens.`, `<@&${id}> can post links.`) : t(`<@&${id}> ne peut plus poster de liens.`, `<@&${id}> can no longer post links.`);
+    }
+    if (sub === "message") l.text = String(i.options.getString("texte") || "").trim();
+    if (sub === "reset") {
+      s.antiLink = "off";
+      s.link = defaults().cfg.security.link;
+    }
+    save();
+    return i.reply({ content: sub === "status" ? undefined : ok(note || t("Anti-liens mis à jour.", "Anti-links updated.")), embeds: [linkStatus()], flags: ephemeral, allowedMentions: { parse: [] } });
+  };
+  H.antispam = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const s = db.cfg.security;
+    const p = s.spam;
+    const sub = i.options.getSubcommand();
+    let note = "";
+    if (sub === "actif") s.antiSpam = i.options.getBoolean("actif");
+    if (sub === "limite") {
+      p.messages = i.options.getInteger("messages");
+      p.seconds = i.options.getInteger("secondes");
+    }
+    if (sub === "sanction") setSanction(i, p);
+    if (sub === "nettoyage") p.clean = i.options.getBoolean("actif");
+    if (sub === "mentions") p.mentions = i.options.getInteger("max");
+    if (sub === "doublons") p.duplicates = i.options.getInteger("max") === 1 ? 2 : i.options.getInteger("max"); // 1 would block every message
+    if (sub === "emojis") p.emojis = i.options.getInteger("max");
+    if (sub === "majuscules") {
+      const n = i.options.getInteger("pourcent");
+      if (n && n < 50) return reply(i, no(t("Choisis 0 (illimité) ou entre 50 et 100 %.", "Pick 0 (unlimited) or between 50 and 100%.")));
+      p.caps = n;
+    }
+    if (sub === "salon") {
+      const id = i.options.getChannel?.("salon")?.id || i.channelId;
+      note = toggle(p.channels, id) ? t(`<#${id}> est ignoré par l'anti-spam.`, `<#${id}> is ignored by the anti-spam.`) : t(`<#${id}> n'est plus ignoré.`, `<#${id}> is no longer ignored.`);
+    }
+    if (sub === "role") {
+      const id = i.options.getRole("role").id;
+      note = toggle(p.roles, id) ? t(`<@&${id}> est ignoré par l'anti-spam.`, `<@&${id}> is ignored by the anti-spam.`) : t(`<@&${id}> n'est plus ignoré.`, `<@&${id}> is no longer ignored.`);
+    }
+    if (sub === "reset") {
+      s.antiSpam = false;
+      s.spam = defaults().cfg.security.spam;
+    }
+    save();
+    return i.reply({ content: sub === "status" ? undefined : ok(note || t("Anti-spam mis à jour.", "Anti-spam updated.")), embeds: [spamStatus()], flags: ephemeral, allowedMentions: { parse: [] } });
+  };
   H.security = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const s = db.cfg.security;
-    const sub = i.options.getSubcommand();
-    if (sub === "antispam") s.antiSpam = i.options.getBoolean("actif");
-    if (sub === "antiraid") s.antiRaid = i.options.getBoolean("actif");
-    if (sub === "antilink") s.antiLink = i.options.getString("mode");
+    if (i.options.getSubcommand() === "antiraid") s.antiRaid = i.options.getBoolean("actif");
     save();
-    const onOff = (v) => (v ? "✅" : "❌");
-    return reply(
-      i,
-      `🛡️ ${t("Anti-spam", "Anti-spam")} ${onOff(s.antiSpam)}  ·  ${t("Anti-liens", "Anti-links")} **${s.antiLink}**  ·  ${t("Anti-raid", "Anti-raid")} ${onOff(s.antiRaid)}\n${t("Les modérateurs (Gérer les messages) ne sont jamais touchés.", "Moderators (Manage Messages) are never affected.")}`
-    );
+    return i.reply({
+      content: `🛡️ ${t("Anti-raid", "Anti-raid")} ${onOff(s.antiRaid)}  ·  ${t("réglages détaillés : `/antilink` et `/antispam`", "detailed settings: `/antilink` and `/antispam`")}`,
+      embeds: [linkStatus(), spamStatus()],
+      flags: ephemeral,
+      allowedMentions: { parse: [] },
+    });
   };
 
   /* ---------- message protection ---------- */
-  const spam = new Map();
-  const INVITE = /(discord\.gg|discord(?:app)?\.com\/invite)\/[\w-]+/i;
-  const ANY_LINK = /https?:\/\/\S+/i;
+  const spam = new Map(); // user -> [{ at, text, message }]
+  const INVITE = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/[\w-]+/i;
+  const LINKS = /(?:https?:\/\/|www\.)[^\s<>]+/gi;
+  const GIF_HOSTS = ["tenor.com", "giphy.com", "cdn.discordapp.com", "media.discordapp.net"];
+  const EMOJI = /<a?:\w+:\d+>|\p{Extended_Pictographic}/gu;
+  const hostOf = (url) => cleanDomain(url);
+  const hostIn = (host, list) => list.some((d) => host === d || host.endsWith(`.${d}`));
+  /* true when the message holds a link that is not allowed */
+  function badLink(content, mode, l) {
+    const text = String(content || "");
+    if (INVITE.test(text)) return true; // an invite is blocked in both modes
+    if (mode !== "all") return false;
+    return (text.match(LINKS) || []).some((url) => {
+      const host = hostOf(url);
+      return !(hostIn(host, l.domains) || (l.gifs && hostIn(host, GIF_HOSTS)));
+    });
+  }
+  /* Applies a sanction. Returns the words shown in the notice. */
+  async function punish(message, c, reason) {
+    const member = message.member;
+    if (c.action === "warn") {
+      (db.warns[member.id] = db.warns[member.id] || []).push({ by: client?.user?.id || "bot", reason, at: Date.now() });
+      save();
+      return t(`avertissement (${db.warns[member.id].length} au total)`, `warning (${db.warns[member.id].length} total)`);
+    }
+    if (c.action === "timeout") {
+      await member.timeout(Math.max(1, c.minutes) * 60_000, reason).catch(() => {});
+      return t(`sourdine ${c.minutes} min`, `timed out for ${c.minutes} min`);
+    }
+    if (c.action === "kick") {
+      await member.kick(reason).catch(() => {});
+      return t("expulsé", "kicked");
+    }
+    if (c.action === "ban") {
+      await message.guild.members.ban(member.id, { reason, deleteMessageSeconds: 3600 }).catch(() => {});
+      return t("banni", "banned");
+    }
+    return "";
+  }
+  async function notice(message, text) {
+    const sent = await Promise.resolve(message.channel.send({ content: text, allowedMentions: { users: [message.author.id] } })).catch(() => null);
+    if (sent?.delete) setTimeout(() => sent.delete().catch(() => {}), 6000).unref?.();
+  }
+  const hasAny = (member, roles) => roles.some((id) => member.roles?.cache?.has?.(id));
+
   async function protect(message) {
     const s = db.cfg.security;
     if (message.author.bot || !message.guild || !message.member) return false;
     if (message.member.permissions?.has?.(P.ManageMessages)) return false;
-    if (s.antiLink !== "off") {
-      const hit = s.antiLink === "all" ? ANY_LINK.test(message.content) : INVITE.test(message.content);
-      if (hit) {
-        await message.delete().catch(() => {});
-        const warning = await message.channel.send({ content: t(`🔗 ${message.author}, les liens ne sont pas autorisés ici.`, `🔗 ${message.author}, links are not allowed here.`), allowedMentions: { users: [message.author.id] } }).catch(() => null);
-        if (warning) setTimeout(() => warning.delete().catch(() => {}), 6000);
-        await log(message.guild, `🔗 **Anti-link** ${message.author} <#${message.channelId}>\n${String(message.content).slice(0, 300)}`, 0xe67e22);
-        return true;
-      }
+    const who = `<@${message.author.id}>`;
+
+    // ---- links
+    const l = s.link;
+    if (s.antiLink !== "off" && !l.channels.includes(message.channelId) && !hasAny(message.member, l.roles) && badLink(message.content, s.antiLink, l)) {
+      await message.delete().catch(() => {});
+      const done = await punish(message, l, "anti-link");
+      const base = l.text ? l.text.replaceAll("{user}", who) : t(`🔗 ${who}, les liens ne sont pas autorisés ici.`, `🔗 ${who}, links are not allowed here.`);
+      await notice(message, done ? `${base} (${done})` : base);
+      await log(message.guild, `🔗 **Anti-link** ${message.author} <#${message.channelId}>\n${String(message.content).slice(0, 300)}`, 0xe67e22);
+      return true;
     }
-    if (s.antiSpam) {
-      const now = Date.now();
-      const list = (spam.get(message.author.id) || []).filter((x) => now - x < 5000);
-      list.push(now);
-      spam.set(message.author.id, list);
-      if (list.length >= 5) {
-        spam.delete(message.author.id);
-        await message.member.timeout(300_000, "anti-spam").catch(() => {});
-        await message.channel.send({ content: t(`🔇 ${message.author} est en sourdine 5 min (spam).`, `🔇 ${message.author} is timed out for 5 min (spam).`), allowedMentions: { users: [message.author.id] } }).catch(() => {});
-        await log(message.guild, `🔇 **Anti-spam** ${message.author} <#${message.channelId}>`, 0xe67e22);
-        return true;
-      }
-    }
-    return false;
+
+    // ---- spam
+    const p = s.spam;
+    if (!s.antiSpam || p.channels.includes(message.channelId) || hasAny(message.member, p.roles)) return false;
+    const content = String(message.content || "");
+    const now = Date.now();
+    const window = Math.max(p.seconds, 30) * 1000;
+    const history = (spam.get(message.author.id) || []).filter((x) => now - x.at < window);
+    history.push({ at: now, text: content.trim().toLowerCase(), message });
+    spam.set(message.author.id, history);
+
+    let why = "";
+    const recent = history.filter((x) => now - x.at < p.seconds * 1000);
+    if (recent.length >= p.messages) why = t("spam", "spam");
+    const mentions = (message.mentions?.users?.size || 0) + (message.mentions?.roles?.size || 0) || (content.match(/<@[!&]?\d+>/g) || []).length;
+    if (!why && p.mentions && mentions > p.mentions) why = t("trop de mentions", "too many mentions");
+    const same = history.filter((x) => now - x.at < 30_000 && x.text && x.text === content.trim().toLowerCase());
+    if (!why && p.duplicates && same.length > p.duplicates) why = t("messages répétés", "repeated messages");
+    const letters = content.replace(/[^\p{L}]/gu, "");
+    if (!why && p.caps && letters.length >= 10 && (letters.replace(/[^\p{Lu}]/gu, "").length / letters.length) * 100 > p.caps) why = t("trop de majuscules", "too many caps");
+    if (!why && p.emojis && (content.match(EMOJI) || []).length > p.emojis) why = t("trop d'emojis", "too many emojis");
+    if (!why) return false;
+
+    spam.delete(message.author.id);
+    const isFlood = why === t("spam", "spam");
+    const isRepeat = why === t("messages répétés", "repeated messages");
+    const isMentions = why === t("trop de mentions", "too many mentions");
+    // a flood: its messages are removed when "nettoyage" is on. A single bad message (caps, emojis, mentions) is always removed.
+    const targets = isFlood ? recent.map((x) => x.message) : isRepeat ? same.map((x) => x.message) : [message];
+    if (p.clean || !(isFlood || isRepeat)) for (const m of targets) await Promise.resolve(m?.delete?.()).catch(() => {});
+    // the sanction is for floods and mass mentions; too many caps or emojis only lose the message
+    const done = isFlood || isRepeat || isMentions ? await punish(message, p, `anti-spam: ${why}`) : "";
+    await notice(message, t(`🔇 ${who} : ${why}${done ? ` (${done})` : ""}.`, `🔇 ${who}: ${why}${done ? ` (${done})` : ""}.`));
+    await log(message.guild, `🔇 **Anti-spam** ${message.author} <#${message.channelId}>  ·  ${why}`, 0xe67e22);
+    return true;
   }
 
   /* ---------- application tickets: become a middleman, or ask for access to the OG channels ---------- */
