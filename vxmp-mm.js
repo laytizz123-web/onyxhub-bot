@@ -4013,7 +4013,8 @@ const tools = (() => {
     next.setup = { ...base.setup, ...(raw.setup || {}) };
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     // missing, or written by the version where a category was one role: back to the five values
-    if (!Array.isArray(next.cfg.cross.cats) || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
+    // missing, empty (saved by the previous version), or one-role categories: back to the five values
+    if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
       for (const k of ["domains", "channels", "roles"]) if (k in base.cfg.security[part] && !Array.isArray(next.cfg.security[part][k])) next.cfg.security[part][k] = [];
@@ -6924,7 +6925,10 @@ const tools = (() => {
   const ctSide = (c, id) => (id === c.a ? "A" : id === c.b ? "B" : null);
   /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
   /* The values of a trade (lowest first). The middlemen of a value, and of the higher ones, can take its tickets. */
-  const ctCats = () => db.cfg.cross.cats;
+  const ctCats = () => {
+    if (!Array.isArray(db.cfg.cross.cats) || !db.cfg.cross.cats.length) db.cfg.cross.cats = CROSS_VALUES();
+    return db.cfg.cross.cats;
+  };
   const ctCat = (c) => ctCats().find((x) => x.id === c?.cat) || null;
   /* Roles that can take a ticket of this value. Nobody set for it or above: the general middleman role. */
   const ctRolesFor = (c) => {
@@ -6983,6 +6987,7 @@ const tools = (() => {
       return view(ok(t("Valeur renommée.", "Value renamed.")));
     }
     if (sub === "remove") {
+      if (cats.length <= 1) return reply(i, no(t("Il faut garder au moins une valeur.", "At least one value must stay.")));
       cats.splice(cats.indexOf(cat), 1);
       save();
       return view(ok(t("Valeur retirée.", "Value removed.")));
