@@ -3968,6 +3968,7 @@ const tools = (() => {
     claims: {},
     crosstrades: {},
     crossStats: { opened: 0, done: 0 },
+    indexStats: { opened: 0, done: 0 },
     vouches: {},
     vouchN: 0,
     voc: { hubs: [], rooms: {} },
@@ -4024,6 +4025,7 @@ const tools = (() => {
     next.cfg.apps.access = { trade: { ...base.cfg.apps.access.trade, ...(raw.cfg?.apps?.access?.trade || {}) }, shop: { ...base.cfg.apps.access.shop, ...(raw.cfg?.apps?.access?.shop || {}) } };
     next.voc = { ...base.voc, ...(raw.voc || {}) };
     next.crossStats = { ...base.crossStats, ...(raw.crossStats || {}) };
+    next.indexStats = { ...base.indexStats, ...(raw.indexStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
     for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
@@ -4533,7 +4535,7 @@ const tools = (() => {
       D(
         P.ManageGuild,
         cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
-          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" })
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" }, { name: t("Index : Gold, Diamond, Rainbow…", "Index: Gold, Diamond, Rainbow…"), value: "index" })
         )
       ),
       D(
@@ -6655,6 +6657,13 @@ const tools = (() => {
           .setDescription(t("Tu veux rejoindre l'équipe middleman ? Dépose ta candidature : le staff la lit et te répond dans ton ticket.\n\n**À préparer :** ton expérience, tes deals ou vouches avec preuves, tes disponibilités.", "Do you want to join the middleman team? Send your application: staff reads it and answers in your ticket.\n\n**Get ready:** your experience, your deals or vouches with proof, your availability."))
           .addFields({ name: t("1️⃣  Postule", "1️⃣  Apply"), value: t("Appuie sur le bouton et remplis le formulaire.", "Press the button and fill in the form."), inline: true }, { name: t("2️⃣  Le staff étudie", "2️⃣  Staff reviews"), value: t("Tu reçois la décision dans le ticket.", "You get the decision in the ticket."), inline: true }, { name: t("3️⃣  Bienvenue", "3️⃣  Welcome"), value: t("Si tu es accepté, tu reçois le rôle middleman.", "If accepted, you get the middleman role."), inline: true })
           .setImage("attachment://apps-middleman.png"),
+      index: () =>
+        embed(0xf1c40f)
+          .setTitle(t("📖  Index", "📖  Index"))
+          .setDescription(t("Il te manque une mutation dans ton **index** ? Choisis-la dans le menu ci-dessous : un ticket privé s'ouvre avec le staff.", "Missing a mutation in your **index**? Pick it in the menu below: a private ticket opens with the staff."))
+          .addFields({ name: t("✨  Index disponibles", "✨  Available indexes"), value: INDEXES.map((x) => `${x.emoji} ${x.label}`).join("  ·  ") }, { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket, et seulement au staff annoncé dedans.", "Give **nothing** outside your ticket, and only to the staff announced in it.") })
+          .setFooter({ text: t(`${db.indexStats.done} index terminé(s)`, `${db.indexStats.done} index done`) })
+          .setImage("attachment://apps-index.png"),
       crosstrade: () =>
         embed(0x19c7a0)
           .setTitle(t("🔁  Cross-trade", "🔁  Cross-trade"))
@@ -6688,11 +6697,13 @@ const tools = (() => {
           .addFields({ name: `💎  ${access.trade.label}`, value: t("Trade des objets rares entre membres de confiance.", "Trade rare items between trusted members."), inline: true }, { name: `🛍️  ${access.shop.label}`, value: t("Vends et achète dans le shop réservé.", "Sell and buy in the restricted shop."), inline: true })
           .setImage("attachment://apps-access.png"),
     };
-    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"] }[type];
+    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"], index: ["INDEX", "#5a3a05", "#f1c40f", "apps-index.png"] }[type];
     const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2], type === "crosstrade" ? "swap" : undefined), { name: banners[3] });
     const row =
       type === "middleman"
         ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝"))
+        : type === "index"
+          ? new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId("ix:pick").setPlaceholder(t("📖 Choisis ton index", "📖 Pick your index")).addOptions(INDEXES.map((x) => ({ label: x.label, value: x.id, emoji: x.emoji }))))
         : type === "crosstrade"
           ? appRow(appButton("ct:open", t("Ouvrir un cross-trade", "Open a cross-trade"), ButtonStyle.Success, "🔁"))
           : type === "claim"
@@ -6944,6 +6955,80 @@ const tools = (() => {
     await i.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
     await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d, "ticket");
     await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
+  }
+
+  /* ---------- index tickets: the person picks a mutation in the panel, a private ticket opens with the staff ---------- */
+  const INDEXES = [
+    { id: "gold", emoji: "🟡", label: "Gold" },
+    { id: "diamond", emoji: "💎", label: "Diamond" },
+    { id: "candy", emoji: "🍬", label: "Candy" },
+    { id: "lava", emoji: "🌋", label: "Lava" },
+    { id: "galaxy", emoji: "🌌", label: "Galaxy" },
+    { id: "yinyang", emoji: "☯️", label: "Yin Yang" },
+    { id: "radioactive", emoji: "☢️", label: "Radioactive" },
+    { id: "cursed", emoji: "😈", label: "Cursed" },
+    { id: "rainbow", emoji: "🌈", label: "Rainbow" },
+    { id: "divine", emoji: "✨", label: "Divine" },
+    { id: "cyber", emoji: "🤖", label: "Cyber" },
+    { id: "phantom", emoji: "👻", label: "Phantom" },
+    { id: "crystal", emoji: "💜", label: "Crystal" },
+    { id: "eclipse", emoji: "🌑", label: "Eclipse" },
+  ];
+  const ixTicketOf = (channel) => {
+    const m = /^ix-ticket:(\d+|[A-Za-z0-9_-]+):([a-z]+)$/.exec(String(channel?.topic || ""));
+    return m ? { userId: m[1], index: INDEXES.find((x) => x.id === m[2]) || null } : null;
+  };
+  async function ixOpen(i) {
+    const index = INDEXES.find((x) => x.id === i.values?.[0]);
+    if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
+    const guild = i.guild;
+    const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`ix-ticket:${i.user.id}:`));
+    if (existing) return reply(i, no(t(`Tu as déjà un ticket d'index ouvert : <#${existing.id}>`, `You already have an open index ticket: <#${existing.id}>`)));
+    await i.deferReply({ flags: ephemeral });
+    const a = db.cfg.apps;
+    const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
+    const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
+    if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels] });
+    if (a.staffRoleId && guild.roles.cache?.get?.(a.staffRoleId)) overwrites.push({ id: a.staffRoleId, allow });
+    const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
+    let channel;
+    try {
+      channel = await guild.channels.create({ name: `index-${index.id}-${safe}`.slice(0, 90), type: ChannelType.GuildText, parent: a.categoryId || undefined, topic: `ix-ticket:${i.user.id}:${index.id}`, permissionOverwrites: overwrites, reason: "index ticket" });
+    } catch (error) {
+      console.error("⚠️ Index ticket error:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu créer le ticket (il me faut « Gérer les salons »).", "I could not create the ticket (I need Manage Channels).")));
+    }
+    db.indexStats.opened = (db.indexStats.opened || 0) + 1;
+    save();
+    const e = embed(0xf1c40f)
+      .setTitle(`${index.emoji}  Index ${index.label}`)
+      .setDescription(t(`<@${i.user.id}> veut l'index **${index.emoji} ${index.label}**.\n\nExplique ce qu'il te manque et ton pseudo Roblox : le staff te répond ici.`, `<@${i.user.id}> wants the **${index.emoji} ${index.label}** index.\n\nExplain what you are missing and your Roblox username: staff answers here.`))
+      .addFields({ name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ce ticket.", "Give **nothing** outside this ticket.") });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("ix:done").setLabel(t("Index terminé", "Index done")).setEmoji("✅").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("ix:close").setLabel(t("Fermer le ticket", "Close the ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
+    );
+    const ping = a.staffRoleId;
+    await channel.send({ content: `<@${i.user.id}>${ping ? ` <@&${ping}>` : ""}`, embeds: [e], components: [row], allowedMentions: { users: [i.user.id], roles: ping ? [ping] : [] } });
+    await log(guild, `📖 **Index ${index.label}**  ·  <@${i.user.id}>  ·  <#${channel.id}>`, 0xf1c40f, "ticket");
+    return i.editReply(ok(t(`Ticket créé : <#${channel.id}>`, `Ticket created: <#${channel.id}>`)));
+  }
+  async function ixDone(i) {
+    const info = ixTicketOf(i.channel);
+    if (!info) return reply(i, no(t("Ce n'est pas un ticket d'index.", "This is not an index ticket.")));
+    if (!appStaff(i.member)) return reply(i, no(t("Seul le staff peut marquer l'index comme terminé.", "Only staff can mark the index as done.")));
+    db.indexStats.done = (db.indexStats.done || 0) + 1;
+    save();
+    await i.reply({ content: t(`✅ **Index ${info.index?.label || ""} terminé** pour <@${info.userId}> ! Merci 🙏 Tu peux fermer le ticket.`, `✅ **${info.index?.label || ""} index done** for <@${info.userId}>! Thanks 🙏 You can close the ticket.`), allowedMentions: { users: [info.userId] } });
+    await log(i.guild, `✅ **Index ${info.index?.label || ""}**  ·  <@${info.userId}>  ·  ${t("terminé par", "done by")} <@${i.user.id}>`, 0x57f287, "ticket");
+  }
+  async function ixClose(i) {
+    const info = ixTicketOf(i.channel);
+    if (!info) return reply(i, no(t("Ce n'est pas un ticket d'index.", "This is not an index ticket.")));
+    if (i.user.id !== info.userId && !appStaff(i.member)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
+    await i.deferUpdate().catch(() => {});
+    await log(i.guild, `🔒 **Index ${info.index?.label || ""}**  ·  <@${info.userId}>  ·  ${t("fermé par", "closed by")} <@${i.user.id}>`, 0x747f8d, "ticket");
+    await i.channel.delete("index ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
   /* ---------- cross-trade: item for item. A middleman takes the ticket, receives both items, hands each over ---------- */
@@ -7381,6 +7466,12 @@ const tools = (() => {
       if (i.isChatInputCommand?.() && NAMES.has(i.commandName)) {
         if (!i.guild) return (await reply(i, no(t("Utilise cette commande sur le serveur.", "Use this command in the server."))), true);
         await H[i.commandName](i);
+        return true;
+      }
+      if (typeof i.customId === "string" && i.customId.startsWith("ix:")) {
+        if (i.isStringSelectMenu?.() && i.customId === "ix:pick") await ixOpen(i);
+        else if (i.isButton?.() && i.customId === "ix:done") await ixDone(i);
+        else if (i.isButton?.() && i.customId === "ix:close") await ixClose(i);
         return true;
       }
       if (typeof i.customId === "string" && i.customId.startsWith("ct:")) {
