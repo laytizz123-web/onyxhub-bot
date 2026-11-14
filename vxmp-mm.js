@@ -3978,7 +3978,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
-      index: { roles: {}, auto: {} }, // index id -> role of the people who do that index; auto: the roles the bot made
+      index: { roles: {}, auto: {}, prices: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
@@ -4016,7 +4016,7 @@ const tools = (() => {
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
-    for (const k of ["roles", "auto"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
+    for (const k of ["roles", "auto", "prices", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
@@ -4647,7 +4647,14 @@ const tools = (() => {
               .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
               .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true))
           )
-          .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle de chaque index", "See the role of each index")))
+          .addSubcommand((s) =>
+            s
+              .setName("prix")
+              .setDescription(t("Changer le prix d'un index (les panels déjà postés sont mis à jour)", "Change the price of an index (panels already posted are updated)"))
+              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
+              .addStringOption((o) => o.setName("prix").setDescription(t("Ex : 5€, 10$, 2 Garama… (vide = enlever le prix)", "E.g. 5€, $10, 2 Garama… (empty = remove the price)")).setMaxLength(60))
+          )
+          .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
       // anti-links and anti-spam: everything can be tuned
       D(
@@ -6672,11 +6679,29 @@ const tools = (() => {
     const e = embed(hex)
       .setTitle(`${index.emoji}  Index ${index.label}`)
       .setDescription(t(`Il te manque l'index **${index.label}** ? Ouvre un ticket : le staff s'en occupe avec toi.`, `Missing the **${index.label}** index? Open a ticket: staff handles it with you.`))
-      .addFields({ name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
+      .addFields({ name: t("💰  Prix", "💰  Price"), value: db.cfg.index.prices[index.id] ? `**${db.cfg.index.prices[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
       .setImage(`attachment://index-${index.id}.png`);
     const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", `INDEX ${index.label.toUpperCase()}`, index.c[0], index.c[1]), { name: `index-${index.id}.png` });
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ix:open:${index.id}`).setLabel(t("Ouvrir un ticket", "Open a ticket")).setEmoji(index.emoji).setStyle(ButtonStyle.Success));
     return { embeds: [e], components: [row], files: [file] };
+  }
+  /* After a price change: every panel of that index already posted shows the new price. Deleted panels are forgotten. */
+  async function refreshIndexPanels(index) {
+    const list = db.cfg.index.panels[index.id] || [];
+    const keep = [];
+    let updated = 0;
+    for (const p of list) {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(p.c)).catch(() => null);
+      const message = channel ? await Promise.resolve(channel.messages?.fetch?.(p.m)).catch(() => null) : null;
+      if (!message) continue; // the channel or the message is gone: forget it
+      const { embeds, components } = indexPanel(index);
+      const ok1 = await Promise.resolve(message.edit({ embeds, components })).then(() => true).catch(() => false);
+      if (ok1) updated++;
+      keep.push(p);
+    }
+    db.cfg.index.panels[index.id] = keep;
+    save();
+    return updated;
   }
   H.ticketpanel = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
@@ -6685,7 +6710,13 @@ const tools = (() => {
       const one = INDEXES.find((x) => x.id === i.options.getString("index"));
       const list = one ? [one] : INDEXES;
       if (list.length > 1) await i.deferReply({ flags: ephemeral });
-      for (const index of list) await i.channel.send(indexPanel(index));
+      for (const index of list) {
+        const message = await i.channel.send(indexPanel(index));
+        const posted = (db.cfg.index.panels[index.id] ||= []);
+        if (message?.id) posted.push({ c: i.channel.id, m: message.id });
+        if (posted.length > 10) posted.splice(0, posted.length - 10);
+      }
+      save();
       const done = ok(one ? t(`Panel ${one.emoji} ${one.label} posté.`, `${one.emoji} ${one.label} panel posted.`) : t(`${list.length} panels d'index postés (un par index).`, `${list.length} index panels posted (one per index).`));
       return list.length > 1 ? i.editReply(done) : reply(i, done);
     }
@@ -7026,7 +7057,18 @@ const tools = (() => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
     const map = db.cfg.index.roles;
-    const lines = () => INDEXES.map((x) => `${x.emoji} **${x.label}** → ${map[x.id] ? `<@&${map[x.id]}>` : t("*aucun rôle*", "*no role*")}`).join("\n");
+    const lines = () => INDEXES.map((x) => `${x.emoji} **${x.label}** → ${map[x.id] ? `<@&${map[x.id]}>` : t("*aucun rôle*", "*no role*")}  ·  💰 ${db.cfg.index.prices[x.id] || t("*pas de prix*", "*no price*")}`).join("\n");
+    if (sub === "prix") {
+      const index = INDEXES.find((x) => x.id === i.options.getString("index"));
+      if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
+      const price = String(i.options.getString("prix") || "").trim().slice(0, 60);
+      if (price) db.cfg.index.prices[index.id] = price;
+      else delete db.cfg.index.prices[index.id];
+      save();
+      await i.deferReply({ flags: ephemeral });
+      const updated = await refreshIndexPanels(index);
+      return i.editReply(ok(`${price ? t(`${index.emoji} **${index.label}** coûte maintenant **${price}**.`, `${index.emoji} **${index.label}** now costs **${price}**.`) : t(`${index.emoji} **${index.label}** n'a plus de prix.`, `${index.emoji} **${index.label}** has no price anymore.`)} ${t(`${updated} panel(s) mis à jour.`, `${updated} panel(s) updated.`)}`));
+    }
     if (sub === "list") return i.reply({ embeds: [embed(0xf1c40f).setTitle(t("📖  Rôles des index", "📖  Index roles")).setDescription(lines())], flags: ephemeral, allowedMentions: { parse: [] } });
     if (sub === "role") {
       const index = INDEXES.find((x) => x.id === i.options.getString("index"));
@@ -7116,7 +7158,7 @@ const tools = (() => {
     db.indexStats.opened = (db.indexStats.opened || 0) + 1;
     save();
     const e = embed(0xf1c40f)
-      .setTitle(`${index.emoji}  Index ${index.label}`)
+      .setTitle(`${index.emoji}  Index ${index.label}${db.cfg.index.prices[index.id] ? `  ·  ${db.cfg.index.prices[index.id]}` : ""}`)
       .setDescription(t(`<@${i.user.id}> veut l'index **${index.emoji} ${index.label}**.\n\nExplique ce qu'il te manque et ton pseudo Roblox : le staff te répond ici.`, `<@${i.user.id}> wants the **${index.emoji} ${index.label}** index.\n\nExplain what you are missing and your Roblox username: staff answers here.`))
       .addFields({ name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ce ticket.", "Give **nothing** outside this ticket.") });
     const row = new ActionRowBuilder().addComponents(
