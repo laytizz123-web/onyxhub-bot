@@ -3978,7 +3978,7 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
-      vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "" },
+      vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [] },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
         staffRoleId: "",
@@ -4014,6 +4014,7 @@ const tools = (() => {
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
+    if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
@@ -4483,6 +4484,8 @@ const tools = (() => {
       D(
         P.ManageGuild,
         cmd("vouchadmin", t("Gérer les vouches : salon, retirer, reset (staff)", "Manage vouches: channel, remove, reset (staff)"))
+          .addSubcommand((s) => s.setName("role").setDescription(t("Ajouter / retirer un rôle qui peut recevoir des vouches", "Add / remove a role that can receive vouches")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)))
+          .addSubcommand((s) => s.setName("roles").setDescription(t("Voir les rôles qui peuvent recevoir des vouches", "See the roles that can receive vouches")))
           .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les vouches sont postés (admin)", "Channel where vouches are posted (admin)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
           .addSubcommand((s) =>
             s
@@ -4494,8 +4497,8 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("reset").setDescription(t("Effacer tous les vouches d'un membre (staff)", "Clear all of a member's vouches (staff)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)))
       ),
       strOpt(cmd("suggest", t("Proposer une idée", "Suggest an idea")), "idee", t("Ton idée", "Your idea"), true, 900),
-      cmd("vouch", t("Laisser un vouch (avis) à quelqu'un après un trade", "Leave a vouch (review) for someone after a trade"))
-        .addUserOption((o) => o.setName("membre").setDescription(t("La personne que tu vouch", "The person you vouch for")).setRequired(true))
+      cmd("vouch", t("Laisser un vouch (avis) à un middleman après un trade", "Leave a vouch (review) for a middleman after a trade"))
+        .addUserOption((o) => o.setName("membre").setDescription(t("Le middleman que tu vouch", "The middleman you vouch for")).setRequired(true))
         .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
         .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Garama, Middleman, Shop…)", "What was traded, or the service (e.g. Garama, Middleman, Shop…)")).setRequired(true).setMinLength(2).setMaxLength(100))
         .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : rapide et fiable)", "What happened (e.g. fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500)),
@@ -5535,6 +5538,11 @@ const tools = (() => {
     if (!target) return reply(i, no(t("Choisis la personne à vouch.", "Pick the person to vouch for.")));
     if (target.id === i.user.id) return reply(i, no(t("Tu ne peux pas te vouch toi-même.", "You cannot vouch for yourself.")));
     if (target.bot) return reply(i, no(t("On ne vouch pas un bot.", "You cannot vouch for a bot.")));
+    // only middlemen can be vouched
+    const allowed = vouchRoles();
+    if (!allowed.length) return reply(i, no(t("Aucun rôle middleman n'est réglé : un admin doit faire `/vouchadmin role`.", "No middleman role is set: an admin must use `/vouchadmin role`.")));
+    const targetMember = i.options.getMember?.("membre") || (await Promise.resolve(i.guild.members.fetch(target.id)).catch(() => null));
+    if (!allowed.some((id) => targetMember?.roles?.cache?.has?.(id))) return reply(i, no(t(`Tu ne peux vouch que les **middlemen**. <@${target.id}> n'en est pas un.`, `You can only vouch **middlemen**. <@${target.id}> is not one.`)));
     if (!(note >= 1 && note <= 5)) return reply(i, no(t("La note va de 1 à 5.", "The rating goes from 1 to 5.")));
     if (text.length < 3) return reply(i, no(t("Écris un vrai commentaire (3 caractères minimum).", "Write a real comment (3 characters minimum).")));
     if (item.length < 2) return reply(i, no(t("Écris l'objet trade ou le service (ex : Garama, Middleman).", "Write the traded item or the service (e.g. Garama, Middleman).")));
@@ -5632,7 +5640,7 @@ const tools = (() => {
   const stickyTimers = new Map();
   /* A discreet reminder: one small grey line, no ping, no notification. */
   const stickyBody = () => ({
-    content: t("-# ⭐ Pour laisser un vouch, utilise **`/vouch`** · membre · note · objet · commentaire", "-# ⭐ To leave a vouch, use **`/vouch`** · member · rating · item · comment"),
+    content: t("-# ⭐ Pour vouch un **middleman**, utilise **`/vouch`** · middleman · note · objet · commentaire", "-# ⭐ To leave a vouch, use **`/vouch`** · member · rating · item · comment"),
     flags: MessageFlags.SuppressNotifications,
     allowedMentions: { parse: [] },
   });
@@ -5676,9 +5684,23 @@ const tools = (() => {
     return true;
   }
 
+  /* The roles that can be vouched: the ones set with /vouchadmin role, the middleman role of the applications, and every cross-trade role. */
+  const vouchRoles = () => [...new Set([...db.cfg.vouch.roles, db.cfg.apps.mmRoleId, ...db.cfg.cross.cats.flatMap((x) => x.roles || [])].filter(Boolean))];
+
   H.vouchadmin = async (i) => {
     const sub = i.options.getSubcommand();
     if (need_perm(i, P.ManageGuild)) return;
+    if (sub === "role") {
+      const role = i.options.getRole("role");
+      if (role.id === i.guild.roles.everyone?.id) return reply(i, no(t("Pas @everyone : seuls les middlemen peuvent être vouchés.", "Not @everyone: only middlemen can be vouched.")));
+      const added = toggle(db.cfg.vouch.roles, role.id);
+      save();
+      return reply(i, ok(added ? t(`<@&${role.id}> peut maintenant recevoir des vouches.`, `<@&${role.id}> can now receive vouches.`) : t(`<@&${role.id}> ne peut plus recevoir de vouches (sauf s'il est un rôle middleman ou de cross-trade).`, `<@&${role.id}> can no longer receive vouches (unless it is a middleman or cross-trade role).`)));
+    }
+    if (sub === "roles") {
+      const list = vouchRoles();
+      return reply(i, list.length ? t(`⭐ Peuvent recevoir des vouches : ${list.map((id) => `<@&${id}>`).join(" ")}\n-# Le rôle de \`/apps mmrole\` et les rôles de \`/crosstrade\` comptent automatiquement.`, `⭐ Can receive vouches: ${list.map((id) => `<@&${id}>`).join(" ")}`) : no(t("Aucun rôle : fais `/vouchadmin role`.", "No role: use `/vouchadmin role`.")));
+    }
     if (sub === "panel") {
       const cfg = db.cfg.vouch;
       const channel = i.options.getChannel?.("salon") || i.channel;
