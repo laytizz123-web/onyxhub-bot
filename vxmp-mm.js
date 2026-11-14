@@ -3952,6 +3952,13 @@ const tools = (() => {
   const FILE = path.join(process.env.DATA_DIR || __dirname, "tools.json");
 
   /* ---------- storage ---------- */
+  const CROSS_VALUES = () => [
+    { id: "less", label: "Moins de Garama", roles: [] },
+    { id: "more", label: "Plus de Garama", roles: [] },
+    { id: "color", label: "Garama color value", roles: [] },
+    { id: "dragon", label: "Dragon value", roles: [] },
+    { id: "og", label: "OG value", roles: [] },
+  ];
   const defaults = () => ({
     xp: {},
     warns: {},
@@ -3970,7 +3977,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
-      cross: { cats: [] }, // cross-trade categories, lowest first: { id, label, roleId }
+      cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "" },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
@@ -4005,7 +4012,8 @@ const tools = (() => {
     for (const key of Object.keys(base.cfg)) next.cfg[key] = { ...base.cfg[key], ...(raw.cfg?.[key] || {}) };
     next.setup = { ...base.setup, ...(raw.setup || {}) };
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
-    if (!Array.isArray(next.cfg.cross.cats)) next.cfg.cross.cats = [];
+    // missing, or written by the version where a category was one role: back to the five values
+    if (!Array.isArray(next.cfg.cross.cats) || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
       for (const k of ["domains", "channels", "roles"]) if (k in base.cfg.security[part] && !Array.isArray(next.cfg.security[part][k])) next.cfg.security[part][k] = [];
@@ -4592,18 +4600,25 @@ const tools = (() => {
       // cross-trade categories: each one has its own middleman role
       D(
         P.ManageGuild,
-        cmd("crosstrade", t("Catégories de cross-trade : chacune a son rôle middleman", "Cross-trade categories: each has its own middleman role"))
-          .addSubcommand((s) => s.setName("auto").setDescription(t("Trouver et mémoriser tous les rôles « MM » du serveur", "Find and remember every \"MM\" role of the server")))
+        cmd("crosstrade", t("Valeurs de cross-trade et leurs rôles middleman", "Cross-trade values and their middleman roles"))
+          .addSubcommand((s) => s.setName("list").setDescription(t("Voir les valeurs et leurs middlemen", "See the values and their middlemen")))
           .addSubcommand((s) =>
             s
-              .setName("add")
-              .setDescription(t("Ajouter une catégorie (ou changer son nom)", "Add a category (or change its name)"))
-              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle middleman de la catégorie", "The middleman role of the category")).setRequired(true))
-              .addStringOption((o) => o.setName("nom").setDescription(t("Nom affiché (vide = nom du rôle)", "Name shown (empty = role name)")).setMaxLength(90))
+              .setName("role")
+              .setDescription(t("Ajouter / retirer un rôle middleman à une valeur", "Add / remove a middleman role for a value"))
+              .addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur (voir /crosstrade list)", "Number of the value (see /crosstrade list)")).setMinValue(1).setMaxValue(25).setRequired(true))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle middleman", "The middleman role")).setRequired(true))
           )
-          .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer une catégorie", "Remove a category")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle de la catégorie", "The role of the category")).setRequired(true)))
-          .addSubcommand((s) => s.setName("list").setDescription(t("Voir les catégories", "See the categories")))
-          .addSubcommand((s) => s.setName("clear").setDescription(t("Supprimer toutes les catégories (un seul rôle middleman comme avant)", "Remove every category (one middleman role as before)")))
+          .addSubcommand((s) => s.setName("add").setDescription(t("Ajouter une valeur à la fin de la liste", "Add a value at the end of the list")).addStringOption((o) => o.setName("nom").setDescription(t("Nom affiché", "Name shown")).setRequired(true).setMaxLength(90)))
+          .addSubcommand((s) =>
+            s
+              .setName("rename")
+              .setDescription(t("Renommer une valeur", "Rename a value"))
+              .addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur", "Number of the value")).setMinValue(1).setMaxValue(25).setRequired(true))
+              .addStringOption((o) => o.setName("nom").setDescription(t("Nouveau nom", "New name")).setRequired(true).setMaxLength(90))
+          )
+          .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer une valeur", "Remove a value")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur", "Number of the value")).setMinValue(1).setMaxValue(25).setRequired(true)))
+          .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre les 5 valeurs de départ (rôles effacés)", "Back to the 5 starting values (roles cleared)")))
       ),
       // anti-links and anti-spam: everything can be tuned
       D(
@@ -6613,7 +6628,7 @@ const tools = (() => {
             { name: t("3️⃣  Middleman", "3️⃣  Middleman"), value: t("Il prend le ticket, reçoit les objets, les remet.", "He takes the ticket, receives the items, hands them over."), inline: true },
             { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** avant que le middleman soit **annoncé dans le ticket**, et jamais en dehors du ticket.", "Give **nothing** before the middleman is **announced in the ticket**, and never outside the ticket."), inline: false }
           )
-          .addFields(ctCats().length ? [{ name: t("🏷️  Catégories", "🏷️  Categories"), value: ctCats().map((x) => `• ${x.label}`).join("\n").slice(0, 1024), inline: false }] : [])
+          .addFields(ctCats().length ? [{ name: t("💎  Valeurs de trade", "💎  Trade values"), value: ctCats().map((x) => `• ${x.label}`).join("\n").slice(0, 1024), inline: false }] : [])
           .setFooter({ text: t(`${db.crossStats.done} cross-trade(s) terminé(s)`, `${db.crossStats.done} cross-trade(s) completed`) })
           .setImage("attachment://apps-crosstrade.png"),
       claim: () => {
@@ -6908,23 +6923,22 @@ const tools = (() => {
   const ctParty = (c, id) => id === c.a || id === c.b;
   const ctSide = (c, id) => (id === c.a ? "A" : id === c.b ? "B" : null);
   /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
-  /* Categories (lowest first). The middlemen of a category, and of the higher ones, can take its tickets. */
+  /* The values of a trade (lowest first). The middlemen of a value, and of the higher ones, can take its tickets. */
   const ctCats = () => db.cfg.cross.cats;
   const ctCat = (c) => ctCats().find((x) => x.id === c?.cat) || null;
+  /* Roles that can take a ticket of this value. Nobody set for it or above: the general middleman role. */
   const ctRolesFor = (c) => {
     const k = ctCats().findIndex((x) => x.id === c?.cat);
-    return k < 0 ? [] : ctCats().slice(k).map((x) => x.roleId);
+    const roles = k < 0 ? [] : [...new Set(ctCats().slice(k).flatMap((x) => x.roles))];
+    return roles.length ? roles : [db.cfg.apps.mmRoleId].filter(Boolean);
   };
-  const ctCanClaim = (member, c) => {
-    if (appStaff(member)) return true;
-    const roles = c?.cat && ctCat(c) ? ctRolesFor(c) : [db.cfg.apps.mmRoleId].filter(Boolean);
-    return roles.some((id) => member?.roles?.cache?.has?.(id));
-  };
-  /* Who is called when both offers are confirmed. */
-  const ctPingRole = (c) => ctCat(c)?.roleId || db.cfg.apps.mmRoleId || db.cfg.apps.staffRoleId || "";
-  const sortCats = (guild) => {
-    const pos = (id) => guild?.roles?.cache?.get?.(id)?.position ?? 0;
-    ctCats().sort((x, y) => pos(x.roleId) - pos(y.roleId));
+  const ctCanClaim = (member, c) => appStaff(member) || ctRolesFor(c).some((id) => member?.roles?.cache?.has?.(id));
+  /* Who is called when both offers are confirmed: the middlemen of that value. */
+  const ctPingRoles = (c) => {
+    const own = ctCat(c)?.roles || [];
+    if (own.length) return own;
+    const other = ctRolesFor(c);
+    return other.length ? other : [db.cfg.apps.staffRoleId].filter(Boolean);
   };
 
   H.crosstrade = async (i) => {
@@ -6933,45 +6947,48 @@ const tools = (() => {
     const cats = ctCats();
     const view = (note) => {
       const e = embed(0x19c7a0)
-        .setTitle(t("🔁  Catégories de cross-trade", "🔁  Cross-trade categories"))
-        .setDescription(cats.length ? cats.map((x, k) => `**${k + 1}.** ${x.label}\n└ ${t("middleman", "middleman")} : <@&${x.roleId}>`).join("\n") : t("*Aucune catégorie : tous les cross-trades vont au rôle middleman de `/apps mmrole`.*\nUtilise `/crosstrade auto` ou `/crosstrade add`.", "*No category: every cross-trade goes to the middleman role of `/apps mmrole`.*\nUse `/crosstrade auto` or `/crosstrade add`."))
-        .setFooter({ text: t("De la plus petite à la plus grande. Un middleman d'une catégorie plus haute peut aussi prendre les plus petites.", "From the smallest to the biggest. A middleman of a higher category can also take the smaller ones.") });
+        .setTitle(t("🔁  Valeurs de cross-trade", "🔁  Cross-trade values"))
+        .setDescription(cats.length ? cats.map((x, k) => `**${k + 1}.** ${x.label}\n└ ${t("middleman", "middleman")} : ${x.roles.length ? x.roles.map((id) => `<@&${id}>`).join(" ") : t("*aucun rôle*", "*no role*")}`).join("\n") : t("*Aucune valeur.* `/crosstrade reset` remet les 5 de départ.", "*No value.* `/crosstrade reset` puts the 5 starting ones back."))
+        .setFooter({ text: t("De la plus petite à la plus grande. Un middleman d'une valeur plus haute peut aussi prendre les plus petites.", "From the smallest to the biggest. A middleman of a higher value can also take the smaller ones.") });
       return i.reply({ content: note || undefined, embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
     };
     if (sub === "list") return view();
-    if (sub === "clear") {
-      db.cfg.cross.cats = [];
+    if (sub === "reset") {
+      db.cfg.cross.cats = CROSS_VALUES();
       save();
-      return reply(i, ok(t("Catégories supprimées : les cross-trades vont de nouveau au rôle de `/apps mmrole`.", "Categories removed: cross-trades go to the role of `/apps mmrole` again.")));
+      return reply(i, ok(t("Les 5 valeurs de départ sont remises (sans rôle).", "The 5 starting values are back (without roles).")));
     }
-    if (sub === "auto") {
-      const all = await Promise.resolve(i.guild.roles.fetch?.()).catch(() => null);
-      const list = [...(all?.values?.() || i.guild.roles.cache?.values?.() || [])].filter((r) => r && !r.managed && r.id !== i.guild.roles.everyone?.id && /(^|[^a-z])mm([^a-z]|$)/i.test(String(r.name)));
-      if (!list.length) return reply(i, no(t("Je ne trouve aucun rôle avec « MM » dans son nom.", "I found no role with \"MM\" in its name.")));
-      list.sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
-      db.cfg.cross.cats = list.slice(-25).map((r) => ({ id: r.id, label: String(r.name).slice(0, 90), roleId: r.id }));
-      save();
-      return view(ok(t(`${db.cfg.cross.cats.length} catégorie(s) mémorisée(s). Reposte le panel avec \`/ticketpanel\` pour afficher la liste.`, `${db.cfg.cross.cats.length} categories remembered. Post the panel again with \`/ticketpanel\` to show the list.`)));
-    }
-    const role = i.options.getRole("role");
     if (sub === "add") {
-      const label = String(i.options.getString("nom") || role.name || "").trim().slice(0, 90);
-      const had = cats.find((x) => x.roleId === role.id);
-      if (!had && cats.length >= 25) return reply(i, no(t("25 catégories maximum.", "25 categories maximum.")));
-      if (had) had.label = label;
-      else cats.push({ id: role.id, label, roleId: role.id });
-      sortCats(i.guild);
+      if (cats.length >= 25) return reply(i, no(t("25 valeurs maximum.", "25 values maximum.")));
+      const label = String(i.options.getString("nom") || "").trim().slice(0, 90);
+      if (!label) return reply(i, no(t("Écris un nom.", "Write a name.")));
+      cats.push({ id: `v${Date.now().toString(36)}${cats.length}`, label, roles: [] });
       save();
-      return view(ok(had ? t("Catégorie renommée.", "Category renamed.") : t("Catégorie ajoutée.", "Category added.")));
+      return view(ok(t("Valeur ajoutée.", "Value added.")));
+    }
+    const cat = cats[i.options.getInteger("numero") - 1];
+    if (!cat) return reply(i, no(t("Ce numéro n'existe pas. Regarde `/crosstrade list`.", "This number does not exist. See `/crosstrade list`.")));
+    if (sub === "role") {
+      const role = i.options.getRole("role");
+      if (role.id === i.guild.roles.everyone?.id || role.managed) return reply(i, no(t("Ce rôle ne peut pas être un rôle middleman.", "This role cannot be a middleman role.")));
+      const added = toggle(cat.roles, role.id);
+      save();
+      return view(ok(added ? t(`<@&${role.id}> est middleman pour **${cat.label}**.`, `<@&${role.id}> is a middleman for **${cat.label}**.`) : t(`<@&${role.id}> n'est plus middleman pour **${cat.label}**.`, `<@&${role.id}> is no longer a middleman for **${cat.label}**.`)));
+    }
+    if (sub === "rename") {
+      const label = String(i.options.getString("nom") || "").trim().slice(0, 90);
+      if (!label) return reply(i, no(t("Écris un nom.", "Write a name.")));
+      cat.label = label;
+      save();
+      return view(ok(t("Valeur renommée.", "Value renamed.")));
     }
     if (sub === "remove") {
-      const k = cats.findIndex((x) => x.roleId === role.id);
-      if (k < 0) return reply(i, no(t("Ce rôle n'est pas une catégorie.", "This role is not a category.")));
-      cats.splice(k, 1);
+      cats.splice(cats.indexOf(cat), 1);
       save();
-      return view(ok(t("Catégorie retirée.", "Category removed.")));
+      return view(ok(t("Valeur retirée.", "Value removed.")));
     }
   };
+
   const ctTicketOf = (channel) => db.crosstrades[channel?.id] || null;
 
   const ctBtn = (id, label, style, emoji, disabled = false) => new ButtonBuilder().setCustomId(`ct:${id}`).setLabel(String(label).slice(0, 80)).setStyle(style).setEmoji(emoji).setDisabled(disabled);
@@ -7007,7 +7024,7 @@ const tools = (() => {
       .addFields(
         { name: t("👤  Partie A", "👤  Side A"), value: side("A"), inline: true },
         { name: t("👤  Partie B", "👤  Side B"), value: side("B"), inline: true },
-        ...(ctCat(c) ? [{ name: t("🏷️  Catégorie", "🏷️  Category"), value: `**${ctCat(c).label}**\n${t("middleman", "middleman")} : <@&${ctCat(c).roleId}>`, inline: false }] : []),
+        ...(ctCat(c) ? [{ name: t("💎  Valeur du trade", "💎  Value of the trade"), value: `**${ctCat(c).label}**${ctCat(c).roles.length ? `\n${t("middleman", "middleman")} : ${ctCat(c).roles.map((id) => `<@&${id}>`).join(" ")}` : ""}`, inline: false }] : []),
         { name: t("🛡️  Middleman", "🛡️  Middleman"), value: c.mm ? `<@${c.mm}>\n${t("✅ **annoncé et légitime**", "✅ **announced and legitimate**")}` : t("⏳ pas encore pris en charge", "⏳ not taken yet"), inline: false },
         { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Seul le middleman **annoncé ici** est légitime. Ne donne **rien** à quelqu'un d'autre ni en dehors de ce ticket.", "Only the middleman **announced here** is legitimate. Give **nothing** to anyone else or outside this ticket."), inline: false }
       )
@@ -7057,11 +7074,11 @@ const tools = (() => {
     const picked = i.isStringSelectMenu?.();
     if (existing) return picked ? i.update({ content: already, components: [] }) : reply(i, already);
     if (ctCats().length && !picked) {
-      const menu = new StringSelectMenuBuilder().setCustomId("ct:cat").setPlaceholder(t("Choisis la catégorie", "Pick the category")).addOptions(ctCats().map((x) => ({ label: x.label.slice(0, 100), value: x.id })));
-      return i.reply({ flags: ephemeral, content: t("🏷️ **Quelle catégorie pour ton cross-trade ?** Chaque catégorie a ses propres middlemen.", "🏷️ **Which category for your cross-trade?** Each category has its own middlemen."), components: [new ActionRowBuilder().addComponents(menu)] });
+      const menu = new StringSelectMenuBuilder().setCustomId("ct:cat").setPlaceholder(t("Choisis la valeur", "Pick the value")).addOptions(ctCats().map((x) => ({ label: x.label.slice(0, 100), value: x.id })));
+      return i.reply({ flags: ephemeral, content: t("💎 **Quelle est la valeur du trade ?**", "💎 **What is the value of the trade?**"), components: [new ActionRowBuilder().addComponents(menu)] });
     }
     const cat = ctCats().find((x) => x.id === catId) || null;
-    if (picked && !cat) return i.update({ content: no(t("Cette catégorie n'existe plus. Rappuie sur le bouton du panel.", "This category no longer exists. Press the panel button again.")), components: [] });
+    if (picked && !cat) return i.update({ content: no(t("Cette valeur n'existe plus. Rappuie sur le bouton du panel.", "This value no longer exists. Press the panel button again.")), components: [] });
     if (picked) {
       await i.update({ content: t("⏳ Création du ticket…", "⏳ Creating the ticket…"), components: [] });
       i.editReply = i.editReply || (async () => {});
@@ -7071,7 +7088,7 @@ const tools = (() => {
     const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
     if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels, P.ManageRoles] });
     // with a category: its middlemen and the higher ones see the ticket; without: the single middleman role
-    const mmRoles = cat ? ctRolesFor({ cat: cat.id }) : [a.mmRoleId];
+    const mmRoles = ctRolesFor({ cat: cat?.id || "" });
     for (const roleId of [a.staffRoleId, ...mmRoles]) if (roleId && guild.roles.cache?.get?.(roleId) && !overwrites.some((o) => o.id === roleId)) overwrites.push({ id: roleId, allow });
     const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
     const n = (db.crossStats.opened || 0) + 1;
@@ -7164,8 +7181,8 @@ const tools = (() => {
     const both = c.confA && c.confB;
     await i.update(ctBody(c));
     if (both) {
-      const ping = ctPingRole(c);
-      await i.channel.send({ content: t(`✅ Les deux offres sont confirmées. ${ping ? `<@&${ping}>` : "Un middleman"} : qui prend ce cross-trade en charge ?`, `✅ Both offers are confirmed. ${ping ? `<@&${ping}>` : "A middleman"}: who takes this cross-trade?`), allowedMentions: { roles: ping ? [ping] : [] } }).catch(() => {});
+      const ping = ctPingRoles(c);
+      await i.channel.send({ content: t(`✅ Les deux offres sont confirmées. ${ping.length ? ping.map((id) => `<@&${id}>`).join(" ") : "Un middleman"} : qui prend ce cross-trade en charge ?`, `✅ Both offers are confirmed. ${ping.length ? ping.map((id) => `<@&${id}>`).join(" ") : "A middleman"}: who takes this cross-trade?`), allowedMentions: { roles: ping } }).catch(() => {});
     }
   }
 
@@ -7173,7 +7190,7 @@ const tools = (() => {
   async function ctClaim(i) {
     const c = ctTicketOf(i.channel);
     if (!ctNeed(i, c)) return;
-    if (!ctCanClaim(i.member, c)) return reply(i, no(ctCat(c) ? t(`Seuls les middlemen de cette catégorie (<@&${ctCat(c).roleId}> ou plus haut) et le staff peuvent prendre ce cross-trade.`, `Only the middlemen of this category (<@&${ctCat(c).roleId}> or higher) and staff can take this cross-trade.`) : t("Seuls les middlemen et le staff peuvent prendre un cross-trade en charge.", "Only middlemen and staff can take a cross-trade.")));
+    if (!ctCanClaim(i.member, c)) return reply(i, no(ctCat(c) ? t(`Seuls les middlemen de cette valeur (**${ctCat(c).label}** ou plus haut) et le staff peuvent prendre ce cross-trade.`, `Only the middlemen of this value (**${ctCat(c).label}** or higher) and staff can take this cross-trade.`) : t("Seuls les middlemen et le staff peuvent prendre un cross-trade en charge.", "Only middlemen and staff can take a cross-trade.")));
     if (ctParty(c, i.user.id)) return reply(i, no(t("Tu ne peux pas être middleman de ton propre échange.", "You cannot be the middleman of your own trade.")));
     if (c.mm) return reply(i, no(t(`<@${c.mm}> a déjà pris ce cross-trade en charge.`, `<@${c.mm}> already took this cross-trade.`)));
     if (ctPhase(c) !== "waiting_mm" || c.frozen) return reply(i, no(t("Impossible pour le moment.", "Not possible right now.")));
