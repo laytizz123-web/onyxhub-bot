@@ -4353,6 +4353,7 @@ const tools = (() => {
   function commands() {
     if (!ON) return [];
     const D = (flag, b) => b.setDefaultMemberPermissions(flag);
+    const INDEX_CHOICES = () => INDEXES.map((x) => ({ name: `${x.emoji} ${x.label}`, value: x.id }));
     const SANCTION = (sub) =>
       sub
         .addStringOption((o) =>
@@ -4536,6 +4537,8 @@ const tools = (() => {
         P.ManageGuild,
         cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
           o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" }, { name: t("Index : Gold, Diamond, Rainbow…", "Index: Gold, Diamond, Rainbow…"), value: "index" })
+        ).addStringOption((o) =>
+          o.setName("index").setDescription(t("Pour Index : lequel (vide = les 14 panels d'un coup)", "For Index: which one (empty = the 14 panels at once)")).addChoices(...INDEX_CHOICES())
         )
       ),
       D(
@@ -6646,9 +6649,29 @@ const tools = (() => {
   };
 
   /* The panels people click to open a ticket. */
+  /* One panel per index, each with its own button. */
+  function indexPanel(index) {
+    const hex = parseInt(index.c[1].slice(1), 16);
+    const e = embed(hex)
+      .setTitle(`${index.emoji}  Index ${index.label}`)
+      .setDescription(t(`Il te manque l'index **${index.label}** ? Ouvre un ticket : le staff s'en occupe avec toi.`, `Missing the **${index.label}** index? Open a ticket: staff handles it with you.`))
+      .addFields({ name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
+      .setImage(`attachment://index-${index.id}.png`);
+    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", `INDEX ${index.label.toUpperCase()}`, index.c[0], index.c[1]), { name: `index-${index.id}.png` });
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ix:open:${index.id}`).setLabel(t("Ouvrir un ticket", "Open a ticket")).setEmoji(index.emoji).setStyle(ButtonStyle.Success));
+    return { embeds: [e], components: [row], files: [file] };
+  }
   H.ticketpanel = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const type = i.options.getString("type");
+    if (type === "index") {
+      const one = INDEXES.find((x) => x.id === i.options.getString("index"));
+      const list = one ? [one] : INDEXES;
+      if (list.length > 1) await i.deferReply({ flags: ephemeral });
+      for (const index of list) await i.channel.send(indexPanel(index));
+      const done = ok(one ? t(`Panel ${one.emoji} ${one.label} posté.`, `${one.emoji} ${one.label} panel posted.`) : t(`${list.length} panels d'index postés (un par index).`, `${list.length} index panels posted (one per index).`));
+      return list.length > 1 ? i.editReply(done) : reply(i, done);
+    }
     const access = db.cfg.apps.access;
     const embedFor = {
       middleman: () =>
@@ -6959,27 +6982,27 @@ const tools = (() => {
 
   /* ---------- index tickets: the person picks a mutation in the panel, a private ticket opens with the staff ---------- */
   const INDEXES = [
-    { id: "gold", emoji: "🟡", label: "Gold" },
-    { id: "diamond", emoji: "💎", label: "Diamond" },
-    { id: "candy", emoji: "🍬", label: "Candy" },
-    { id: "lava", emoji: "🌋", label: "Lava" },
-    { id: "galaxy", emoji: "🌌", label: "Galaxy" },
-    { id: "yinyang", emoji: "☯️", label: "Yin Yang" },
-    { id: "radioactive", emoji: "☢️", label: "Radioactive" },
-    { id: "cursed", emoji: "😈", label: "Cursed" },
-    { id: "rainbow", emoji: "🌈", label: "Rainbow" },
-    { id: "divine", emoji: "✨", label: "Divine" },
-    { id: "cyber", emoji: "🤖", label: "Cyber" },
-    { id: "phantom", emoji: "👻", label: "Phantom" },
-    { id: "crystal", emoji: "💜", label: "Crystal" },
-    { id: "eclipse", emoji: "🌑", label: "Eclipse" },
+    { id: "gold", emoji: "🟡", label: "Gold", c: ["#5a3a05", "#f1c40f"] },
+    { id: "diamond", emoji: "💎", label: "Diamond", c: ["#0b3a5a", "#5ad1ff"] },
+    { id: "candy", emoji: "🍬", label: "Candy", c: ["#5a0b3a", "#ff7ac8"] },
+    { id: "lava", emoji: "🌋", label: "Lava", c: ["#4a0b05", "#ff5a1f"] },
+    { id: "galaxy", emoji: "🌌", label: "Galaxy", c: ["#160b4a", "#7c4dff"] },
+    { id: "yinyang", emoji: "☯️", label: "Yin Yang", c: ["#111111", "#9aa5bd"] },
+    { id: "radioactive", emoji: "☢️", label: "Radioactive", c: ["#1f4a05", "#7cff3d"] },
+    { id: "cursed", emoji: "😈", label: "Cursed", c: ["#2a0505", "#c0392b"] },
+    { id: "rainbow", emoji: "🌈", label: "Rainbow", c: ["#5a0b5a", "#ffb02e"] },
+    { id: "divine", emoji: "✨", label: "Divine", c: ["#5a4a05", "#fff3b0"] },
+    { id: "cyber", emoji: "🤖", label: "Cyber", c: ["#05304a", "#00e0ff"] },
+    { id: "phantom", emoji: "👻", label: "Phantom", c: ["#2a2a3a", "#c8c8ff"] },
+    { id: "crystal", emoji: "💜", label: "Crystal", c: ["#3a0b5a", "#c56bff"] },
+    { id: "eclipse", emoji: "🌑", label: "Eclipse", c: ["#050510", "#4b4b6e"] },
   ];
   const ixTicketOf = (channel) => {
     const m = /^ix-ticket:(\d+|[A-Za-z0-9_-]+):([a-z]+)$/.exec(String(channel?.topic || ""));
     return m ? { userId: m[1], index: INDEXES.find((x) => x.id === m[2]) || null } : null;
   };
-  async function ixOpen(i) {
-    const index = INDEXES.find((x) => x.id === i.values?.[0]);
+  async function ixOpen(i, id) {
+    const index = INDEXES.find((x) => x.id === (id || i.values?.[0]));
     if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
     const guild = i.guild;
     const existing = [...(guild.channels.cache?.values?.() || [])].find((c) => String(c.topic || "").startsWith(`ix-ticket:${i.user.id}:`));
@@ -7470,6 +7493,7 @@ const tools = (() => {
       }
       if (typeof i.customId === "string" && i.customId.startsWith("ix:")) {
         if (i.isStringSelectMenu?.() && i.customId === "ix:pick") await ixOpen(i);
+        else if (i.isButton?.() && i.customId.startsWith("ix:open:")) await ixOpen(i, i.customId.slice(8));
         else if (i.isButton?.() && i.customId === "ix:done") await ixDone(i);
         else if (i.isButton?.() && i.customId === "ix:close") await ixClose(i);
         return true;
