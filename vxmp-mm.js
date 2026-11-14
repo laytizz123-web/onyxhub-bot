@@ -3978,7 +3978,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
-      index: { roles: {}, auto: {}, prices: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
+      index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
@@ -4016,7 +4016,7 @@ const tools = (() => {
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
-    for (const k of ["roles", "auto", "prices", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
+    for (const k of ["roles", "auto", "prices", "cautions", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
@@ -4653,6 +4653,13 @@ const tools = (() => {
               .setDescription(t("Changer le prix d'un index (les panels déjà postés sont mis à jour)", "Change the price of an index (panels already posted are updated)"))
               .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
               .addStringOption((o) => o.setName("prix").setDescription(t("Ex : 5€, 10$, 2 Garama… (vide = enlever le prix)", "E.g. 5€, $10, 2 Garama… (empty = remove the price)")).setMaxLength(60))
+          )
+          .addSubcommand((s) =>
+            s
+              .setName("caution")
+              .setDescription(t("Changer la caution d'un index (les panels déjà postés sont mis à jour)", "Change the deposit of an index (panels already posted are updated)"))
+              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
+              .addStringOption((o) => o.setName("caution").setDescription(t("Ex : 10€, 1 Garama… (vide = enlever la caution)", "E.g. 10€, 1 Garama… (empty = remove the deposit)")).setMaxLength(60))
           )
           .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
@@ -6679,7 +6686,7 @@ const tools = (() => {
     const e = embed(hex)
       .setTitle(`${index.emoji}  Index ${index.label}`)
       .setDescription(t(`Il te manque l'index **${index.label}** ? Ouvre un ticket : le staff s'en occupe avec toi.`, `Missing the **${index.label}** index? Open a ticket: staff handles it with you.`))
-      .addFields({ name: t("💰  Prix", "💰  Price"), value: db.cfg.index.prices[index.id] ? `**${db.cfg.index.prices[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
+      .addFields({ name: t("💰  Prix", "💰  Price"), value: db.cfg.index.prices[index.id] ? `**${db.cfg.index.prices[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🔒  Caution", "🔒  Deposit"), value: db.cfg.index.cautions[index.id] ? `**${db.cfg.index.cautions[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
       .setImage(`attachment://index-${index.id}.png`);
     const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", `INDEX ${index.label.toUpperCase()}`, index.c[0], index.c[1]), { name: `index-${index.id}.png` });
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ix:open:${index.id}`).setLabel(t("Ouvrir un ticket", "Open a ticket")).setEmoji(index.emoji).setStyle(ButtonStyle.Success));
@@ -7057,7 +7064,18 @@ const tools = (() => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
     const map = db.cfg.index.roles;
-    const lines = () => INDEXES.map((x) => `${x.emoji} **${x.label}** → ${map[x.id] ? `<@&${map[x.id]}>` : t("*aucun rôle*", "*no role*")}  ·  💰 ${db.cfg.index.prices[x.id] || t("*pas de prix*", "*no price*")}`).join("\n");
+    const lines = () => INDEXES.map((x) => `${x.emoji} **${x.label}** → ${map[x.id] ? `<@&${map[x.id]}>` : t("*aucun rôle*", "*no role*")}  ·  💰 ${db.cfg.index.prices[x.id] || t("*pas de prix*", "*no price*")}  ·  🔒 ${db.cfg.index.cautions[x.id] || t("*pas de caution*", "*no deposit*")}`).join("\n");
+    if (sub === "caution") {
+      const index = INDEXES.find((x) => x.id === i.options.getString("index"));
+      if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
+      const value = String(i.options.getString("caution") || "").trim().slice(0, 60);
+      if (value) db.cfg.index.cautions[index.id] = value;
+      else delete db.cfg.index.cautions[index.id];
+      save();
+      await i.deferReply({ flags: ephemeral });
+      const updated = await refreshIndexPanels(index);
+      return i.editReply(ok(`${value ? t(`Caution de ${index.emoji} **${index.label}** : **${value}**.`, `Deposit for ${index.emoji} **${index.label}**: **${value}**.`) : t(`${index.emoji} **${index.label}** n'a plus de caution.`, `${index.emoji} **${index.label}** has no deposit anymore.`)} ${t(`${updated} panel(s) mis à jour.`, `${updated} panel(s) updated.`)}`));
+    }
     if (sub === "prix") {
       const index = INDEXES.find((x) => x.id === i.options.getString("index"));
       if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
@@ -7160,7 +7178,7 @@ const tools = (() => {
     const e = embed(0xf1c40f)
       .setTitle(`${index.emoji}  Index ${index.label}${db.cfg.index.prices[index.id] ? `  ·  ${db.cfg.index.prices[index.id]}` : ""}`)
       .setDescription(t(`<@${i.user.id}> veut l'index **${index.emoji} ${index.label}**.\n\nExplique ce qu'il te manque et ton pseudo Roblox : le staff te répond ici.`, `<@${i.user.id}> wants the **${index.emoji} ${index.label}** index.\n\nExplain what you are missing and your Roblox username: staff answers here.`))
-      .addFields({ name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ce ticket.", "Give **nothing** outside this ticket.") });
+      .addFields(...(db.cfg.index.cautions[index.id] ? [{ name: t("🔒  Caution", "🔒  Deposit"), value: `**${db.cfg.index.cautions[index.id]}**` }] : []), { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ce ticket.", "Give **nothing** outside this ticket.") });
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("ix:done").setLabel(t("Index terminé", "Index done")).setEmoji("✅").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("ix:close").setLabel(t("Fermer le ticket", "Close the ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
