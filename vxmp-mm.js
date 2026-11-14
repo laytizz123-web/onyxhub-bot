@@ -1086,9 +1086,11 @@ const middleman = (() => {
     return {};
   }
 
-  async function logLine(text) {
-    if (!options.logChannelId) return;
-    const channel = await client.channels.fetch(options.logChannelId).catch(() => null);
+  /* Deal logs also go to the tickets logs channel of the multitools; settings changes only to MM_LOG_CHANNEL_ID. */
+  async function logLine(text, settings = false) {
+    const id = options.logChannelId || (settings ? "" : options.ticketLogChannel?.()) || "";
+    if (!id) return;
+    const channel = await client.channels.fetch(id).catch(() => null);
     if (channel?.isTextBased()) await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
   }
 
@@ -1299,7 +1301,7 @@ const middleman = (() => {
     const view = tiersView(tier.id);
     if (interaction.isFromMessage?.()) await interaction.update(view);
     else await interaction.reply({ ...view, flags: ephemeral });
-    return logLine(`🎚️ Range ${kind === "add" ? "added" : "changed"}: **${tierLabel(tier)}** (by <@${interaction.user.id}>).`);
+    return logLine(`🎚️ Range ${kind === "add" ? "added" : "changed"}: **${tierLabel(tier)}** (by <@${interaction.user.id}>).`, true);
   }
 
   /* ---------- /access: which roles can see and handle the (private) Litecoin tickets ---------- */
@@ -1351,7 +1353,7 @@ const middleman = (() => {
     saveStore();
     const touched = await syncAccess(old, next);
     await interaction.update(accessView(touched ? `✅ Saved. ${touched} open ticket(s) updated.` : "✅ Saved."));
-    return logLine(`🔐 Litecoin ticket access set to ${next.length ? next.map((id) => `<@&${id}>`).join(" ") : "administrators only"} (by <@${interaction.user.id}>).`);
+    return logLine(`🔐 Litecoin ticket access set to ${next.length ? next.map((id) => `<@&${id}>`).join(" ") : "administrators only"} (by <@${interaction.user.id}>).`, true);
   }
 
   async function handleTiersAdmin(interaction) {
@@ -1373,7 +1375,7 @@ const middleman = (() => {
       await interaction.update(tiersView(tier.id));
       const touched = await syncTierAccess(tier.id, old, roleId);
       if (touched) await interaction.followUp({ content: `✅ The access of ${touched} open ticket(s) was updated.`, flags: ephemeral });
-      return logLine(`🎚️ Range **${tierLabel(tier)}**: ${roleId ? `role set to <@&${roleId}>` : "role cleared"} (by <@${interaction.user.id}>).`);
+      return logLine(`🎚️ Range **${tierLabel(tier)}**: ${roleId ? `role set to <@&${roleId}>` : "role cleared"} (by <@${interaction.user.id}>).`, true);
     };
 
     switch (action) {
@@ -1417,7 +1419,7 @@ const middleman = (() => {
         saveStore();
         await interaction.update(tiersView(""));
         await syncTierAccess(id, old, "");
-        return logLine(`🗑️ Range **${tierLabel(tier)}** removed by <@${interaction.user.id}>.`);
+        return logLine(`🗑️ Range **${tierLabel(tier)}** removed by <@${interaction.user.id}>.`, true);
       }
 
       case "rm_no":
@@ -1438,7 +1440,7 @@ const middleman = (() => {
         saveStore();
         await interaction.update(tiersView(""));
         for (const t of previous) if (t.roleId) await syncTierAccess(t.id, t.roleId, "");
-        return logLine(`🔄 Ranges reset to the defaults by <@${interaction.user.id}>.`);
+        return logLine(`🔄 Ranges reset to the defaults by <@${interaction.user.id}>.`, true);
       }
     }
   }
@@ -1549,7 +1551,7 @@ const middleman = (() => {
     if (interaction.isFromMessage?.()) await interaction.update(view);
     else await interaction.reply({ ...view, flags: ephemeral });
     await refreshChooseCards();
-    return logLine(`💙 PayPal account ${kind === "add" ? "added" : "changed"}: **${label}** (by <@${interaction.user.id}>).`);
+    return logLine(`💙 PayPal account ${kind === "add" ? "added" : "changed"}: **${label}** (by <@${interaction.user.id}>).`, true);
   }
 
   /* /paypal and its buttons (pp:...). Staff can open it and set accounts present / absent, administrators change the list. */
@@ -1592,7 +1594,7 @@ const middleman = (() => {
           }
         }
         await refreshChooseCards();
-        return logLine(`${account.away ? "🔴" : "🟢"} PayPal **${account.label}** set ${account.away ? "absent" : "present"} by <@${interaction.user.id}>.`);
+        return logLine(`${account.away ? "🔴" : "🟢"} PayPal **${account.label}** set ${account.away ? "absent" : "present"} by <@${interaction.user.id}>.`, true);
       }
 
       case "remove": {
@@ -1616,7 +1618,7 @@ const middleman = (() => {
         saveStore();
         await interaction.update(view());
         await refreshChooseCards();
-        return logLine(`🗑️ PayPal account **${account?.label || id}** removed by <@${interaction.user.id}>.`);
+        return logLine(`🗑️ PayPal account **${account?.label || id}** removed by <@${interaction.user.id}>.`, true);
       }
 
       case "rm_no":
@@ -4277,9 +4279,10 @@ const tools = (() => {
   }
 
   /* ---------- logs ---------- */
-  async function log(guild, text, color = 0x747f8d) {
+  /* The logs channel only receives ticket logs (opened, taken, accepted, closed...). Everything else is ignored. */
+  async function log(guild, text, color = 0x747f8d, kind = "") {
     const id = db.cfg.logs.channelId;
-    if (!id) return;
+    if (!id || kind !== "ticket") return;
     const channel = await Promise.resolve((guild?.channels || client?.channels)?.fetch?.(id)).catch(() => null);
     if (channel?.isTextBased?.()) await channel.send({ embeds: [embed(color).setDescription(String(text).slice(0, 3900)).setTimestamp()], allowedMentions: { parse: [] } }).catch(() => {});
   }
@@ -4564,7 +4567,7 @@ const tools = (() => {
       // logs and security
       D(
         P.ManageGuild,
-        cmd("logs", t("Salon des logs (messages, arrivées, bans)", "Logs channel (messages, joins, bans)"))
+        cmd("logs", t("Salon des logs des tickets (ouverts, pris, fermés...)", "Ticket logs channel (opened, taken, closed...)"))
           .addSubcommand((s) => s.setName("here").setDescription(t("Utiliser ce salon", "Use this channel")))
           .addSubcommand((s) => s.setName("off").setDescription(t("Couper les logs", "Turn logs off")))
       ),
@@ -6212,7 +6215,7 @@ const tools = (() => {
     if (i.options.getSubcommand() === "off") db.cfg.logs.channelId = "";
     else db.cfg.logs.channelId = i.channelId;
     save();
-    return reply(i, ok(db.cfg.logs.channelId ? t("Les logs arriveront ici.", "Logs will go here.") : t("Logs coupés.", "Logs off.")));
+    return reply(i, ok(db.cfg.logs.channelId ? t("Les logs des tickets arriveront ici (rien d'autre).", "Ticket logs will go here (nothing else).") : t("Logs coupés.", "Logs off.")));
   };
   H.security = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
@@ -6538,7 +6541,7 @@ const tools = (() => {
       components: [appRow(appButton("ap:acc", t("Accepter", "Accept"), ButtonStyle.Success, "✅"), appButton("ap:dec", t("Refuser", "Decline"), ButtonStyle.Danger, "✖️"), appButton("ap:close", t("Fermer", "Close"), ButtonStyle.Secondary, "🔒"))],
       allowedMentions: { users: [i.user.id], roles: a.staffRoleId ? [a.staffRoleId] : [] },
     });
-    await log(guild, `🎫 **${k.title().replace(/^\S+\s+/, "")}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x3498db);
+    await log(guild, `🎫 **${k.title().replace(/^\S+\s+/, "")}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x3498db, "ticket");
     return i.editReply(ok(t(`Ticket créé : ${channel}`, `Ticket created: ${channel}`)));
   }
 
@@ -6582,7 +6585,7 @@ const tools = (() => {
     const updated = EmbedBuilder.from(base).setColor(0x57f287).setFields((base.fields || []).filter((f) => f.name !== t("Statut", "Status")).concat({ name: t("Statut", "Status"), value: t(`✅ Accepté par <@${i.user.id}>`, `✅ Accepted by <@${i.user.id}>`), inline: true }));
     await i.update({ embeds: [updated], components: [appRow(appButton("ap:close", t("Fermer le ticket", "Close the ticket"), ButtonStyle.Secondary, "🔒"))] });
     await i.channel.send({ content: `<@${info.userId}>`, embeds: [embed(0x57f287).setDescription(`✅ ${done}`)], allowedMentions: { users: [info.userId] } }).catch(() => {});
-    await log(i.guild, `✅ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("accepté par", "accepted by")} <@${i.user.id}>`, 0x2ecc71);
+    await log(i.guild, `✅ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("accepté par", "accepted by")} <@${i.user.id}>`, 0x2ecc71, "ticket");
   }
 
   /* Decline: ask the reason first. */
@@ -6609,7 +6612,7 @@ const tools = (() => {
       await i.reply({ content: ok(t("Décision enregistrée.", "Decision saved.")), flags: ephemeral });
     }
     await i.channel.send({ content: `<@${info.userId}>`, embeds: [embed(0xed4245).setDescription(t(`✖️ Ta demande est refusée.\n**Raison :** ${reason}`, `✖️ Your request was declined.\n**Reason:** ${reason}`))], allowedMentions: { users: [info.userId] } }).catch(() => {});
-    await log(i.guild, `✖️ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("refusé par", "declined by")} <@${i.user.id}>  ·  ${reason}`, 0xed4245);
+    await log(i.guild, `✖️ **${APP_KINDS[info.kind].title().replace(/^\S+\s+/, "")}**  ·  <@${info.userId}>  ·  ${t("refusé par", "declined by")} <@${i.user.id}>  ·  ${reason}`, 0xed4245, "ticket");
   }
 
   async function appClose(i) {
@@ -6621,7 +6624,7 @@ const tools = (() => {
       save(true);
     }
     await i.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
-    await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d);
+    await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d, "ticket");
     await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
@@ -6741,7 +6744,7 @@ const tools = (() => {
     const message = await channel.send({ content: `<@${i.user.id}>`, ...ctBody(c), allowedMentions: { users: [i.user.id] } });
     c.msgId = message?.id || "";
     save(true);
-    await log(guild, `🔁 **Cross-trade #${n}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x19c7a0);
+    await log(guild, `🔁 **Cross-trade #${n}**  ·  <@${i.user.id}>  ·  ${channel}`, 0x19c7a0, "ticket");
     return i.editReply(ok(t(`Cross-trade créé : ${channel}${ping ? "" : ""}`, `Cross-trade created: ${channel}`)));
   }
 
@@ -6836,7 +6839,7 @@ const tools = (() => {
     save(true);
     await i.update(ctBody(c));
     await ctSay(i, t(`🛡️ <@${i.user.id}> prend ce cross-trade en charge : **il est le seul middleman légitime de ce ticket**.`, `🛡️ <@${i.user.id}> takes this cross-trade: **he is the only legitimate middleman of this ticket**.`), [i.user.id]);
-    await log(i.guild, `🛡️ **Cross-trade #${c.n}**  ·  ${t("pris en charge par", "taken by")} <@${i.user.id}>`, 0x19c7a0);
+    await log(i.guild, `🛡️ **Cross-trade #${c.n}**  ·  ${t("pris en charge par", "taken by")} <@${i.user.id}>`, 0x19c7a0, "ticket");
   }
   async function ctRelease(i) {
     const c = ctTicketOf(i.channel);
@@ -6874,7 +6877,7 @@ const tools = (() => {
       db.crossStats.done = (db.crossStats.done || 0) + 1;
       save(true);
       await ctSay(i, t(`🎉 **Cross-trade #${c.n} terminé** entre <@${c.a}> et <@${c.b}> ! Merci à <@${c.mm}>.`, `🎉 **Cross-trade #${c.n} completed** between <@${c.a}> and <@${c.b}>! Thanks to <@${c.mm}>.`), []);
-      await log(i.guild, `🎉 **Cross-trade #${c.n}**  ·  <@${c.a}> ⇄ <@${c.b}>  ·  ${t("middleman", "middleman")} <@${c.mm}>`, 0x57f287);
+      await log(i.guild, `🎉 **Cross-trade #${c.n}**  ·  <@${c.a}> ⇄ <@${c.b}>  ·  ${t("middleman", "middleman")} <@${c.mm}>`, 0x57f287, "ticket");
     }
   }
 
@@ -6889,7 +6892,7 @@ const tools = (() => {
     save(true);
     await i.update(ctBody(c));
     await ctSay(i, t(`✖️ <@${i.user.id}> a annulé le cross-trade.${c.recvA || c.recvB ? " Le middleman rend les objets reçus." : ""}`, `✖️ <@${i.user.id}> cancelled the cross-trade.${c.recvA || c.recvB ? " The middleman gives back the items received." : ""}`), []);
-    await log(i.guild, `✖️ **Cross-trade #${c.n}**  ·  ${t("annulé par", "cancelled by")} <@${i.user.id}>`, 0xed4245);
+    await log(i.guild, `✖️ **Cross-trade #${c.n}**  ·  ${t("annulé par", "cancelled by")} <@${i.user.id}>`, 0xed4245, "ticket");
   }
   async function ctFreeze(i, on) {
     const c = ctTicketOf(i.channel);
@@ -6903,7 +6906,7 @@ const tools = (() => {
     await i.update(ctBody(c));
     const staff = db.cfg.apps.staffRoleId;
     await i.channel.send({ content: on ? t(`🚨 <@${i.user.id}> appelle le staff : le cross-trade est **gelé**. ${staff ? `<@&${staff}>` : "Staff"}, merci de regarder.`, `🚨 <@${i.user.id}> calls staff: the cross-trade is **frozen**. ${staff ? `<@&${staff}>` : "Staff"}, please look.`) : t("🧊 Le staff a dégelé le cross-trade.", "🧊 Staff unfroze the cross-trade."), allowedMentions: { roles: on && staff ? [staff] : [] } }).catch(() => {});
-    await log(i.guild, `${on ? "🚨" : "🧊"} **Cross-trade #${c.n}**  ·  ${on ? t("gelé par", "frozen by") : t("dégelé par", "unfrozen by")} <@${i.user.id}>`, 0x3498db);
+    await log(i.guild, `${on ? "🚨" : "🧊"} **Cross-trade #${c.n}**  ·  ${on ? t("gelé par", "frozen by") : t("dégelé par", "unfrozen by")} <@${i.user.id}>`, 0x3498db, "ticket");
   }
   async function ctClose(i) {
     const c = ctTicketOf(i.channel);
@@ -6913,7 +6916,7 @@ const tools = (() => {
     await i.deferUpdate().catch(() => {});
     delete db.crosstrades[i.channel.id];
     save(true);
-    await log(i.guild, `🔒 **Cross-trade #${c.n}**  ·  ${t("ticket fermé par", "ticket closed by")} <@${i.user.id}>`, 0x747f8d);
+    await log(i.guild, `🔒 **Cross-trade #${c.n}**  ·  ${t("ticket fermé par", "ticket closed by")} <@${i.user.id}>`, 0x747f8d, "ticket");
     await i.channel.delete("cross-trade closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
@@ -7033,7 +7036,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, _test: { vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
@@ -7453,7 +7456,7 @@ const onInteraction = async (interaction) => {
 
 const onReady = () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: "", logChannelId: LOG_CHANNEL_ID });
+  middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: "", logChannelId: LOG_CHANNEL_ID, ticketLogChannel: () => tools.logChannelId() });
   refreshPanels().catch(() => {});
   setInterval(() => refreshPanels().catch(() => {}), 5 * 60_000).unref?.();
 };
