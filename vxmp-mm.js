@@ -3518,13 +3518,13 @@ const gfx = (() => {
     c.text(label.level, 812, 56, 22, { align: "right", spacing: 6, font: "regular", color: "#ffffff", alpha: 0.75 });
     c.text(String(level), 812, 112, fitSize(c, String(level), 150, 92), { align: "right", gradient: GOLD, glow: { blur: 14, color: "#ffb02e", alpha: 0.5 }, shadow: { dy: 4, blur: 6, alpha: 0.45 } });
     c.bar(224, 168, 588, 34, into / need);
-    c.text(`${into} / ${need} XP`, 224, 228, 22, { font: "regular", alpha: 0.9 });
+    c.text(`${xp} / ${xp - into + need} XP`, 224, 228, 22, { font: "regular", alpha: 0.9 });
     c.text(`${Math.round((into / need) * 100)}%`, 812, 228, 22, { align: "right", font: "regular", alpha: 0.9 });
     return c.png();
   }
 
   /* The card of an XP step (every 100 XP by default): the colours change as the XP grows. */
-  function xpStep({ name, xp, gained, level, into, need, rank: place, next, avatar, label }) {
+  function xpStep({ name, xp, total = xp, gained, level, into, need, rank: place, next, avatar, label }) {
     const c = new Canvas(860, 300);
     const pal = PALETTES[Math.floor(xp / 500) % PALETTES.length];
     aurora(c, `${name}${xp}`, pal, 18);
@@ -3540,7 +3540,7 @@ const gfx = (() => {
     c.text(cutText(c, name, 300, 30), 812, 118, 30, { align: "right", shadow: { dy: 2, blur: 5, alpha: 0.5 } });
     c.text(`${label.level} ${level}${place ? `  ·  ${label.rank} #${place}` : ""}`, 236, 178, 22, { font: "regular", alpha: 0.9, spacing: 2 });
     c.bar(236, 194, 576, 26, into / need);
-    c.text(`${into} / ${need} XP`, 236, 248, 20, { font: "regular", alpha: 0.85 });
+    c.text(`${total} / ${total - into + need} XP  ·  ${label.level} ${level + 1}`, 236, 248, 20, { font: "regular", alpha: 0.85 });
     c.text(`${label.next} ${next} XP`, 812, 248, 20, { align: "right", font: "regular", alpha: 0.85 });
     return c.png();
   }
@@ -4234,12 +4234,12 @@ const tools = (() => {
       .setDescription(`🎉 <@${member.id}> ${t("passe à", "reaches")} **${milestone} XP**, ${cheer}`)
       .setFooter({ text: t(`Prochain palier : ${milestone + step} XP · ${place ? `#${place} du classement` : ""}`, `Next step: ${milestone + step} XP · ${place ? `#${place} on the leaderboard` : ""}`).replace(/ · $/, "") });
     try {
-      const card = picture("xp.png", gfx.xpStep({ name, xp: milestone, gained: xpAfter - xpBefore, level: l.level, into: l.into, need: l.need, rank: place, next: milestone + step, avatar: await loadAvatar(member.user || member).catch(() => null), label: { step: t("NOUVEAU PALIER", "NEW STEP"), level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), next: t("Prochain :", "Next:") } }));
+      const card = picture("xp.png", gfx.xpStep({ name, xp: milestone, total: xpAfter, gained: xpAfter - xpBefore, level: l.level, into: l.into, need: l.need, rank: place, next: milestone + step, avatar: await loadAvatar(member.user || member).catch(() => null), label: { step: t("NOUVEAU PALIER", "NEW STEP"), level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), next: t("Prochain palier :", "Next step:") } }));
       e.setImage(card.url);
       files = [card.file];
     } catch (error) {
       console.error("⚠️ XP card:", error?.message || error);
-      e.addFields({ name: t("Niveau", "Level"), value: `**${l.level}**  ·  ${bar(l.into, l.need)}  ·  ${l.into} / ${l.need} XP` });
+      e.addFields({ name: t("Niveau", "Level"), value: `**${l.level}**  ·  ${bar(l.into, l.need)}  ·  ${xpAfter} / ${xpAfter - l.into + l.need} XP` });
     }
     await channel.send({ embeds: [e], files, allowedMentions: { users: [member.id] } }).catch(() => {});
   }
