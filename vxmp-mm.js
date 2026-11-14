@@ -3978,7 +3978,7 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
-      vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [] },
+      vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
       apps: {
         staffRoleId: "",
@@ -4015,6 +4015,7 @@ const tools = (() => {
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
+    if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
@@ -5539,8 +5540,8 @@ const tools = (() => {
     if (target.id === i.user.id) return reply(i, no(t("Tu ne peux pas te vouch toi-même.", "You cannot vouch for yourself.")));
     if (target.bot) return reply(i, no(t("On ne vouch pas un bot.", "You cannot vouch for a bot.")));
     // only middlemen can be vouched
-    const allowed = vouchRoles();
-    if (!allowed.length) return reply(i, no(t("Aucun rôle middleman n'est réglé : un admin doit faire `/vouchadmin role`.", "No middleman role is set: an admin must use `/vouchadmin role`.")));
+    const allowed = vouchRoles(i.guild);
+    if (!allowed.length) return reply(i, no(t("Aucun rôle middleman trouvé (aucun rôle avec « MM » dans son nom) : un admin doit faire `/vouchadmin role`.", "No middleman role found (no role with \"MM\" in its name): an admin must use `/vouchadmin role`.")));
     const targetMember = i.options.getMember?.("membre") || (await Promise.resolve(i.guild.members.fetch(target.id)).catch(() => null));
     if (!allowed.some((id) => targetMember?.roles?.cache?.has?.(id))) return reply(i, no(t(`Tu ne peux vouch que les **middlemen**. <@${target.id}> n'en est pas un.`, `You can only vouch **middlemen**. <@${target.id}> is not one.`)));
     if (!(note >= 1 && note <= 5)) return reply(i, no(t("La note va de 1 à 5.", "The rating goes from 1 to 5.")));
@@ -5685,7 +5686,10 @@ const tools = (() => {
   }
 
   /* The roles that can be vouched: the ones set with /vouchadmin role, the middleman role of the applications, and every cross-trade role. */
-  const vouchRoles = () => [...new Set([...db.cfg.vouch.roles, db.cfg.apps.mmRoleId, ...db.cfg.cross.cats.flatMap((x) => x.roles || [])].filter(Boolean))];
+  /* Every role with "MM" in its name is a middleman role automatically (ECHO MM, GHOST MM...), unless removed with /vouchadmin role. */
+  const MM_NAME = /(^|[^a-z0-9])mm([^a-z0-9]|$)|middle\s*man/i;
+  const autoMmRoles = (guild) => [...(guild?.roles?.cache?.values?.() || [])].filter((r) => r && !r.managed && r.id !== guild.roles.everyone?.id && MM_NAME.test(String(r.name || ""))).map((r) => r.id);
+  const vouchRoles = (guild) => [...new Set([...db.cfg.vouch.roles, db.cfg.apps.mmRoleId, ...db.cfg.cross.cats.flatMap((x) => x.roles || []), ...autoMmRoles(guild)].filter((id) => id && !db.cfg.vouch.excluded.includes(id)))];
 
   H.vouchadmin = async (i) => {
     const sub = i.options.getSubcommand();
@@ -5693,13 +5697,21 @@ const tools = (() => {
     if (sub === "role") {
       const role = i.options.getRole("role");
       if (role.id === i.guild.roles.everyone?.id) return reply(i, no(t("Pas @everyone : seuls les middlemen peuvent être vouchés.", "Not @everyone: only middlemen can be vouched.")));
-      const added = toggle(db.cfg.vouch.roles, role.id);
+      // in the list = taken out (an automatic one goes to the excluded list); not in it = put in
+      const on = vouchRoles(i.guild).includes(role.id);
+      if (on) {
+        db.cfg.vouch.roles = db.cfg.vouch.roles.filter((id) => id !== role.id);
+        if (vouchRoles(i.guild).includes(role.id)) db.cfg.vouch.excluded.push(role.id);
+      } else {
+        db.cfg.vouch.excluded = db.cfg.vouch.excluded.filter((id) => id !== role.id);
+        if (!vouchRoles(i.guild).includes(role.id)) db.cfg.vouch.roles.push(role.id);
+      }
       save();
-      return reply(i, ok(added ? t(`<@&${role.id}> peut maintenant recevoir des vouches.`, `<@&${role.id}> can now receive vouches.`) : t(`<@&${role.id}> ne peut plus recevoir de vouches (sauf s'il est un rôle middleman ou de cross-trade).`, `<@&${role.id}> can no longer receive vouches (unless it is a middleman or cross-trade role).`)));
+      return reply(i, ok(on ? t(`<@&${role.id}> ne peut plus recevoir de vouches.`, `<@&${role.id}> can no longer receive vouches.`) : t(`<@&${role.id}> peut maintenant recevoir des vouches.`, `<@&${role.id}> can now receive vouches.`)));
     }
     if (sub === "roles") {
-      const list = vouchRoles();
-      return reply(i, list.length ? t(`⭐ Peuvent recevoir des vouches : ${list.map((id) => `<@&${id}>`).join(" ")}\n-# Le rôle de \`/apps mmrole\` et les rôles de \`/crosstrade\` comptent automatiquement.`, `⭐ Can receive vouches: ${list.map((id) => `<@&${id}>`).join(" ")}`) : no(t("Aucun rôle : fais `/vouchadmin role`.", "No role: use `/vouchadmin role`.")));
+      const list = vouchRoles(i.guild);
+      return reply(i, list.length ? t(`⭐ Peuvent recevoir des vouches : ${list.map((id) => `<@&${id}>`).join(" ")}\n-# Ajoutés automatiquement : les rôles avec « MM » dans leur nom, le rôle de \`/apps mmrole\` et ceux de \`/crosstrade\`. \`/vouchadmin role\` en retire ou en ajoute.`, `⭐ Can receive vouches: ${list.map((id) => `<@&${id}>`).join(" ")}`) : no(t("Aucun rôle : fais `/vouchadmin role`.", "No role: use `/vouchadmin role`.")));
     }
     if (sub === "panel") {
       const cfg = db.cfg.vouch;
