@@ -3978,6 +3978,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
+      index: { roles: {}, auto: {} }, // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
       autoquiz: { on: false, channelId: "", minutes: 30, nextAt: 0 },
@@ -4015,6 +4016,7 @@ const tools = (() => {
     next.cfg.apps.claim = { ...base.cfg.apps.claim, ...(raw.cfg?.apps?.claim || {}) };
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
+    for (const k of ["roles", "auto"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
@@ -4632,6 +4634,21 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle middleman pour chaque valeur et le brancher", "Create a middleman role for each value and connect it")))
           .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /crosstrade autorole", "Delete the roles made by /crosstrade autorole")))
       ),
+      // index: a role per index for the people who do it
+      D(
+        P.ManageGuild,
+        cmd("indexadmin", t("Rôles des index : les gens qui font chaque index", "Index roles: the people who do each index"))
+          .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle pour chaque index (Gold, Diamond…) et le brancher", "Create a role for each index (Gold, Diamond…) and connect it")))
+          .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /indexadmin autorole", "Delete the roles made by /indexadmin autorole")))
+          .addSubcommand((s) =>
+            s
+              .setName("role")
+              .setDescription(t("Brancher un rôle existant à un index (refaire = débrancher)", "Connect an existing role to an index (again = disconnect)"))
+              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true))
+          )
+          .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle de chaque index", "See the role of each index")))
+      ),
       // anti-links and anti-spam: everything can be tuned
       D(
         P.ManageGuild,
@@ -4685,7 +4702,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -7001,6 +7018,81 @@ const tools = (() => {
     const m = /^ix-ticket:(\d+|[A-Za-z0-9_-]+):([a-z]+)$/.exec(String(channel?.topic || ""));
     return m ? { userId: m[1], index: INDEXES.find((x) => x.id === m[2]) || null } : null;
   };
+  /* The people who do an index: its role (if any). Staff always can too. */
+  const ixRole = (index) => (index ? db.cfg.index.roles[index.id] || "" : "");
+  const ixCanHandle = (member, index) => appStaff(member) || Boolean(ixRole(index) && member?.roles?.cache?.has?.(ixRole(index)));
+
+  H.indexadmin = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    const map = db.cfg.index.roles;
+    const lines = () => INDEXES.map((x) => `${x.emoji} **${x.label}** → ${map[x.id] ? `<@&${map[x.id]}>` : t("*aucun rôle*", "*no role*")}`).join("\n");
+    if (sub === "list") return i.reply({ embeds: [embed(0xf1c40f).setTitle(t("📖  Rôles des index", "📖  Index roles")).setDescription(lines())], flags: ephemeral, allowedMentions: { parse: [] } });
+    if (sub === "role") {
+      const index = INDEXES.find((x) => x.id === i.options.getString("index"));
+      const role = i.options.getRole("role");
+      if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
+      if (role.id === i.guild.roles.everyone?.id || role.managed) return reply(i, no(t("Ce rôle ne peut pas être utilisé.", "This role cannot be used.")));
+      const off = map[index.id] === role.id;
+      if (off) delete map[index.id];
+      else map[index.id] = role.id;
+      save();
+      return reply(i, ok(off ? t(`${index.emoji} ${index.label} n'a plus de rôle.`, `${index.emoji} ${index.label} has no role anymore.`) : t(`<@&${role.id}> fait l'index ${index.emoji} **${index.label}**.`, `<@&${role.id}> does the ${index.emoji} **${index.label}** index.`)));
+    }
+    if (sub === "autorole") {
+      await i.deferReply({ flags: ephemeral });
+      let made = 0;
+      let kept = 0;
+      for (const index of INDEXES) {
+        const name = `${index.emoji} Index ${index.label}`;
+        const auto = db.cfg.index.auto?.[index.id];
+        // a role you connected yourself (/indexadmin role) is kept
+        const own = map[index.id] && map[index.id] !== auto ? await Promise.resolve(i.guild.roles.fetch?.(map[index.id])).catch(() => null) : null;
+        if (own) {
+          kept++;
+          continue;
+        }
+        const existing = auto ? await Promise.resolve(i.guild.roles.fetch?.(auto)).catch(() => null) : null;
+        if (existing) {
+          map[index.id] = existing.id;
+          kept++;
+          continue;
+        }
+        try {
+          const role = await i.guild.roles.create({ name, color: parseInt(index.c[1].slice(1), 16), mentionable: true, hoist: false, reason: "index roles" });
+          (db.cfg.index.auto ||= {})[index.id] = role.id;
+          map[index.id] = role.id;
+          made++;
+        } catch (error) {
+          console.error("⚠️ Index role:", error?.message || error);
+          save();
+          return i.editReply(no(t(`J'ai créé ${made} rôle(s) puis Discord a refusé (il me faut « Gérer les rôles »). Relance la commande après avoir corrigé.`, `I made ${made} role(s) then Discord refused (I need Manage Roles). Run the command again once fixed.`)));
+        }
+      }
+      save();
+      return i.editReply({ content: ok(t(`${made} rôle(s) créé(s)${kept ? `, ${kept} déjà là` : ""}. Donne-les aux gens qui font les index :\n${lines()}`, `${made} role(s) made${kept ? `, ${kept} already there` : ""}. Give them to the people who do the indexes:\n${lines()}`)), allowedMentions: { parse: [] } });
+    }
+    if (sub === "autorole-delete") {
+      await i.deferReply({ flags: ephemeral });
+      let removed = 0;
+      for (const [id, roleId] of Object.entries(db.cfg.index.auto || {})) {
+        const role = await Promise.resolve(i.guild.roles.fetch?.(roleId)).catch(() => null);
+        if (role) {
+          try {
+            await role.delete("index roles removed");
+            removed++;
+          } catch {
+            continue;
+          }
+        }
+        if (map[id] === roleId) delete map[id];
+        delete db.cfg.index.auto[id];
+      }
+      save();
+      return i.editReply(removed ? ok(t(`${removed} rôle(s) d'index supprimé(s).`, `${removed} index role(s) deleted.`)) : no(t("Aucun rôle créé par le bot à supprimer.", "No role made by the bot to delete.")));
+    }
+  };
+
   async function ixOpen(i, id) {
     const index = INDEXES.find((x) => x.id === (id || i.values?.[0]));
     if (!index) return reply(i, no(t("Index inconnu.", "Unknown index.")));
@@ -7012,7 +7104,7 @@ const tools = (() => {
     const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
     const overwrites = [{ id: guild.roles.everyone.id, deny: [P.ViewChannel] }, { id: i.user.id, allow }];
     if (client?.user?.id) overwrites.push({ id: client.user.id, allow: [...allow, P.EmbedLinks, P.ManageChannels] });
-    if (a.staffRoleId && guild.roles.cache?.get?.(a.staffRoleId)) overwrites.push({ id: a.staffRoleId, allow });
+    for (const roleId of [a.staffRoleId, ixRole(index)]) if (roleId && guild.roles.cache?.get?.(roleId) && !overwrites.some((o) => o.id === roleId)) overwrites.push({ id: roleId, allow });
     const safe = String(i.user.username || "user").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18) || "user";
     let channel;
     try {
@@ -7031,7 +7123,7 @@ const tools = (() => {
       new ButtonBuilder().setCustomId("ix:done").setLabel(t("Index terminé", "Index done")).setEmoji("✅").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("ix:close").setLabel(t("Fermer le ticket", "Close the ticket")).setEmoji("🔒").setStyle(ButtonStyle.Secondary)
     );
-    const ping = a.staffRoleId;
+    const ping = ixRole(index) || a.staffRoleId;
     await channel.send({ content: `<@${i.user.id}>${ping ? ` <@&${ping}>` : ""}`, embeds: [e], components: [row], allowedMentions: { users: [i.user.id], roles: ping ? [ping] : [] } });
     await log(guild, `📖 **Index ${index.label}**  ·  <@${i.user.id}>  ·  <#${channel.id}>`, 0xf1c40f, "ticket");
     return i.editReply(ok(t(`Ticket créé : <#${channel.id}>`, `Ticket created: <#${channel.id}>`)));
@@ -7039,7 +7131,7 @@ const tools = (() => {
   async function ixDone(i) {
     const info = ixTicketOf(i.channel);
     if (!info) return reply(i, no(t("Ce n'est pas un ticket d'index.", "This is not an index ticket.")));
-    if (!appStaff(i.member)) return reply(i, no(t("Seul le staff peut marquer l'index comme terminé.", "Only staff can mark the index as done.")));
+    if (!ixCanHandle(i.member, info.index)) return reply(i, no(t("Seuls le staff et les gens qui font cet index peuvent le marquer comme terminé.", "Only staff and the people who do this index can mark it as done.")));
     db.indexStats.done = (db.indexStats.done || 0) + 1;
     save();
     await i.reply({ content: t(`✅ **Index ${info.index?.label || ""} terminé** pour <@${info.userId}> ! Merci 🙏 Tu peux fermer le ticket.`, `✅ **${info.index?.label || ""} index done** for <@${info.userId}>! Thanks 🙏 You can close the ticket.`), allowedMentions: { users: [info.userId] } });
@@ -7048,7 +7140,7 @@ const tools = (() => {
   async function ixClose(i) {
     const info = ixTicketOf(i.channel);
     if (!info) return reply(i, no(t("Ce n'est pas un ticket d'index.", "This is not an index ticket.")));
-    if (i.user.id !== info.userId && !appStaff(i.member)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
+    if (i.user.id !== info.userId && !ixCanHandle(i.member, info.index)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
     await i.deferUpdate().catch(() => {});
     await log(i.guild, `🔒 **Index ${info.index?.label || ""}**  ·  <@${info.userId}>  ·  ${t("fermé par", "closed by")} <@${i.user.id}>`, 0x747f8d, "ticket");
     await i.channel.delete("index ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
