@@ -6525,33 +6525,56 @@ const tools = (() => {
   const TICKET_TOPICS = ["mm-ticket:", "ct-ticket:", "ix-ticket:", "app-ticket:"];
   const isTicket = (channel) => TICKET_TOPICS.some((p) => String(channel?.topic || "").startsWith(p));
   /* Google's free endpoint: detects the language and translates. Returns { lang, text } or null. */
+  let translateWarnAt = 0;
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms).unref?.());
+  /* Google's free endpoint: detects the language and translates. Retries when Google says "too many requests". Returns { lang, text } or null. */
   async function googleTranslate(text, target) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout?.(8000) }).catch(() => null); // no network: no translation, quietly
-    if (!res) return null;
-    if (!res.ok) return null;
-    const data = await res.json();
-    const out = (data?.[0] || []).map((part) => part?.[0] || "").join("");
-    return out ? { lang: String(data?.[2] || ""), text: out } : null;
+    let status = "network";
+    for (const wait of [0, 1500, 4000, 8000]) {
+      if (wait) await pause(wait);
+      const res = await fetch(url, { signal: AbortSignal.timeout?.(10_000) }).catch(() => null);
+      if (res?.ok) {
+        const data = await res.json().catch(() => null);
+        const out = (data?.[0] || []).map((part) => part?.[0] || "").join("");
+        return out ? { lang: String(data?.[2] || ""), text: out } : null;
+      }
+      status = res ? res.status : "network";
+      if (res && res.status < 500 && res.status !== 429) break; // a real refusal: retrying will not help
+    }
+    if (Date.now() - translateWarnAt > 60_000) {
+      translateWarnAt = Date.now();
+      console.error(`⚠️ Translation: Google did not answer (${status}).`);
+    }
+    return null;
   }
-  async function translateTicket(message) {
+  /* One translation at a time, in the order of the messages: no burst of requests when people type fast. */
+  let translateChain = Promise.resolve();
+  function translateTicket(message) {
+    const job = translateChain.then(() => translateOne(message));
+    translateChain = job.catch(() => {});
+    return job;
+  }
+  async function translateOne(message) {
     if (!db.cfg.translate.on || message.author?.bot || !message.guild || !isTicket(message.channel)) return false;
-    // what is worth translating: some words, not only links, mentions, emojis or numbers
+    // what is worth translating: words, not only links, mentions, emojis or numbers
     const clean = String(message.content || "").replace(/https?:\/\/\S+/g, " ").replace(/<a?:\w+:\d+>|<[@#][!&]?\d+>/g, " ").trim();
-    if ((clean.match(/\p{L}/gu) || []).length < 3) return false;
-    let result = await googleTranslate(clean.slice(0, 1500), "fr");
+    if ((clean.match(/\p{L}/gu) || []).length < 2) return false;
+    const text = clean.slice(0, 1500);
+    let result = await googleTranslate(text, "fr");
     if (!result) return false;
-    let from = result.lang.split("-")[0];
+    const from = result.lang.split("-")[0] || "?";
+    // French -> English; any other language (English, slang read as another language...) -> French
     if (from === "fr") {
-      result = await googleTranslate(clean.slice(0, 1500), "en");
+      result = await googleTranslate(text, "en");
       if (!result) return false;
-    } else if (from !== "en") return false; // only English and French
+    }
     const to = from === "fr" ? "EN" : "FR";
     const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-    if (!result.text || norm(result.text) === norm(clean)) return false; // nothing changes (names, "ok", "gg"...)
+    if (!result.text || norm(result.text) === norm(clean)) return false; // the same once translated ("ok", "yo", a name...): nothing to show
     const lines = result.text.split(/\n+/).filter((l) => l.trim()).slice(0, 20);
     const body = lines.map((l, k) => `-# ${k ? "" : `🌐 ${from.toUpperCase()} → ${to} · `}${l.trim()}`).join("\n").slice(0, 1900);
-    await message.reply({ content: body, allowedMentions: { parse: [], repliedUser: false }, flags: MessageFlags.SuppressNotifications }).catch(() => {});
+    await message.reply({ content: body, allowedMentions: { parse: [], repliedUser: false }, flags: MessageFlags.SuppressNotifications }).catch((error) => console.error("⚠️ Translation reply:", error?.message || error));
     return true;
   }
   H.traduction = async (i) => {
