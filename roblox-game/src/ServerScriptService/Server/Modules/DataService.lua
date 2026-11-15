@@ -1,4 +1,4 @@
--- Sauvegarde DataStore (pieces, graines, fruits, parcelle) + leaderstats.
+-- Sauvegarde DataStore + leaderstats + classement global (OrderedDataStore).
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -8,28 +8,28 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local DataService = {}
 
-local STORE_NAME = "OnyxFarm_v1"
-
-local store = nil
+local store, winsStore
 pcall(function()
-	store = DataStoreService:GetDataStore(STORE_NAME)
+	store = DataStoreService:GetDataStore("OnyxBG_v1")
+	winsStore = DataStoreService:GetOrderedDataStore("OnyxBG_Wins_v1")
 end)
 
 local cache = {}
 local stats = {}
 
-DataService.BeforeSave = nil -- function(player, data) rempli par PlotService
-
 local function defaultData()
 	return {
-		Coins = Config.StartCoins,
-		Seeds = { Carotte = 3 },
-		Fruits = {},
-		Tiles = {},
-		ExpandLevel = 0,
-		Harvests = 0,
-		Earned = 0,
-		SavedAt = os.time(),
+		XP = 0,
+		Level = 1,
+		Coins = 0,
+		Kills = 0,
+		Deaths = 0,
+		Wins = 0,
+		Character = "Fighter",
+		Aura = "none",
+		Trail = "none",
+		Title = "rookie",
+		Unlocked = { auras = { none = true }, trails = { none = true }, titles = { rookie = true } },
 	}
 end
 
@@ -47,24 +47,32 @@ function DataService.Load(player)
 			for k, v in pairs(result) do
 				data[k] = v
 			end
+			data.Unlocked = data.Unlocked or defaultData().Unlocked
+			data.Unlocked.auras = data.Unlocked.auras or { none = true }
+			data.Unlocked.trails = data.Unlocked.trails or { none = true }
+			data.Unlocked.titles = data.Unlocked.titles or { rookie = true }
 		elseif not ok then
-			warn("[OnyxFarm] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
+			warn("[OnyxBG] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
 		end
+	end
+	if not Config.CharacterById[data.Character] then
+		data.Character = "Fighter"
 	end
 	cache[player] = data
 
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
-	local coins = Instance.new("IntValue")
-	coins.Name = "Pieces"
-	coins.Value = data.Coins
-	coins.Parent = leaderstats
-	local harvests = Instance.new("IntValue")
-	harvests.Name = "Recoltes"
-	harvests.Value = data.Harvests
-	harvests.Parent = leaderstats
+	local values = {}
+	for _, name in ipairs({ "Wins", "Kills", "Level" }) do
+		local v = Instance.new("IntValue")
+		v.Name = name
+		v.Value = data[name]
+		v.Parent = leaderstats
+		values[name] = v
+	end
 	leaderstats.Parent = player
-	stats[player] = { Coins = coins, Harvests = harvests }
+	stats[player] = values
+	player:SetAttribute("Level", data.Level)
 	return data
 end
 
@@ -74,23 +82,17 @@ end
 
 function DataService.Sync(player)
 	local data = cache[player]
-	local s = stats[player]
-	if data and s then
-		s.Coins.Value = math.floor(data.Coins)
-		s.Harvests.Value = data.Harvests
+	local values = stats[player]
+	if data and values then
+		values.Wins.Value = data.Wins
+		values.Kills.Value = data.Kills
+		values.Level.Value = data.Level
 	end
 end
 
 function DataService.Save(player)
 	local data = cache[player]
-	if not data then
-		return
-	end
-	if DataService.BeforeSave then
-		DataService.BeforeSave(player, data)
-	end
-	data.SavedAt = os.time()
-	if not store then
+	if not data or not store then
 		return
 	end
 	local ok, err = pcall(function()
@@ -99,13 +101,36 @@ function DataService.Save(player)
 		end)
 	end)
 	if not ok then
-		warn("[OnyxFarm] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
+		warn("[OnyxBG] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
+	end
+	if winsStore then
+		pcall(function()
+			winsStore:SetAsync(tostring(player.UserId), data.Wins)
+		end)
 	end
 end
 
 function DataService.Release(player)
 	cache[player] = nil
 	stats[player] = nil
+end
+
+-- Top global (userId -> wins) ; retourne { {userId=, wins=} }
+function DataService.GetTopWins(count)
+	if not winsStore then
+		return {}
+	end
+	local ok, pages = pcall(function()
+		return winsStore:GetSortedAsync(false, count)
+	end)
+	if not ok then
+		return {}
+	end
+	local result = {}
+	for _, entry in ipairs(pages:GetCurrentPage()) do
+		table.insert(result, { userId = tonumber(entry.key), wins = entry.value })
+	end
+	return result
 end
 
 function DataService.Init()
@@ -116,7 +141,7 @@ function DataService.Init()
 	end)
 	task.spawn(function()
 		while true do
-			task.wait(90)
+			task.wait(120)
 			for _, p in ipairs(Players:GetPlayers()) do
 				DataService.Save(p)
 			end

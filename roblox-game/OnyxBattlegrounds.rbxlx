@@ -1,0 +1,3311 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+<Item class="ReplicatedStorage" referent="RBX00000003"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000002"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">Config</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Configuration centrale d'ONYX BATTLEGROUNDS.
+-- Personnages, competences, progression, cosmetiques : tout l'equilibrage est ici.
+
+local Config = {}
+
+Config.GameName = &quot;ONYX BATTLEGROUNDS&quot;
+
+Config.Colors = {
+	Accent = Color3.fromRGB(0, 229, 255),
+	Accent2 = Color3.fromRGB(255, 90, 40),
+	Gold = Color3.fromRGB(255, 200, 40),
+	Danger = Color3.fromRGB(255, 60, 60),
+	Dark = Color3.fromRGB(16, 18, 26),
+	Health = Color3.fromRGB(80, 230, 110),
+	Ult = Color3.fromRGB(200, 80, 255),
+}
+
+Config.Combat = {
+	M1Cooldown = 0.32, -- delai entre deux coups
+	ComboReset = 1.1, -- temps avant que le combo retombe a 0
+	ComboEndCooldown = 0.9, -- delai apres le 4e coup
+	M1Range = 7,
+	M1Hitbox = Vector3.new(6, 6, 7),
+	HitStun = 0.45,
+	FinisherStun = 1.2,
+	FinisherKnockback = 55,
+	BlockReduction = 0.7, -- 70 % de degats en moins
+	BlockSkillReduction = 0.5,
+	BlockMoveSpeed = 6,
+	DashCooldown = 1.6,
+	DashSpeed = 85,
+	DashDuration = 0.22,
+	UltPerDamageDealt = 0.55, -- points d'ultimate par point de degats infliges
+	UltPerDamageTaken = 0.3,
+	UltDuration = 16,
+	UltDamageMultiplier = 1.25,
+	RespawnTime = 4,
+	StreakForWin = 3, -- 3 eliminations d'affilee = 1 victoire
+}
+
+-- Types de competence :
+--  melee      : coup au corps a corps (hitbox devant le joueur apres windup)
+--  rush       : fonce vers l'avant en frappant tout sur le passage
+--  projectile : tir vers l'avant, degats a l'impact (+ zone optionnelle)
+--  aoe        : explosion autour du joueur
+--  buff       : bonus temporaire (vitesse)
+-- Champs : name, type, damage, cooldown, windup, range/radius, knockback, lift, stun,
+--          knockdown, color, pose (animation procedurale), sound, speed (projectile/rush)
+Config.Characters = {
+	{
+		id = &quot;Fighter&quot;,
+		name = &quot;Fighter&quot;,
+		description = &quot;Equilibre et facile a prendre en main.&quot;,
+		color = Color3.fromRGB(255, 200, 60),
+		health = 100,
+		walkSpeed = 17,
+		m1Damage = 8,
+		m1Finisher = 13,
+		skills = {
+			{ name = &quot;Uppercut&quot;, type = &quot;melee&quot;, damage = 18, cooldown = 6, windup = 0.25, range = 8, knockback = 20, lift = 45, stun = 0.8, pose = &quot;uppercut&quot;, sound = &quot;heavy&quot; },
+			{ name = &quot;Rush Punch&quot;, type = &quot;rush&quot;, damage = 20, cooldown = 9, windup = 0.1, distance = 32, duration = 0.35, knockback = 40, stun = 0.7, pose = &quot;rush&quot;, sound = &quot;whoosh&quot; },
+			{ name = &quot;Shockwave&quot;, type = &quot;aoe&quot;, damage = 16, cooldown = 11, windup = 0.45, radius = 13, knockback = 45, lift = 20, stun = 0.8, pose = &quot;slam&quot;, sound = &quot;slam&quot; },
+			{ name = &quot;Finisher&quot;, type = &quot;melee&quot;, damage = 34, cooldown = 18, windup = 0.5, range = 9, knockback = 70, lift = 15, stun = 1.4, knockdown = true, pose = &quot;heavy&quot;, sound = &quot;heavy&quot; },
+		},
+		ultSkills = {
+			{ name = &quot;Meteor Fist&quot;, type = &quot;melee&quot;, damage = 40, cooldown = 6, windup = 0.3, range = 10, knockback = 60, lift = 30, stun = 1.2, knockdown = true, pose = &quot;heavy&quot;, sound = &quot;heavy&quot; },
+			{ name = &quot;Blitz Rush&quot;, type = &quot;rush&quot;, damage = 34, cooldown = 7, windup = 0.05, distance = 44, duration = 0.3, knockback = 50, stun = 0.9, pose = &quot;rush&quot;, sound = &quot;whoosh&quot; },
+			{ name = &quot;Earth Breaker&quot;, type = &quot;aoe&quot;, damage = 32, cooldown = 9, windup = 0.5, radius = 17, knockback = 60, lift = 35, stun = 1.1, pose = &quot;slam&quot;, sound = &quot;slam&quot; },
+			{ name = &quot;Omega Strike&quot;, type = &quot;melee&quot;, damage = 65, cooldown = 16, windup = 0.65, range = 11, knockback = 95, lift = 25, stun = 1.8, knockdown = true, pose = &quot;heavy&quot;, sound = &quot;heavy&quot; },
+		},
+	},
+	{
+		id = &quot;Volt&quot;,
+		name = &quot;Volt&quot;,
+		description = &quot;Rapide, specialise dans les deplacements.&quot;,
+		color = Color3.fromRGB(80, 200, 255),
+		health = 85,
+		walkSpeed = 21,
+		m1Damage = 7,
+		m1Finisher = 11,
+		skills = {
+			{ name = &quot;Spark Jab&quot;, type = &quot;melee&quot;, damage = 12, cooldown = 4, windup = 0.1, range = 8, knockback = 15, stun = 0.6, pose = &quot;jab&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Lightning Dash&quot;, type = &quot;rush&quot;, damage = 18, cooldown = 7, windup = 0.05, distance = 42, duration = 0.28, knockback = 30, stun = 0.7, pose = &quot;rush&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Thunder Bolt&quot;, type = &quot;projectile&quot;, damage = 22, cooldown = 8, windup = 0.2, speed = 140, lifetime = 1.5, radius = 5, knockback = 35, stun = 0.8, pose = &quot;cast&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Overcharge&quot;, type = &quot;buff&quot;, cooldown = 22, windup = 0.1, duration = 8, speedMultiplier = 1.5, pose = &quot;power&quot;, sound = &quot;charge&quot; },
+		},
+		ultSkills = {
+			{ name = &quot;Chain Lightning&quot;, type = &quot;aoe&quot;, damage = 26, cooldown = 6, windup = 0.25, radius = 15, knockback = 35, lift = 20, stun = 0.9, pose = &quot;power&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Volt Rush&quot;, type = &quot;rush&quot;, damage = 30, cooldown = 6, windup = 0.05, distance = 55, duration = 0.3, knockback = 45, stun = 0.8, pose = &quot;rush&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Plasma Shot&quot;, type = &quot;projectile&quot;, damage = 42, cooldown = 8, windup = 0.2, speed = 160, lifetime = 1.6, radius = 9, knockback = 50, stun = 1, pose = &quot;cast&quot;, sound = &quot;zap&quot; },
+			{ name = &quot;Storm Cage&quot;, type = &quot;aoe&quot;, damage = 48, cooldown = 15, windup = 0.6, radius = 19, knockback = 20, lift = 50, stun = 1.6, knockdown = true, pose = &quot;slam&quot;, sound = &quot;thunder&quot; },
+		},
+	},
+	{
+		id = &quot;Titan&quot;,
+		name = &quot;Titan&quot;,
+		description = &quot;Lent mais devastateur.&quot;,
+		color = Color3.fromRGB(170, 120, 90),
+		health = 145,
+		walkSpeed = 14,
+		m1Damage = 11,
+		m1Finisher = 16,
+		skills = {
+			{ name = &quot;Boulder Punch&quot;, type = &quot;melee&quot;, damage = 26, cooldown = 7, windup = 0.4, range = 9, knockback = 55, lift = 15, stun = 1, pose = &quot;heavy&quot;, sound = &quot;heavy&quot; },
+			{ name = &quot;Charge&quot;, type = &quot;rush&quot;, damage = 28, cooldown = 10, windup = 0.3, distance = 28, duration = 0.45, knockback = 60, stun = 1, knockdown = true, pose = &quot;rush&quot;, sound = &quot;whoosh&quot; },
+			{ name = &quot;Ground Slam&quot;, type = &quot;aoe&quot;, damage = 30, cooldown = 13, windup = 0.6, radius = 14, knockback = 50, lift = 40, stun = 1.2, knockdown = true, pose = &quot;slam&quot;, sound = &quot;slam&quot; },
+			{ name = &quot;Titan Crush&quot;, type = &quot;melee&quot;, damage = 46, cooldown = 20, windup = 0.7, range = 10, knockback = 90, lift = 30, stun = 1.8, knockdown = true, pose = &quot;heavy&quot;, sound = &quot;slam&quot; },
+		},
+		ultSkills = {
+			{ name = &quot;Quake&quot;, type = &quot;aoe&quot;, damage = 40, cooldown = 7, windup = 0.4, radius = 18, knockback = 60, lift = 45, stun = 1.2, knockdown = true, pose = &quot;slam&quot;, sound = &quot;slam&quot; },
+			{ name = &quot;Avalanche&quot;, type = &quot;rush&quot;, damage = 45, cooldown = 8, windup = 0.2, distance = 40, duration = 0.45, knockback = 80, stun = 1.2, knockdown = true, pose = &quot;rush&quot;, sound = &quot;whoosh&quot; },
+			{ name = &quot;Mountain Fist&quot;, type = &quot;melee&quot;, damage = 72, cooldown = 10, windup = 0.55, range = 11, knockback = 100, lift = 40, stun = 1.8, knockdown = true, pose = &quot;heavy&quot;, sound = &quot;heavy&quot; },
+			{ name = &quot;Cataclysm&quot;, type = &quot;aoe&quot;, damage = 85, cooldown = 18, windup = 0.9, radius = 24, knockback = 110, lift = 60, stun = 2.2, knockdown = true, pose = &quot;slam&quot;, sound = &quot;thunder&quot; },
+		},
+	},
+	{
+		id = &quot;Blaze&quot;,
+		name = &quot;Blaze&quot;,
+		description = &quot;Specialiste des attaques a distance.&quot;,
+		color = Color3.fromRGB(255, 110, 30),
+		health = 90,
+		walkSpeed = 17,
+		m1Damage = 7,
+		m1Finisher = 12,
+		skills = {
+			{ name = &quot;Fire Punch&quot;, type = &quot;melee&quot;, damage = 17, cooldown = 6, windup = 0.2, range = 8, knockback = 30, lift = 10, stun = 0.8, pose = &quot;jab&quot;, sound = &quot;fire&quot; },
+			{ name = &quot;Flame Dash&quot;, type = &quot;rush&quot;, damage = 20, cooldown = 8, windup = 0.1, distance = 36, duration = 0.32, knockback = 40, stun = 0.8, pose = &quot;rush&quot;, sound = &quot;fire&quot; },
+			{ name = &quot;Fire Blast&quot;, type = &quot;projectile&quot;, damage = 26, cooldown = 9, windup = 0.25, speed = 110, lifetime = 1.8, radius = 7, knockback = 40, lift = 15, stun = 0.9, pose = &quot;cast&quot;, sound = &quot;fire&quot; },
+			{ name = &quot;Inferno&quot;, type = &quot;aoe&quot;, damage = 36, cooldown = 17, windup = 0.7, radius = 15, knockback = 55, lift = 30, stun = 1.3, knockdown = true, pose = &quot;power&quot;, sound = &quot;explosion&quot; },
+		},
+		ultSkills = {
+			{ name = &quot;Hellfire Fist&quot;, type = &quot;melee&quot;, damage = 36, cooldown = 5, windup = 0.2, range = 9, knockback = 45, lift = 20, stun = 1, pose = &quot;jab&quot;, sound = &quot;fire&quot; },
+			{ name = &quot;Phoenix Dash&quot;, type = &quot;rush&quot;, damage = 42, cooldown = 7, windup = 0.05, distance = 50, duration = 0.3, knockback = 55, stun = 1, pose = &quot;rush&quot;, sound = &quot;fire&quot; },
+			{ name = &quot;Dragon Breath&quot;, type = &quot;projectile&quot;, damage = 55, cooldown = 8, windup = 0.3, speed = 120, lifetime = 2, radius = 12, knockback = 60, lift = 25, stun = 1.2, knockdown = true, pose = &quot;cast&quot;, sound = &quot;explosion&quot; },
+			{ name = &quot;Supernova&quot;, type = &quot;aoe&quot;, damage = 90, cooldown = 18, windup = 1, radius = 26, knockback = 100, lift = 60, stun = 2, knockdown = true, pose = &quot;power&quot;, sound = &quot;thunder&quot; },
+		},
+	},
+}
+
+Config.CharacterById = {}
+for _, char in ipairs(Config.Characters) do
+	Config.CharacterById[char.id] = char
+end
+
+Config.Progression = {
+	XPPerHit = 2,
+	XPPerKill = 60,
+	XPPerWin = 120,
+	CoinsPerHit = 1,
+	CoinsPerKill = 40,
+	CoinsPerWin = 120,
+	-- XP necessaire pour passer du niveau n au niveau n+1
+	XPForLevel = function(level)
+		return math.floor(120 + 60 * (level ^ 1.4))
+	end,
+	MaxLevel = 100,
+}
+
+-- Cosmetiques
+Config.Auras = {
+	{ id = &quot;none&quot;, name = &quot;Aucune&quot;, price = 0 },
+	{ id = &quot;cyan&quot;, name = &quot;Aura Cyan&quot;, price = 300, color = Color3.fromRGB(0, 229, 255) },
+	{ id = &quot;fire&quot;, name = &quot;Aura Feu&quot;, price = 800, color = Color3.fromRGB(255, 110, 30) },
+	{ id = &quot;toxic&quot;, name = &quot;Aura Toxique&quot;, price = 1500, color = Color3.fromRGB(120, 255, 60) },
+	{ id = &quot;void&quot;, name = &quot;Aura Neant&quot;, price = 3000, color = Color3.fromRGB(150, 60, 255) },
+	{ id = &quot;gold&quot;, name = &quot;Aura Or&quot;, price = 6000, color = Color3.fromRGB(255, 215, 0) },
+}
+Config.Trails = {
+	{ id = &quot;none&quot;, name = &quot;Aucune&quot;, price = 0 },
+	{ id = &quot;white&quot;, name = &quot;Trainee Blanche&quot;, price = 200, color = Color3.new(1, 1, 1) },
+	{ id = &quot;blue&quot;, name = &quot;Trainee Bleue&quot;, price = 600, color = Color3.fromRGB(60, 140, 255) },
+	{ id = &quot;red&quot;, name = &quot;Trainee Rouge&quot;, price = 1200, color = Color3.fromRGB(255, 60, 60) },
+	{ id = &quot;rainbow&quot;, name = &quot;Trainee Arc-en-ciel&quot;, price = 4000, color = Color3.fromRGB(255, 120, 255) },
+}
+-- Titres : debloques par niveau, kills ou victoires
+Config.Titles = {
+	{ id = &quot;rookie&quot;, name = &quot;Debutant&quot;, requirement = { kind = &quot;level&quot;, value = 1 } },
+	{ id = &quot;fighter&quot;, name = &quot;Combattant&quot;, requirement = { kind = &quot;level&quot;, value = 5 } },
+	{ id = &quot;veteran&quot;, name = &quot;Veteran&quot;, requirement = { kind = &quot;level&quot;, value = 10 } },
+	{ id = &quot;elite&quot;, name = &quot;Elite&quot;, requirement = { kind = &quot;level&quot;, value = 20 } },
+	{ id = &quot;legend&quot;, name = &quot;Legende&quot;, requirement = { kind = &quot;level&quot;, value = 35 } },
+	{ id = &quot;slayer&quot;, name = &quot;Tueur&quot;, requirement = { kind = &quot;kills&quot;, value = 50 } },
+	{ id = &quot;executioner&quot;, name = &quot;Bourreau&quot;, requirement = { kind = &quot;kills&quot;, value = 250 } },
+	{ id = &quot;champion&quot;, name = &quot;Champion&quot;, requirement = { kind = &quot;wins&quot;, value = 10 } },
+	{ id = &quot;unstoppable&quot;, name = &quot;Inarretable&quot;, requirement = { kind = &quot;wins&quot;, value = 50 } },
+}
+
+Config.Map = {
+	SpawnPosition = Vector3.new(0, 3, 150),
+	ArenaCenter = Vector3.new(0, 0, 0),
+	ArenaRadius = 42,
+	CityOrigin = Vector3.new(0, 0, -120),
+	CalmZone = Vector3.new(170, 0, 90),
+	DummyCount = 4,
+	DummyHealth = 600,
+	KillHeight = -40,
+}
+
+return Config
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Remotes</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Cree (serveur) ou recupere (client) les RemoteEvents du jeu.
+
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+
+local NAMES = { &quot;Combat&quot;, &quot;CombatFX&quot;, &quot;SkillAck&quot;, &quot;Stats&quot;, &quot;Menu&quot;, &quot;Notify&quot; }
+
+local Remotes = {}
+
+local folder: Folder
+if RunService:IsServer() then
+	local existing = ReplicatedStorage:FindFirstChild(&quot;Remotes&quot;)
+	if existing and existing:IsA(&quot;Folder&quot;) then
+		folder = existing
+	else
+		folder = Instance.new(&quot;Folder&quot;)
+		folder.Name = &quot;Remotes&quot;
+		folder.Parent = ReplicatedStorage
+	end
+	for _, name in ipairs(NAMES) do
+		if not folder:FindFirstChild(name) then
+			local remote = Instance.new(&quot;RemoteEvent&quot;)
+			remote.Name = name
+			remote.Parent = folder
+		end
+	end
+else
+	folder = ReplicatedStorage:WaitForChild(&quot;Remotes&quot;) :: Folder
+end
+
+for _, name in ipairs(NAMES) do
+	Remotes[name] = folder:WaitForChild(name) :: RemoteEvent
+end
+
+return Remotes
+</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000000C"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX0000000B"><Properties><string name="Name">Server</string></Properties><Item class="Script" referent="RBX00000004"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree serveur d'ONYX BATTLEGROUNDS.
+
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+require(ReplicatedStorage.Shared.Remotes) -- cree les RemoteEvents avant tout
+
+local Modules = script.Parent.Modules
+local MapBuilder = require(Modules.MapBuilder)
+local DataService = require(Modules.DataService)
+local ProgressionService = require(Modules.ProgressionService)
+local CharacterService = require(Modules.CharacterService)
+local CombatService = require(Modules.CombatService)
+
+MapBuilder.Build()
+DataService.Init()
+ProgressionService.Init(CharacterService)
+CharacterService.Init()
+CombatService.Init()
+
+print(&quot;[OnyxBG] Serveur pret.&quot;)
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000000A"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">CharacterService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Applique la classe au personnage, gere la mort, le credit des eliminations.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local ProgressionService = require(script.Parent.ProgressionService)
+local MapBuilder = require(script.Parent.MapBuilder)
+
+local CharacterService = {}
+
+local function applyClass(player, character)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	local def = Config.CharacterById[data.Character] or Config.Characters[1]
+	local humanoid = character:WaitForChild(&quot;Humanoid&quot;, 5)
+	if not humanoid then
+		return
+	end
+	humanoid.MaxHealth = def.health
+	humanoid.Health = def.health
+	humanoid.WalkSpeed = def.walkSpeed
+	humanoid.JumpPower = 50
+	humanoid.UseJumpPower = true
+	humanoid.BreakJointsOnDeath = false
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	character:SetAttribute(&quot;CharacterId&quot;, def.id)
+	character:SetAttribute(&quot;BaseSpeed&quot;, def.walkSpeed)
+	character:SetAttribute(&quot;StunUntil&quot;, 0)
+	character:SetAttribute(&quot;Blocking&quot;, false)
+	character:SetAttribute(&quot;Ult&quot;, 0)
+	character:SetAttribute(&quot;UltActive&quot;, false)
+	character:SetAttribute(&quot;LastDamager&quot;, 0)
+	character:SetAttribute(&quot;LastDamageTime&quot;, 0)
+
+	humanoid.Died:Connect(function()
+		local killerId = character:GetAttribute(&quot;LastDamager&quot;) or 0
+		local lastTime = character:GetAttribute(&quot;LastDamageTime&quot;) or 0
+		local killer = killerId ~= 0 and Players:GetPlayerByUserId(killerId) or nil
+		Remotes.CombatFX:FireAllClients(&quot;Death&quot;, { userId = player.UserId, position = character:GetPivot().Position })
+		if killer and killer ~= player and os.clock() - lastTime &lt; 10 then
+			ProgressionService.OnKill(killer, player)
+		else
+			Remotes.Notify:FireAllClients(player.DisplayName .. &quot; est mort.&quot;, &quot;info&quot;)
+		end
+		ProgressionService.OnDeath(player)
+	end)
+end
+
+local function onCharacterAdded(player, character)
+	task.wait(0.1)
+	applyClass(player, character)
+	-- Chute hors de la map
+	task.spawn(function()
+		local humanoid = character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+		while character.Parent and humanoid and humanoid.Health &gt; 0 do
+			task.wait(0.5)
+			local hrp = character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+			if hrp and hrp.Position.Y &lt; Config.Map.KillHeight then
+				humanoid.Health = 0
+			end
+		end
+	end)
+end
+
+local function onPlayerAdded(player)
+	DataService.Load(player)
+	player:SetAttribute(&quot;Streak&quot;, 0)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
+	if player.Character then
+		onCharacterAdded(player, player.Character)
+	end
+	task.wait(1)
+	if player.Parent == Players then
+		ProgressionService.SyncStats(player)
+		Remotes.Notify:FireClient(player, &quot;Bienvenue sur &quot; .. Config.GameName .. &quot; ! Appuie sur C pour choisir ton personnage.&quot;, &quot;good&quot;)
+	end
+end
+
+-- Recharge le personnage (changement de classe) : seulement en zone sure ou mort
+function CharacterService.Reload(player)
+	local character = player.Character
+	local hrp = character and character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	local humanoid = character and character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if hrp and humanoid and humanoid.Health &gt; 0 and not MapBuilder.IsSafe(hrp.Position) then
+		Remotes.Notify:FireClient(player, &quot;Le personnage sera applique a ta prochaine apparition (retourne au spawn pour changer tout de suite).&quot;, &quot;info&quot;)
+		return
+	end
+	player:LoadCharacter()
+end
+
+function CharacterService.RefreshCosmetics(player)
+	-- Les attributs Aura / Trail / Title sont sur le joueur : les clients les lisent directement.
+end
+
+-- Mannequins : credit XP seulement (pas de kill)
+local function hookDummy(model)
+	local humanoid = model:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if humanoid then
+		humanoid.Died:Connect(function()
+			Remotes.CombatFX:FireAllClients(&quot;Death&quot;, { userId = 0, position = model:GetPivot().Position })
+		end)
+	end
+end
+
+function CharacterService.Init()
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	for _, p in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayerAdded, p)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		DataService.Save(player)
+		DataService.Release(player)
+	end)
+	for _, dummy in ipairs(CollectionService:GetTagged(&quot;Dummy&quot;)) do
+		hookDummy(dummy)
+	end
+	CollectionService:GetInstanceAddedSignal(&quot;Dummy&quot;):Connect(hookDummy)
+end
+
+return CharacterService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">CombatService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Coeur du combat : M1 + combos, blocage, dash, competences, degats, stun, knockback, ultimate.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local Debris = game:GetService(&quot;Debris&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local ProgressionService = require(script.Parent.ProgressionService)
+local MapBuilder = require(script.Parent.MapBuilder)
+
+local CombatService = {}
+local C = Config.Combat
+
+local states = {} -- [Player] = state
+
+local function getState(player)
+	local s = states[player]
+	if not s then
+		s = { combo = 0, lastM1 = 0, comboLockUntil = 0, cooldowns = {}, busyUntil = 0, dashAt = 0, buffUntil = 0, buffMult = 1, ultUntil = 0, stunToken = 0 }
+		states[player] = s
+	end
+	return s
+end
+
+local function getChar(player)
+	local character = player.Character
+	if not character then
+		return nil
+	end
+	local humanoid = character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	local hrp = character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if humanoid and hrp and humanoid.Health &gt; 0 then
+		return character, humanoid, hrp
+	end
+	return nil
+end
+
+local function getDef(player)
+	local data = DataService.Get(player)
+	return Config.CharacterById[data and data.Character or &quot;Fighter&quot;] or Config.Characters[1]
+end
+
+local function isStunned(character)
+	return (character:GetAttribute(&quot;StunUntil&quot;) or 0) &gt; os.clock()
+end
+
+local function updateSpeed(player)
+	local character, humanoid = getChar(player)
+	if not character then
+		return
+	end
+	local s = getState(player)
+	local base = character:GetAttribute(&quot;BaseSpeed&quot;) or 16
+	local speed = base
+	if s.buffUntil &gt; os.clock() then
+		speed = speed * s.buffMult
+	end
+	if character:GetAttribute(&quot;Blocking&quot;) then
+		speed = C.BlockMoveSpeed
+	end
+	if isStunned(character) then
+		speed = 0
+	end
+	humanoid.WalkSpeed = speed
+end
+
+local function canAct(player)
+	local character, humanoid, hrp = getChar(player)
+	if not character then
+		return false
+	end
+	if isStunned(character) then
+		return false
+	end
+	local s = getState(player)
+	if s.busyUntil &gt; os.clock() then
+		return false
+	end
+	if MapBuilder.IsSafe(hrp.Position) then
+		Remotes.Notify:FireClient(player, &quot;Pas de combat dans la zone sure !&quot;, &quot;info&quot;)
+		return false
+	end
+	return true, character, humanoid, hrp
+end
+
+-- Cibles ------------------------------------------------------------------------
+
+local function collectTargets(parts, attackerCharacter)
+	local found = {}
+	local list = {}
+	for _, part in ipairs(parts) do
+		local model = part:FindFirstAncestorOfClass(&quot;Model&quot;)
+		if model and model ~= attackerCharacter and not found[model] then
+			local humanoid = model:FindFirstChildOfClass(&quot;Humanoid&quot;)
+			local hrp = model:FindFirstChild(&quot;HumanoidRootPart&quot;)
+			if humanoid and hrp and humanoid.Health &gt; 0 and not MapBuilder.IsSafe(hrp.Position) then
+				found[model] = true
+				table.insert(list, model)
+			end
+		end
+	end
+	return list
+end
+
+local function targetsInBox(attackerCharacter, cframe, size)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { attackerCharacter, workspace:FindFirstChild(&quot;OnyxBattlegrounds&quot;) }
+	return collectTargets(workspace:GetPartBoundsInBox(cframe, size, params), attackerCharacter)
+end
+
+local function targetsInRadius(attackerCharacter, position, radius)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { attackerCharacter, workspace:FindFirstChild(&quot;OnyxBattlegrounds&quot;) }
+	return collectTargets(workspace:GetPartBoundsInRadius(position, radius, params), attackerCharacter)
+end
+
+-- Degats ------------------------------------------------------------------------
+
+local function stun(model, duration)
+	local humanoid = model:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if not humanoid then
+		return
+	end
+	local untilTime = os.clock() + duration
+	if (model:GetAttribute(&quot;StunUntil&quot;) or 0) &lt; untilTime then
+		model:SetAttribute(&quot;StunUntil&quot;, untilTime)
+	end
+	local player = Players:GetPlayerFromCharacter(model)
+	if player then
+		local s = getState(player)
+		s.stunToken += 1
+		local token = s.stunToken
+		-- Interrompt le blocage
+		model:SetAttribute(&quot;Blocking&quot;, false)
+		updateSpeed(player)
+		task.delay(duration, function()
+			if s.stunToken == token then
+				updateSpeed(player)
+			end
+		end)
+	end
+end
+
+local function knockback(model, direction, power, lift)
+	local hrp = model:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if not hrp or hrp.Anchored then
+		return
+	end
+	local attachment = hrp:FindFirstChild(&quot;RootAttachment&quot;) or hrp:FindFirstChildOfClass(&quot;Attachment&quot;)
+	if not attachment then
+		attachment = Instance.new(&quot;Attachment&quot;)
+		attachment.Name = &quot;RootAttachment&quot;
+		attachment.Parent = hrp
+	end
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	if flat.Magnitude &lt; 0.01 then
+		flat = Vector3.new(0, 0, -1)
+	end
+	local lv = Instance.new(&quot;LinearVelocity&quot;)
+	lv.Attachment0 = attachment
+	lv.RelativeTo = Enum.ActuatorRelativeTo.World
+	lv.MaxForce = 1e6
+	lv.VectorVelocity = flat.Unit * power + Vector3.new(0, lift or 0, 0)
+	lv.Parent = hrp
+	Debris:AddItem(lv, 0.15)
+end
+
+local function knockdown(model, duration)
+	local humanoid = model:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if not humanoid then
+		return
+	end
+	humanoid.PlatformStand = true
+	task.delay(duration, function()
+		if humanoid.Parent then
+			humanoid.PlatformStand = false
+		end
+	end)
+end
+
+local function addUlt(character, amount)
+	if character:GetAttribute(&quot;UltActive&quot;) then
+		return
+	end
+	local current = character:GetAttribute(&quot;Ult&quot;) or 0
+	local newValue = math.clamp(current + amount, 0, 100)
+	character:SetAttribute(&quot;Ult&quot;, newValue)
+	if current &lt; 100 and newValue &gt;= 100 then
+		local player = Players:GetPlayerFromCharacter(character)
+		if player then
+			Remotes.Notify:FireClient(player, &quot;ULTIMATE PRET ! Appuie sur G&quot;, &quot;ult&quot;)
+		end
+	end
+end
+
+local function applyHit(attacker, attackerCharacter, victim, damage, opts)
+	local humanoid = victim:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	local vhrp = victim:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	local ahrp = attackerCharacter:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if not humanoid or not vhrp or not ahrp or humanoid.Health &lt;= 0 then
+		return
+	end
+	local blocked = false
+	if victim:GetAttribute(&quot;Blocking&quot;) and not opts.guardBreak then
+		blocked = true
+		damage = damage * (1 - (opts.isSkill and C.BlockSkillReduction or C.BlockReduction))
+	end
+	if attackerCharacter:GetAttribute(&quot;UltActive&quot;) then
+		damage = damage * C.UltDamageMultiplier
+	end
+	damage = math.floor(damage + 0.5)
+
+	humanoid.Health = math.max(0, humanoid.Health - damage)
+	victim:SetAttribute(&quot;LastDamager&quot;, attacker.UserId)
+	victim:SetAttribute(&quot;LastDamageTime&quot;, os.clock())
+
+	local direction = (vhrp.Position - ahrp.Position)
+	if blocked then
+		stun(victim, 0.15)
+		if opts.knockback then
+			knockback(victim, direction, opts.knockback * 0.3, 0)
+		end
+	else
+		if opts.guardBreak and victim:GetAttribute(&quot;Blocking&quot;) then
+			victim:SetAttribute(&quot;Blocking&quot;, false)
+		end
+		stun(victim, opts.stun or C.HitStun)
+		if opts.knockback and opts.knockback &gt; 0 then
+			knockback(victim, direction, opts.knockback, opts.lift or 8)
+		end
+		if opts.knockdown then
+			knockdown(victim, 0.9)
+		end
+	end
+
+	addUlt(attackerCharacter, damage * C.UltPerDamageDealt)
+	if Players:GetPlayerFromCharacter(victim) then
+		addUlt(victim, damage * C.UltPerDamageTaken)
+	end
+	ProgressionService.OnHit(attacker, damage)
+
+	Remotes.CombatFX:FireAllClients(&quot;Hit&quot;, {
+		position = vhrp.Position,
+		damage = damage,
+		blocked = blocked,
+		heavy = opts.heavy or false,
+		color = opts.color,
+		attacker = attacker.UserId,
+		victimName = victim.Name,
+	})
+end
+
+-- M1 ------------------------------------------------------------------------------
+
+local function onM1(player)
+	local ok, character, humanoid, hrp = canAct(player)
+	if not ok then
+		return
+	end
+	local s = getState(player)
+	local now = os.clock()
+	if now &lt; s.comboLockUntil or now - s.lastM1 &lt; C.M1Cooldown then
+		return
+	end
+	if now - s.lastM1 &gt; C.ComboReset then
+		s.combo = 0
+	end
+	s.lastM1 = now
+	s.combo += 1
+	local def = getDef(player)
+	local finisher = s.combo &gt;= 4
+	Remotes.CombatFX:FireAllClients(&quot;Swing&quot;, { userId = player.UserId, combo = s.combo, color = def.color })
+
+	task.delay(0.1, function()
+		local character2, _, hrp2 = getChar(player)
+		if not character2 then
+			return
+		end
+		local cf = hrp2.CFrame * CFrame.new(0, 0, -C.M1Range / 2)
+		for _, victim in ipairs(targetsInBox(character2, cf, C.M1Hitbox)) do
+			if finisher then
+				applyHit(player, character2, victim, def.m1Finisher, { knockback = C.FinisherKnockback, lift = 14, stun = C.FinisherStun, guardBreak = true, heavy = true, color = def.color })
+			else
+				applyHit(player, character2, victim, def.m1Damage, { knockback = 6, lift = 2, stun = C.HitStun, color = def.color })
+			end
+		end
+	end)
+
+	if finisher then
+		s.combo = 0
+		s.comboLockUntil = now + C.ComboEndCooldown
+	end
+end
+
+-- Blocage ---------------------------------------------------------------------------
+
+local function onBlock(player, enabled)
+	local character = getChar(player)
+	if not character then
+		return
+	end
+	if enabled and isStunned(character) then
+		return
+	end
+	character:SetAttribute(&quot;Blocking&quot;, enabled == true)
+	updateSpeed(player)
+	Remotes.CombatFX:FireAllClients(&quot;Block&quot;, { userId = player.UserId, enabled = enabled == true })
+end
+
+-- Dash (mouvement cote client, le serveur valide le cooldown et diffuse l'effet)
+
+local function onDash(player, direction)
+	local character = getChar(player)
+	if not character or isStunned(character) then
+		return
+	end
+	local s = getState(player)
+	if os.clock() - s.dashAt &lt; C.DashCooldown - 0.2 then
+		return
+	end
+	s.dashAt = os.clock()
+	Remotes.CombatFX:FireAllClients(&quot;Dash&quot;, { userId = player.UserId, direction = tostring(direction) })
+end
+
+-- Competences ----------------------------------------------------------------------
+
+local function executeMelee(player, character, hrp, skill, def)
+	local cf = hrp.CFrame * CFrame.new(0, 0, -skill.range / 2)
+	for _, victim in ipairs(targetsInBox(character, cf, Vector3.new(8, 7, skill.range))) do
+		applyHit(player, character, victim, skill.damage, { isSkill = true, knockback = skill.knockback, lift = skill.lift, stun = skill.stun, knockdown = skill.knockdown, heavy = true, color = def.color })
+	end
+	Remotes.CombatFX:FireAllClients(&quot;Strike&quot;, { position = (hrp.CFrame * CFrame.new(0, 0, -4)).Position, color = def.color, size = skill.range })
+end
+
+local function executeRush(player, character, hrp, skill, def)
+	local hit = {}
+	local startTime = os.clock()
+	while os.clock() - startTime &lt; skill.duration + 0.1 do
+		local character2, _, hrp2 = getChar(player)
+		if not character2 then
+			return
+		end
+		local cf = hrp2.CFrame * CFrame.new(0, 0, -4)
+		for _, victim in ipairs(targetsInBox(character2, cf, Vector3.new(8, 7, 9))) do
+			if not hit[victim] then
+				hit[victim] = true
+				applyHit(player, character2, victim, skill.damage, { isSkill = true, knockback = skill.knockback, lift = skill.lift or 10, stun = skill.stun, knockdown = skill.knockdown, heavy = true, color = def.color })
+			end
+		end
+		task.wait(0.05)
+	end
+end
+
+local function executeAoe(player, character, hrp, skill, def)
+	Remotes.CombatFX:FireAllClients(&quot;AOE&quot;, { position = hrp.Position, radius = skill.radius, color = def.color, sound = skill.sound })
+	for _, victim in ipairs(targetsInRadius(character, hrp.Position, skill.radius)) do
+		applyHit(player, character, victim, skill.damage, { isSkill = true, knockback = skill.knockback, lift = skill.lift, stun = skill.stun, knockdown = skill.knockdown, heavy = true, color = def.color })
+	end
+end
+
+local function executeProjectile(player, character, hrp, skill, def)
+	local size = skill.radius &gt; 8 and 4 or 2.5
+	local part = Instance.new(&quot;Part&quot;)
+	part.Name = &quot;Projectile&quot;
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(size, size, size)
+	part.Material = Enum.Material.Neon
+	part.Color = def.color
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Massless = true
+	part.CFrame = hrp.CFrame * CFrame.new(0, 0.5, -4)
+	local att = Instance.new(&quot;Attachment&quot;)
+	att.Parent = part
+	local force = Instance.new(&quot;VectorForce&quot;)
+	force.Attachment0 = att
+	force.RelativeTo = Enum.ActuatorRelativeTo.World
+	force.Parent = part
+	local light = Instance.new(&quot;PointLight&quot;)
+	light.Color = def.color
+	light.Range = 18
+	light.Brightness = 3
+	light.Parent = part
+	local trail = Instance.new(&quot;ParticleEmitter&quot;)
+	trail.Rate = 60
+	trail.Lifetime = NumberRange.new(0.3, 0.5)
+	trail.Speed = NumberRange.new(0, 2)
+	trail.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size * 0.6), NumberSequenceKeypoint.new(1, 0) })
+	trail.Transparency = NumberSequence.new(0.2, 1)
+	trail.LightEmission = 1
+	trail.Color = ColorSequence.new(def.color, Color3.new(1, 1, 1))
+	trail.Parent = part
+	part.Parent = workspace
+	force.Force = Vector3.new(0, part:GetMass() * workspace.Gravity, 0)
+	pcall(function()
+		part:SetNetworkOwner(nil)
+	end)
+	local direction = hrp.CFrame.LookVector
+	part.AssemblyLinearVelocity = direction * skill.speed
+
+	local startTime = os.clock()
+	local exploded = false
+	local function explode(position)
+		if exploded then
+			return
+		end
+		exploded = true
+		part:Destroy()
+		Remotes.CombatFX:FireAllClients(&quot;AOE&quot;, { position = position, radius = skill.radius, color = def.color, sound = skill.sound })
+		local character2 = player.Character or character
+		for _, victim in ipairs(targetsInRadius(character2, position, skill.radius)) do
+			applyHit(player, character2, victim, skill.damage, { isSkill = true, knockback = skill.knockback, lift = skill.lift, stun = skill.stun, knockdown = skill.knockdown, heavy = true, color = def.color })
+		end
+	end
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		if exploded or not part.Parent then
+			connection:Disconnect()
+			return
+		end
+		part.AssemblyLinearVelocity = direction * skill.speed
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { character, part }
+		local result = workspace:Raycast(part.Position, direction * (skill.speed / 60 + size), params)
+		if result then
+			connection:Disconnect()
+			explode(result.Position)
+		elseif os.clock() - startTime &gt; skill.lifetime then
+			connection:Disconnect()
+			explode(part.Position)
+		end
+	end)
+end
+
+local function executeBuff(player, character, hrp, skill, def)
+	local s = getState(player)
+	s.buffUntil = os.clock() + skill.duration
+	s.buffMult = skill.speedMultiplier or 1.3
+	updateSpeed(player)
+	Remotes.CombatFX:FireAllClients(&quot;Buff&quot;, { userId = player.UserId, color = def.color, duration = skill.duration })
+	task.delay(skill.duration, function()
+		updateSpeed(player)
+	end)
+end
+
+local executors = { melee = executeMelee, rush = executeRush, aoe = executeAoe, projectile = executeProjectile, buff = executeBuff }
+
+local function onSkill(player, slot)
+	slot = tonumber(slot)
+	if not slot or slot &lt; 1 or slot &gt; 4 then
+		return
+	end
+	local ok, character, humanoid, hrp = canAct(player)
+	if not ok then
+		return
+	end
+	if character:GetAttribute(&quot;Blocking&quot;) then
+		return
+	end
+	local def = getDef(player)
+	local ultActive = character:GetAttribute(&quot;UltActive&quot;) == true
+	local skill = (ultActive and def.ultSkills or def.skills)[slot]
+	if not skill then
+		return
+	end
+	local s = getState(player)
+	local key = (ultActive and &quot;U&quot; or &quot;S&quot;) .. slot
+	local now = os.clock()
+	if (s.cooldowns[key] or 0) &gt; now then
+		return
+	end
+	s.cooldowns[key] = now + skill.cooldown
+	s.busyUntil = now + skill.windup + 0.1
+	s.combo = 0
+
+	Remotes.SkillAck:FireClient(player, { slot = slot, cooldown = skill.cooldown, type = skill.type, windup = skill.windup, distance = skill.distance, duration = skill.duration })
+	Remotes.CombatFX:FireAllClients(&quot;Cast&quot;, { userId = player.UserId, name = skill.name, pose = skill.pose, color = def.color, type = skill.type, windup = skill.windup, sound = skill.sound, ult = ultActive })
+
+	task.delay(skill.windup, function()
+		local character2, _, hrp2 = getChar(player)
+		if not character2 or isStunned(character2) then
+			return
+		end
+		executors[skill.type](player, character2, hrp2, skill, def)
+	end)
+end
+
+-- Ultimate ---------------------------------------------------------------------------
+
+local function onUltimate(player)
+	local character = getChar(player)
+	if not character or isStunned(character) then
+		return
+	end
+	if character:GetAttribute(&quot;UltActive&quot;) or (character:GetAttribute(&quot;Ult&quot;) or 0) &lt; 100 then
+		return
+	end
+	local s = getState(player)
+	local def = getDef(player)
+	character:SetAttribute(&quot;UltActive&quot;, true)
+	s.ultUntil = os.clock() + C.UltDuration
+	s.busyUntil = os.clock() + 0.8
+	Remotes.CombatFX:FireAllClients(&quot;UltStart&quot;, { userId = player.UserId, color = def.color, duration = C.UltDuration })
+	Remotes.Notify:FireAllClients(player.DisplayName .. &quot; active son ULTIMATE !&quot;, &quot;ult&quot;)
+	task.spawn(function()
+		local startTime = os.clock()
+		while os.clock() - startTime &lt; C.UltDuration do
+			task.wait(0.25)
+			local c = player.Character
+			if not c or c ~= character then
+				return
+			end
+			character:SetAttribute(&quot;Ult&quot;, 100 * (1 - (os.clock() - startTime) / C.UltDuration))
+		end
+		if character.Parent then
+			character:SetAttribute(&quot;Ult&quot;, 0)
+			character:SetAttribute(&quot;UltActive&quot;, false)
+			Remotes.CombatFX:FireAllClients(&quot;UltEnd&quot;, { userId = player.UserId })
+		end
+	end)
+end
+
+function CombatService.Init()
+	Remotes.Combat.OnServerEvent:Connect(function(player, action, arg)
+		if action == &quot;m1&quot; then
+			onM1(player)
+		elseif action == &quot;block&quot; then
+			onBlock(player, arg == true)
+		elseif action == &quot;dash&quot; then
+			onDash(player, arg)
+		elseif action == &quot;skill&quot; then
+			onSkill(player, arg)
+		elseif action == &quot;ult&quot; then
+			onUltimate(player)
+		end
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		states[player] = nil
+	end)
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterAdded:Connect(function()
+			local s = getState(player)
+			s.cooldowns = {}
+			s.combo = 0
+			s.busyUntil = 0
+			s.buffUntil = 0
+		end)
+	end)
+end
+
+return CombatService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">DataService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Sauvegarde DataStore + leaderstats + classement global (OrderedDataStore).
+
+local DataStoreService = game:GetService(&quot;DataStoreService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local DataService = {}
+
+local store, winsStore
+pcall(function()
+	store = DataStoreService:GetDataStore(&quot;OnyxBG_v1&quot;)
+	winsStore = DataStoreService:GetOrderedDataStore(&quot;OnyxBG_Wins_v1&quot;)
+end)
+
+local cache = {}
+local stats = {}
+
+local function defaultData()
+	return {
+		XP = 0,
+		Level = 1,
+		Coins = 0,
+		Kills = 0,
+		Deaths = 0,
+		Wins = 0,
+		Character = &quot;Fighter&quot;,
+		Aura = &quot;none&quot;,
+		Trail = &quot;none&quot;,
+		Title = &quot;rookie&quot;,
+		Unlocked = { auras = { none = true }, trails = { none = true }, titles = { rookie = true } },
+	}
+end
+
+local function key(player)
+	return &quot;p_&quot; .. player.UserId
+end
+
+function DataService.Load(player)
+	local data = defaultData()
+	if store then
+		local ok, result = pcall(function()
+			return store:GetAsync(key(player))
+		end)
+		if ok and type(result) == &quot;table&quot; then
+			for k, v in pairs(result) do
+				data[k] = v
+			end
+			data.Unlocked = data.Unlocked or defaultData().Unlocked
+			data.Unlocked.auras = data.Unlocked.auras or { none = true }
+			data.Unlocked.trails = data.Unlocked.trails or { none = true }
+			data.Unlocked.titles = data.Unlocked.titles or { rookie = true }
+		elseif not ok then
+			warn(&quot;[OnyxBG] Chargement impossible pour &quot; .. player.Name .. &quot; : &quot; .. tostring(result))
+		end
+	end
+	if not Config.CharacterById[data.Character] then
+		data.Character = &quot;Fighter&quot;
+	end
+	cache[player] = data
+
+	local leaderstats = Instance.new(&quot;Folder&quot;)
+	leaderstats.Name = &quot;leaderstats&quot;
+	local values = {}
+	for _, name in ipairs({ &quot;Wins&quot;, &quot;Kills&quot;, &quot;Level&quot; }) do
+		local v = Instance.new(&quot;IntValue&quot;)
+		v.Name = name
+		v.Value = data[name]
+		v.Parent = leaderstats
+		values[name] = v
+	end
+	leaderstats.Parent = player
+	stats[player] = values
+	player:SetAttribute(&quot;Level&quot;, data.Level)
+	return data
+end
+
+function DataService.Get(player)
+	return cache[player]
+end
+
+function DataService.Sync(player)
+	local data = cache[player]
+	local values = stats[player]
+	if data and values then
+		values.Wins.Value = data.Wins
+		values.Kills.Value = data.Kills
+		values.Level.Value = data.Level
+	end
+end
+
+function DataService.Save(player)
+	local data = cache[player]
+	if not data or not store then
+		return
+	end
+	local ok, err = pcall(function()
+		store:UpdateAsync(key(player), function()
+			return data
+		end)
+	end)
+	if not ok then
+		warn(&quot;[OnyxBG] Sauvegarde impossible pour &quot; .. player.Name .. &quot; : &quot; .. tostring(err))
+	end
+	if winsStore then
+		pcall(function()
+			winsStore:SetAsync(tostring(player.UserId), data.Wins)
+		end)
+	end
+end
+
+function DataService.Release(player)
+	cache[player] = nil
+	stats[player] = nil
+end
+
+-- Top global (userId -&gt; wins) ; retourne { {userId=, wins=} }
+function DataService.GetTopWins(count)
+	if not winsStore then
+		return {}
+	end
+	local ok, pages = pcall(function()
+		return winsStore:GetSortedAsync(false, count)
+	end)
+	if not ok then
+		return {}
+	end
+	local result = {}
+	for _, entry in ipairs(pages:GetCurrentPage()) do
+		table.insert(result, { userId = tonumber(entry.key), wins = entry.value })
+	end
+	return result
+end
+
+function DataService.Init()
+	game:BindToClose(function()
+		for _, p in ipairs(Players:GetPlayers()) do
+			DataService.Save(p)
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(120)
+			for _, p in ipairs(Players:GetPlayers()) do
+				DataService.Save(p)
+			end
+		end
+	end)
+end
+
+return DataService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">MapBuilder</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Construit la map : spawn (zone sure), arene centrale, centre-ville, zone calme, classement.
+-- Aucun asset externe.
+
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local Lighting = game:GetService(&quot;Lighting&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local MapBuilder = {}
+
+local function makePart(props)
+	local p = Instance.new(&quot;Part&quot;)
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in pairs(props) do
+		p[key] = value
+	end
+	return p
+end
+
+local function addLabel(parent, text, face, color, scale)
+	local gui = Instance.new(&quot;SurfaceGui&quot;)
+	gui.Face = face or Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 24
+	gui.LightInfluence = 0
+	local label = Instance.new(&quot;TextLabel&quot;)
+	label.Size = UDim2.fromScale(1, scale or 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = color or Color3.new(1, 1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextStrokeTransparency = 0.5
+	label.Parent = gui
+	gui.Parent = parent
+	return gui
+end
+
+local function buildLighting()
+	Lighting.ClockTime = 17.5
+	Lighting.Brightness = 2.2
+	Lighting.Ambient = Color3.fromRGB(70, 70, 90)
+	Lighting.OutdoorAmbient = Color3.fromRGB(110, 110, 140)
+	Lighting.FogColor = Color3.fromRGB(150, 140, 180)
+	Lighting.FogStart = 250
+	Lighting.FogEnd = 1100
+	Lighting.GlobalShadows = true
+	for _, child in ipairs(Lighting:GetChildren()) do
+		if child:IsA(&quot;PostEffect&quot;) or child:IsA(&quot;Atmosphere&quot;) or child:IsA(&quot;Sky&quot;) then
+			child:Destroy()
+		end
+	end
+	local bloom = Instance.new(&quot;BloomEffect&quot;)
+	bloom.Intensity = 0.6
+	bloom.Size = 28
+	bloom.Threshold = 1.3
+	bloom.Parent = Lighting
+	local cc = Instance.new(&quot;ColorCorrectionEffect&quot;)
+	cc.Name = &quot;BGColor&quot;
+	cc.Contrast = 0.15
+	cc.Saturation = 0.1
+	cc.Parent = Lighting
+	local atmosphere = Instance.new(&quot;Atmosphere&quot;)
+	atmosphere.Density = 0.3
+	atmosphere.Offset = 0.3
+	atmosphere.Color = Color3.fromRGB(220, 170, 200)
+	atmosphere.Decay = Color3.fromRGB(120, 80, 160)
+	atmosphere.Glare = 0.5
+	atmosphere.Haze = 2
+	atmosphere.Parent = Lighting
+	local sky = Instance.new(&quot;Sky&quot;)
+	sky.SunAngularSize = 18
+	sky.Parent = Lighting
+end
+
+local function buildGround(root)
+	makePart({
+		Name = &quot;Ground&quot;,
+		Size = Vector3.new(700, 6, 700),
+		CFrame = CFrame.new(0, -3, 0),
+		Material = Enum.Material.Concrete,
+		Color = Color3.fromRGB(70, 72, 80),
+	}).Parent = root
+	-- Routes
+	for _, def in ipairs({
+		{ Vector3.new(24, 0.3, 700), CFrame.new(0, 0.15, 0) },
+		{ Vector3.new(700, 0.3, 24), CFrame.new(0, 0.15, 0) },
+		{ Vector3.new(24, 0.3, 500), CFrame.new(-120, 0.15, -40) },
+		{ Vector3.new(24, 0.3, 500), CFrame.new(120, 0.15, -40) },
+	}) do
+		makePart({ Name = &quot;Road&quot;, Size = def[1], CFrame = def[2], Material = Enum.Material.Asphalt, Color = Color3.fromRGB(40, 40, 46) }).Parent = root
+	end
+	-- Murs d'enceinte
+	for _, def in ipairs({
+		{ Vector3.new(700, 60, 4), CFrame.new(0, 30, 350) },
+		{ Vector3.new(700, 60, 4), CFrame.new(0, 30, -350) },
+		{ Vector3.new(4, 60, 700), CFrame.new(350, 30, 0) },
+		{ Vector3.new(4, 60, 700), CFrame.new(-350, 30, 0) },
+	}) do
+		makePart({ Name = &quot;Border&quot;, Size = def[1], CFrame = def[2], Transparency = 0.9, Material = Enum.Material.ForceField, Color = Config.Colors.Accent }).Parent = root
+	end
+end
+
+local function buildSpawn(root)
+	local pos = Config.Map.SpawnPosition
+	local plate = makePart({
+		Name = &quot;SafeZone&quot;,
+		Size = Vector3.new(70, 1, 50),
+		CFrame = CFrame.new(pos.X, 0.5, pos.Z),
+		Material = Enum.Material.Marble,
+		Color = Color3.fromRGB(220, 225, 235),
+	})
+	plate:SetAttribute(&quot;SafeRadius&quot;, 45)
+	CollectionService:AddTag(plate, &quot;SafeZone&quot;)
+	plate.Parent = root
+	local ring = makePart({
+		Name = &quot;SafeRing&quot;,
+		Size = Vector3.new(72, 0.4, 52),
+		CFrame = CFrame.new(pos.X, 0.2, pos.Z),
+		Material = Enum.Material.Neon,
+		Color = Config.Colors.Accent,
+	})
+	ring.Parent = root
+
+	local existingSpawn = workspace:FindFirstChildOfClass(&quot;SpawnLocation&quot;)
+	if existingSpawn then
+		existingSpawn:Destroy()
+	end
+	local spawn = Instance.new(&quot;SpawnLocation&quot;)
+	spawn.Name = &quot;MainSpawn&quot;
+	spawn.Size = Vector3.new(12, 0.5, 12)
+	spawn.CFrame = CFrame.new(pos.X, 1.25, pos.Z)
+	spawn.Anchored = true
+	spawn.Material = Enum.Material.Neon
+	spawn.Color = Config.Colors.Accent
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Parent = root
+
+	-- Panneau de bienvenue
+	local sign = makePart({ Name = &quot;WelcomeSign&quot;, Size = Vector3.new(40, 8, 1), CFrame = CFrame.new(pos.X, 8, pos.Z + 24), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	sign.Parent = root
+	addLabel(sign, Config.GameName, Enum.NormalId.Back, Config.Colors.Accent)
+	local hint = makePart({ Name = &quot;HintSign&quot;, Size = Vector3.new(40, 3, 1), CFrame = CFrame.new(pos.X, 3, pos.Z + 24), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	hint.Parent = root
+	addLabel(hint, &quot;Clic : M1  |  F : Bloquer  |  Q : Dash  |  1-4 : Competences  |  G : Ultimate  |  C : Personnage&quot;, Enum.NormalId.Back, Color3.new(1, 1, 1))
+
+	-- Tableau de classement
+	local board = makePart({ Name = &quot;Leaderboard&quot;, Size = Vector3.new(22, 16, 1), CFrame = CFrame.new(pos.X - 40, 9, pos.Z), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	board.Parent = root
+	local gui = Instance.new(&quot;SurfaceGui&quot;)
+	gui.Name = &quot;BoardGui&quot;
+	gui.Face = Enum.NormalId.Right
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 30
+	gui.LightInfluence = 0
+	local title = Instance.new(&quot;TextLabel&quot;)
+	title.Name = &quot;Title&quot;
+	title.Size = UDim2.new(1, 0, 0.14, 0)
+	title.BackgroundTransparency = 1
+	title.Text = &quot;TOP JOUEURS&quot;
+	title.TextColor3 = Config.Colors.Gold
+	title.Font = Enum.Font.GothamBlack
+	title.TextScaled = true
+	title.Parent = gui
+	local list = Instance.new(&quot;TextLabel&quot;)
+	list.Name = &quot;List&quot;
+	list.Size = UDim2.new(1, -20, 0.84, 0)
+	list.Position = UDim2.new(0, 10, 0.15, 0)
+	list.BackgroundTransparency = 1
+	list.Text = &quot;Chargement...&quot;
+	list.TextColor3 = Color3.new(1, 1, 1)
+	list.Font = Enum.Font.GothamBold
+	list.TextScaled = true
+	list.TextXAlignment = Enum.TextXAlignment.Left
+	list.TextYAlignment = Enum.TextYAlignment.Top
+	list.Parent = gui
+	gui.Parent = board
+	local frame = makePart({ Name = &quot;BoardFrame&quot;, Size = Vector3.new(23, 17, 0.6), CFrame = board.CFrame * CFrame.new(0, 0, 0.1), Material = Enum.Material.Neon, Color = Config.Colors.Gold })
+	frame.Parent = root
+	MapBuilder.LeaderboardLabel = list
+end
+
+local function buildArena(root)
+	local center = Config.Map.ArenaCenter
+	local R = Config.Map.ArenaRadius
+	local floor = makePart({
+		Name = &quot;ArenaFloor&quot;,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(2, R * 2, R * 2),
+		CFrame = CFrame.new(center + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Slate,
+		Color = Color3.fromRGB(45, 45, 60),
+	})
+	floor.Parent = root
+	local ring = makePart({
+		Name = &quot;ArenaRing&quot;,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1.6, R * 2 + 4, R * 2 + 4),
+		CFrame = CFrame.new(center + Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Neon,
+		Color = Config.Colors.Accent2,
+	})
+	ring.Parent = root
+	-- Piliers lumineux autour de l'arene
+	for i = 1, 8 do
+		local a = (i / 8) * math.pi * 2
+		local pillar = makePart({
+			Name = &quot;ArenaPillar&quot;,
+			Size = Vector3.new(3, 18, 3),
+			CFrame = CFrame.new(center + Vector3.new(math.cos(a) * (R + 6), 9, math.sin(a) * (R + 6))),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(60, 60, 75),
+		})
+		pillar.Parent = root
+		local top = makePart({
+			Name = &quot;PillarLight&quot;,
+			Size = Vector3.new(3.4, 1, 3.4),
+			CFrame = pillar.CFrame * CFrame.new(0, 9.5, 0),
+			Material = Enum.Material.Neon,
+			Color = Config.Colors.Accent2,
+		})
+		top.Parent = root
+	end
+end
+
+local function buildCity(root)
+	local origin = Config.Map.CityOrigin
+	local palette = {
+		Color3.fromRGB(60, 65, 85),
+		Color3.fromRGB(85, 70, 80),
+		Color3.fromRGB(50, 75, 90),
+		Color3.fromRGB(95, 90, 85),
+	}
+	local i = 0
+	for gx = -3, 3 do
+		for gz = -3, 0 do
+			i += 1
+			-- laisse les routes libres
+			if gx ~= 0 and math.abs(gx) ~= 2 then
+				local w = 22 + (i % 3) * 6
+				local d = 22 + ((i * 7) % 3) * 6
+				local h = 18 + ((i * 13) % 5) * 12
+				local x = origin.X + gx * 60
+				local z = origin.Z + gz * 60 - 30
+				local building = makePart({
+					Name = &quot;Building&quot;,
+					Size = Vector3.new(w, h, d),
+					CFrame = CFrame.new(x, h / 2, z),
+					Material = Enum.Material.Concrete,
+					Color = palette[(i % #palette) + 1],
+				})
+				building.Parent = root
+				-- Fenetres
+				local windows = makePart({
+					Name = &quot;Windows&quot;,
+					Size = Vector3.new(w + 0.2, h - 4, d + 0.2),
+					CFrame = CFrame.new(x, h / 2, z),
+					Material = Enum.Material.Glass,
+					Color = Config.Colors.Accent,
+					Transparency = 0.65,
+					CanCollide = false,
+				})
+				windows.Parent = root
+				-- Toit accessible avec rebord neon
+				local roof = makePart({
+					Name = &quot;RoofEdge&quot;,
+					Size = Vector3.new(w + 1, 0.6, d + 1),
+					CFrame = CFrame.new(x, h + 0.3, z),
+					Material = Enum.Material.Neon,
+					Color = (i % 2 == 0) and Config.Colors.Accent or Config.Colors.Accent2,
+				})
+				roof.Parent = root
+				-- Escalier de caisses pour monter sur le toit
+				local steps = math.floor(h / 4)
+				for s = 1, steps do
+					local box = makePart({
+						Name = &quot;Step&quot;,
+						Size = Vector3.new(5, 4, 5),
+						CFrame = CFrame.new(x + w / 2 + 3 + (s % 2) * 5, s * 4 - 2, z + d / 2 - 3 - s * 3.5),
+						Material = Enum.Material.Metal,
+						Color = Color3.fromRGB(90, 90, 100),
+					})
+					box.Parent = root
+				end
+			end
+		end
+	end
+	-- Lampadaires
+	for k = 1, 10 do
+		local x = -150 + k * 30
+		for _, z in ipairs({ -60, -180 }) do
+			local pole = makePart({ Name = &quot;Lamp&quot;, Size = Vector3.new(0.6, 12, 0.6), CFrame = CFrame.new(x + 13, 6, z + 13), Material = Enum.Material.Metal, Color = Color3.fromRGB(50, 50, 55) })
+			pole.Parent = root
+			local lamp = makePart({ Name = &quot;LampLight&quot;, Size = Vector3.new(1.5, 1, 1.5), CFrame = pole.CFrame * CFrame.new(0, 6.3, 0), Material = Enum.Material.Neon, Color = Color3.fromRGB(255, 230, 180) })
+			local light = Instance.new(&quot;PointLight&quot;)
+			light.Range = 30
+			light.Brightness = 1.5
+			light.Color = Color3.fromRGB(255, 230, 180)
+			light.Parent = lamp
+			lamp.Parent = root
+		end
+	end
+end
+
+local function buildTree(root, position, scale)
+	local trunk = makePart({ Name = &quot;Tree&quot;, Size = Vector3.new(1.6 * scale, 7 * scale, 1.6 * scale), CFrame = CFrame.new(position + Vector3.new(0, 3.5 * scale, 0)), Material = Enum.Material.Wood, Color = Color3.fromRGB(110, 75, 45) })
+	trunk.Parent = root
+	for i = 1, 3 do
+		local r = (5 - i * 0.8) * scale
+		makePart({ Name = &quot;Leaves&quot;, Shape = Enum.PartType.Ball, Size = Vector3.new(r * 2, r * 2, r * 2), CFrame = CFrame.new(position + Vector3.new(0, (6 + i * 2) * scale, 0)), Material = Enum.Material.Grass, Color = Color3.fromRGB(50 + i * 15, 140 + i * 15, 70), CanCollide = false }).Parent = root
+	end
+end
+
+local function buildCalmZone(root)
+	local pos = Config.Map.CalmZone
+	local grass = makePart({ Name = &quot;Park&quot;, Size = Vector3.new(130, 0.6, 110), CFrame = CFrame.new(pos.X, 0.3, pos.Z), Material = Enum.Material.Grass, Color = Color3.fromRGB(90, 160, 70) })
+	grass.Parent = root
+	for i = 1, 10 do
+		local a = (i / 10) * math.pi * 2
+		buildTree(root, pos + Vector3.new(math.cos(a) * 52, 0.6, math.sin(a) * 45), 0.9 + (i % 3) * 0.3)
+	end
+	local sign = makePart({ Name = &quot;TrainingSign&quot;, Size = Vector3.new(26, 5, 1), CFrame = CFrame.new(pos.X, 7, pos.Z - 50), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	sign.Parent = root
+	addLabel(sign, &quot;ZONE D'ENTRAINEMENT&quot;, Enum.NormalId.Front, Config.Colors.Accent)
+	addLabel(sign, &quot;ZONE D'ENTRAINEMENT&quot;, Enum.NormalId.Back, Config.Colors.Accent)
+end
+
+-- Mannequins d'entrainement ---------------------------------------------------------
+
+local function buildDummy(root, position, index)
+	local model = Instance.new(&quot;Model&quot;)
+	model.Name = &quot;Mannequin &quot; .. index
+	local color = Color3.fromRGB(200, 200, 210)
+
+	local hrp = Instance.new(&quot;Part&quot;)
+	hrp.Name = &quot;HumanoidRootPart&quot;
+	hrp.Size = Vector3.new(2, 2, 1)
+	hrp.Transparency = 1
+	hrp.CanCollide = false
+	hrp.Anchored = true
+	hrp.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
+	hrp.Parent = model
+
+	local torso = Instance.new(&quot;Part&quot;)
+	torso.Name = &quot;Torso&quot;
+	torso.Size = Vector3.new(2, 2, 1)
+	torso.Color = color
+	torso.Material = Enum.Material.SmoothPlastic
+	torso.CFrame = hrp.CFrame
+	torso.Parent = model
+
+	local head = Instance.new(&quot;Part&quot;)
+	head.Name = &quot;Head&quot;
+	head.Shape = Enum.PartType.Ball
+	head.Size = Vector3.new(1.4, 1.4, 1.4)
+	head.Color = Color3.fromRGB(255, 200, 60)
+	head.Material = Enum.Material.SmoothPlastic
+	head.CFrame = hrp.CFrame * CFrame.new(0, 1.7, 0)
+	head.Parent = model
+
+	local limbs = {
+		{ &quot;Left Arm&quot;, Vector3.new(1, 2, 1), Vector3.new(-1.5, 0, 0) },
+		{ &quot;Right Arm&quot;, Vector3.new(1, 2, 1), Vector3.new(1.5, 0, 0) },
+		{ &quot;Left Leg&quot;, Vector3.new(1, 2, 1), Vector3.new(-0.5, -2, 0) },
+		{ &quot;Right Leg&quot;, Vector3.new(1, 2, 1), Vector3.new(0.5, -2, 0) },
+	}
+	for _, def in ipairs(limbs) do
+		local limb = Instance.new(&quot;Part&quot;)
+		limb.Name = def[1]
+		limb.Size = def[2]
+		limb.Color = color
+		limb.Material = Enum.Material.SmoothPlastic
+		limb.CFrame = hrp.CFrame * CFrame.new(def[3])
+		limb.Parent = model
+	end
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA(&quot;BasePart&quot;) and part ~= hrp then
+			local weld = Instance.new(&quot;WeldConstraint&quot;)
+			weld.Part0 = hrp
+			weld.Part1 = part
+			weld.Parent = part
+			part.Anchored = false
+		end
+	end
+
+	local humanoid = Instance.new(&quot;Humanoid&quot;)
+	humanoid.MaxHealth = Config.Map.DummyHealth
+	humanoid.Health = Config.Map.DummyHealth
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.Parent = model
+	model.PrimaryPart = hrp
+	model:SetAttribute(&quot;Dummy&quot;, true)
+	CollectionService:AddTag(model, &quot;Dummy&quot;)
+	model.Parent = root
+
+	humanoid.Died:Connect(function()
+		task.delay(3, function()
+			model:Destroy()
+			buildDummy(root, position, index)
+		end)
+	end)
+	-- Regeneration
+	task.spawn(function()
+		while model.Parent and humanoid.Health &gt; 0 do
+			task.wait(2)
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 15)
+		end
+	end)
+end
+
+function MapBuilder.Build()
+	local old = workspace:FindFirstChild(&quot;OnyxBattlegrounds&quot;)
+	if old then
+		old:Destroy()
+	end
+	local baseplate = workspace:FindFirstChild(&quot;Baseplate&quot;)
+	if baseplate then
+		baseplate:Destroy()
+	end
+	local root = Instance.new(&quot;Folder&quot;)
+	root.Name = &quot;OnyxBattlegrounds&quot;
+	root.Parent = workspace
+
+	buildLighting()
+	buildGround(root)
+	buildSpawn(root)
+	buildArena(root)
+	buildCity(root)
+	buildCalmZone(root)
+
+	local dummies = Instance.new(&quot;Folder&quot;)
+	dummies.Name = &quot;Dummies&quot;
+	dummies.Parent = workspace
+	local pos = Config.Map.CalmZone
+	for i = 1, Config.Map.DummyCount do
+		buildDummy(dummies, pos + Vector3.new(-30 + i * 15, 0.6, 0), i)
+	end
+
+	Players.RespawnTime = Config.Combat.RespawnTime
+	return root
+end
+
+-- Un point est-il dans une zone sure ?
+function MapBuilder.IsSafe(position)
+	for _, zone in ipairs(CollectionService:GetTagged(&quot;SafeZone&quot;)) do
+		local radius = zone:GetAttribute(&quot;SafeRadius&quot;) or 40
+		local flat = (Vector3.new(position.X, 0, position.Z) - Vector3.new(zone.Position.X, 0, zone.Position.Z)).Magnitude
+		if flat &lt;= radius then
+			return true
+		end
+	end
+	return false
+end
+
+return MapBuilder
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">ProgressionService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- XP, niveaux, pieces, kills, victoires, titres, cosmetiques, classement.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local MapBuilder = require(script.Parent.MapBuilder)
+
+local ProgressionService = {}
+
+local CharacterService -- injecte
+
+local function findById(list, id)
+	for _, item in ipairs(list) do
+		if item.id == id then
+			return item
+		end
+	end
+	return nil
+end
+
+local function checkTitles(player, data)
+	local newTitles = {}
+	for _, title in ipairs(Config.Titles) do
+		if not data.Unlocked.titles[title.id] then
+			local req = title.requirement
+			local value = (req.kind == &quot;level&quot; and data.Level) or (req.kind == &quot;kills&quot; and data.Kills) or (req.kind == &quot;wins&quot; and data.Wins) or 0
+			if value &gt;= req.value then
+				data.Unlocked.titles[title.id] = true
+				table.insert(newTitles, title.name)
+			end
+		end
+	end
+	for _, name in ipairs(newTitles) do
+		Remotes.Notify:FireClient(player, &quot;Nouveau titre debloque : &quot; .. name, &quot;gold&quot;)
+	end
+end
+
+function ProgressionService.SyncStats(player)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	DataService.Sync(player)
+	player:SetAttribute(&quot;Level&quot;, data.Level)
+	local title = findById(Config.Titles, data.Title)
+	player:SetAttribute(&quot;Title&quot;, title and title.name or &quot;&quot;)
+	player:SetAttribute(&quot;Aura&quot;, data.Aura)
+	player:SetAttribute(&quot;Trail&quot;, data.Trail)
+	player:SetAttribute(&quot;CharacterId&quot;, data.Character)
+	Remotes.Stats:FireClient(player, {
+		xp = data.XP,
+		level = data.Level,
+		xpNext = Config.Progression.XPForLevel(data.Level),
+		coins = data.Coins,
+		kills = data.Kills,
+		deaths = data.Deaths,
+		wins = data.Wins,
+		character = data.Character,
+		aura = data.Aura,
+		trail = data.Trail,
+		title = data.Title,
+		unlocked = data.Unlocked,
+	})
+end
+
+function ProgressionService.AddXP(player, amount)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	data.XP += amount
+	local leveled = false
+	while data.Level &lt; Config.Progression.MaxLevel do
+		local needed = Config.Progression.XPForLevel(data.Level)
+		if data.XP &lt; needed then
+			break
+		end
+		data.XP -= needed
+		data.Level += 1
+		leveled = true
+	end
+	if leveled then
+		Remotes.Notify:FireClient(player, &quot;NIVEAU &quot; .. data.Level .. &quot; !&quot;, &quot;gold&quot;)
+		Remotes.CombatFX:FireAllClients(&quot;LevelUp&quot;, { userId = player.UserId })
+		checkTitles(player, data)
+	end
+end
+
+function ProgressionService.AddCoins(player, amount)
+	local data = DataService.Get(player)
+	if data then
+		data.Coins += amount
+	end
+end
+
+function ProgressionService.OnHit(player, damage)
+	ProgressionService.AddXP(player, Config.Progression.XPPerHit)
+	ProgressionService.AddCoins(player, Config.Progression.CoinsPerHit)
+end
+
+function ProgressionService.OnKill(killer, victim)
+	local data = DataService.Get(killer)
+	if not data then
+		return
+	end
+	data.Kills += 1
+	ProgressionService.AddXP(killer, Config.Progression.XPPerKill)
+	ProgressionService.AddCoins(killer, Config.Progression.CoinsPerKill)
+	local streak = (killer:GetAttribute(&quot;Streak&quot;) or 0) + 1
+	killer:SetAttribute(&quot;Streak&quot;, streak)
+	local victimName = victim and victim.DisplayName or &quot;un mannequin&quot;
+	Remotes.Notify:FireAllClients(killer.DisplayName .. &quot; a elimine &quot; .. victimName, &quot;kill&quot;)
+	if streak % Config.Combat.StreakForWin == 0 then
+		data.Wins += 1
+		ProgressionService.AddXP(killer, Config.Progression.XPPerWin)
+		ProgressionService.AddCoins(killer, Config.Progression.CoinsPerWin)
+		Remotes.Notify:FireAllClients(killer.DisplayName .. &quot; domine avec &quot; .. streak .. &quot; eliminations d'affilee ! (+1 victoire)&quot;, &quot;gold&quot;)
+		Remotes.CombatFX:FireAllClients(&quot;Win&quot;, { userId = killer.UserId })
+	end
+	checkTitles(killer, data)
+	ProgressionService.SyncStats(killer)
+end
+
+function ProgressionService.OnDeath(player)
+	local data = DataService.Get(player)
+	if data then
+		data.Deaths += 1
+	end
+	player:SetAttribute(&quot;Streak&quot;, 0)
+	ProgressionService.SyncStats(player)
+end
+
+-- Menu (personnage, cosmetiques) --------------------------------------------------
+
+local function onMenu(player, action, kind, id)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	if action == &quot;character&quot; then
+		if not Config.CharacterById[kind] then
+			return
+		end
+		data.Character = kind
+		ProgressionService.SyncStats(player)
+		CharacterService.Reload(player)
+		Remotes.Notify:FireClient(player, &quot;Personnage : &quot; .. kind, &quot;good&quot;)
+	elseif action == &quot;buy&quot; then
+		local list = (kind == &quot;aura&quot;) and Config.Auras or (kind == &quot;trail&quot; and Config.Trails) or nil
+		local item = list and findById(list, id)
+		if not item then
+			return
+		end
+		local bag = data.Unlocked[kind .. &quot;s&quot;]
+		if bag[id] then
+			return
+		end
+		if data.Coins &lt; item.price then
+			Remotes.Notify:FireClient(player, &quot;Pas assez de pieces (&quot; .. item.price .. &quot; necessaires).&quot;, &quot;danger&quot;)
+			return
+		end
+		data.Coins -= item.price
+		bag[id] = true
+		Remotes.Notify:FireClient(player, item.name .. &quot; debloque !&quot;, &quot;gold&quot;)
+		ProgressionService.SyncStats(player)
+	elseif action == &quot;equip&quot; then
+		local bag = data.Unlocked[kind .. &quot;s&quot;]
+		if not bag or not bag[id] then
+			return
+		end
+		if kind == &quot;aura&quot; then
+			data.Aura = id
+		elseif kind == &quot;trail&quot; then
+			data.Trail = id
+		elseif kind == &quot;title&quot; then
+			data.Title = id
+		end
+		ProgressionService.SyncStats(player)
+		CharacterService.RefreshCosmetics(player)
+	elseif action == &quot;stats&quot; then
+		ProgressionService.SyncStats(player)
+	end
+end
+
+-- Classement en jeu -----------------------------------------------------------
+
+local function updateLeaderboard()
+	local label = MapBuilder.LeaderboardLabel
+	if not label then
+		return
+	end
+	local entries = {}
+	local seen = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		local data = DataService.Get(p)
+		if data then
+			table.insert(entries, { name = p.DisplayName, wins = data.Wins, level = data.Level })
+			seen[p.UserId] = true
+		end
+	end
+	for _, entry in ipairs(DataService.GetTopWins(10)) do
+		if not seen[entry.userId] then
+			local ok, name = pcall(function()
+				return Players:GetNameFromUserIdAsync(entry.userId)
+			end)
+			table.insert(entries, { name = ok and name or &quot;???&quot;, wins = entry.wins, level = 0 })
+		end
+	end
+	table.sort(entries, function(a, b)
+		return a.wins &gt; b.wins
+	end)
+	local lines = {}
+	for i = 1, math.min(10, #entries) do
+		local e = entries[i]
+		table.insert(lines, string.format(&quot;%d. %s  -  %d victoires&quot;, i, e.name, e.wins))
+	end
+	if #lines == 0 then
+		lines[1] = &quot;Aucun joueur classe pour l'instant&quot;
+	end
+	label.Text = table.concat(lines, &quot;\n&quot;)
+end
+
+function ProgressionService.Init(characterService)
+	CharacterService = characterService
+	Remotes.Menu.OnServerEvent:Connect(onMenu)
+	task.spawn(function()
+		while true do
+			pcall(updateLeaderboard)
+			task.wait(30)
+		end
+	end)
+end
+
+return ProgressionService
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000016"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000015"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX00000014"><Properties><string name="Name">Client</string></Properties><Item class="LocalScript" referent="RBX0000000D"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree client d'ONYX BATTLEGROUNDS.
+
+local Modules = script.Parent.Modules
+local Input = require(Modules.Input)
+local HUD = require(Modules.HUD)
+local Effects = require(Modules.Effects)
+
+Input.Init()
+HUD.Init(Input)
+Effects.Init(HUD)
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000013"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">Anim</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Animations procedurales : on tween les Motor6D (C0) des personnages, R15 et R6.
+-- Aucun asset d'animation necessaire ; fonctionne sur son propre perso et ceux des autres.
+
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local Anim = {}
+
+local originals = {} -- [Motor6D] = C0 d'origine
+
+local function joint(character, r15Name, r15Parent, r6Name)
+	local part = character:FindFirstChild(r15Parent)
+	local motor = part and part:FindFirstChild(r15Name)
+	if not motor and r6Name then
+		local torso = character:FindFirstChild(&quot;Torso&quot;)
+		motor = torso and torso:FindFirstChild(r6Name)
+	end
+	if motor and motor:IsA(&quot;Motor6D&quot;) then
+		if not originals[motor] then
+			originals[motor] = motor.C0
+		end
+		return motor
+	end
+	return nil
+end
+
+local function joints(character)
+	return {
+		rightArm = joint(character, &quot;RightShoulder&quot;, &quot;RightUpperArm&quot;, &quot;Right Shoulder&quot;),
+		leftArm = joint(character, &quot;LeftShoulder&quot;, &quot;LeftUpperArm&quot;, &quot;Left Shoulder&quot;),
+		waist = joint(character, &quot;Waist&quot;, &quot;UpperTorso&quot;, nil),
+		neck = joint(character, &quot;Neck&quot;, &quot;Head&quot;, &quot;Neck&quot;),
+		rightLeg = joint(character, &quot;RightHip&quot;, &quot;RightUpperLeg&quot;, &quot;Right Hip&quot;),
+	}
+end
+
+local function tweenTo(motor, offset, duration, style)
+	if not motor then
+		return
+	end
+	TweenService:Create(motor, TweenInfo.new(duration, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { C0 = originals[motor] * offset }):Play()
+end
+
+local function reset(motor, duration)
+	if motor then
+		TweenService:Create(motor, TweenInfo.new(duration or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { C0 = originals[motor] }):Play()
+	end
+end
+
+local R = math.rad
+local FWD = CFrame.Angles(R(90), 0, 0) -- bras tendu devant
+
+local poses = {}
+
+-- M1 : alternance droite / gauche / coup de pied / coup lourd
+poses.m1 = function(j, combo)
+	combo = ((combo or 1) - 1) % 4 + 1
+	if combo == 1 then
+		tweenTo(j.rightArm, FWD * CFrame.Angles(0, 0, R(-15)), 0.08)
+		tweenTo(j.waist, CFrame.Angles(0, R(-25), 0), 0.08)
+		task.delay(0.18, function() reset(j.rightArm, 0.2); reset(j.waist, 0.2) end)
+	elseif combo == 2 then
+		tweenTo(j.leftArm, FWD * CFrame.Angles(0, 0, R(15)), 0.08)
+		tweenTo(j.waist, CFrame.Angles(0, R(25), 0), 0.08)
+		task.delay(0.18, function() reset(j.leftArm, 0.2); reset(j.waist, 0.2) end)
+	elseif combo == 3 then
+		tweenTo(j.rightLeg, CFrame.Angles(R(70), 0, 0), 0.1)
+		tweenTo(j.waist, CFrame.Angles(R(-15), 0, 0), 0.1)
+		task.delay(0.22, function() reset(j.rightLeg, 0.25); reset(j.waist, 0.25) end)
+	else
+		tweenTo(j.rightArm, CFrame.Angles(R(160), 0, R(-20)), 0.1)
+		tweenTo(j.waist, CFrame.Angles(R(10), R(-30), 0), 0.1)
+		task.delay(0.12, function()
+			tweenTo(j.rightArm, FWD * CFrame.Angles(0, 0, R(-10)), 0.08, Enum.EasingStyle.Back)
+			tweenTo(j.waist, CFrame.Angles(R(-10), R(20), 0), 0.08)
+		end)
+		task.delay(0.4, function() reset(j.rightArm, 0.25); reset(j.waist, 0.25) end)
+	end
+end
+
+poses.jab = function(j)
+	tweenTo(j.rightArm, FWD, 0.07)
+	tweenTo(j.waist, CFrame.Angles(0, R(-30), 0), 0.07)
+	task.delay(0.25, function() reset(j.rightArm, 0.2); reset(j.waist, 0.2) end)
+end
+
+poses.uppercut = function(j)
+	tweenTo(j.rightArm, CFrame.Angles(R(-40), 0, R(-10)), 0.15)
+	tweenTo(j.waist, CFrame.Angles(R(15), 0, 0), 0.15)
+	task.delay(0.2, function()
+		tweenTo(j.rightArm, CFrame.Angles(R(170), 0, R(-10)), 0.1, Enum.EasingStyle.Back)
+		tweenTo(j.waist, CFrame.Angles(R(-15), 0, 0), 0.1)
+	end)
+	task.delay(0.6, function() reset(j.rightArm, 0.3); reset(j.waist, 0.3) end)
+end
+
+poses.heavy = function(j)
+	tweenTo(j.rightArm, CFrame.Angles(R(170), 0, R(-30)), 0.25)
+	tweenTo(j.leftArm, CFrame.Angles(R(60), 0, R(30)), 0.25)
+	tweenTo(j.waist, CFrame.Angles(R(10), R(-40), 0), 0.25)
+	task.delay(0.4, function()
+		tweenTo(j.rightArm, FWD * CFrame.Angles(0, 0, R(-10)), 0.08, Enum.EasingStyle.Back)
+		tweenTo(j.waist, CFrame.Angles(R(-15), R(25), 0), 0.08)
+	end)
+	task.delay(0.8, function() reset(j.rightArm, 0.3); reset(j.leftArm, 0.3); reset(j.waist, 0.3) end)
+end
+
+poses.rush = function(j)
+	tweenTo(j.waist, CFrame.Angles(R(-30), 0, 0), 0.1)
+	tweenTo(j.rightArm, FWD, 0.1)
+	tweenTo(j.leftArm, CFrame.Angles(R(-50), 0, R(20)), 0.1)
+	task.delay(0.5, function() reset(j.waist, 0.3); reset(j.rightArm, 0.3); reset(j.leftArm, 0.3) end)
+end
+
+poses.slam = function(j)
+	tweenTo(j.rightArm, CFrame.Angles(R(175), 0, R(-15)), 0.3)
+	tweenTo(j.leftArm, CFrame.Angles(R(175), 0, R(15)), 0.3)
+	tweenTo(j.waist, CFrame.Angles(R(15), 0, 0), 0.3)
+	task.delay(0.45, function()
+		tweenTo(j.rightArm, CFrame.Angles(R(40), 0, R(-15)), 0.1, Enum.EasingStyle.Back)
+		tweenTo(j.leftArm, CFrame.Angles(R(40), 0, R(15)), 0.1, Enum.EasingStyle.Back)
+		tweenTo(j.waist, CFrame.Angles(R(-35), 0, 0), 0.1)
+	end)
+	task.delay(0.9, function() reset(j.rightArm, 0.3); reset(j.leftArm, 0.3); reset(j.waist, 0.3) end)
+end
+
+poses.cast = function(j)
+	tweenTo(j.rightArm, CFrame.Angles(R(120), 0, R(-30)), 0.15)
+	tweenTo(j.leftArm, CFrame.Angles(R(120), 0, R(30)), 0.15)
+	tweenTo(j.waist, CFrame.Angles(R(8), 0, 0), 0.15)
+	task.delay(0.25, function()
+		tweenTo(j.rightArm, FWD * CFrame.Angles(0, 0, R(-10)), 0.08)
+		tweenTo(j.leftArm, FWD * CFrame.Angles(0, 0, R(10)), 0.08)
+		tweenTo(j.waist, CFrame.Angles(R(-10), 0, 0), 0.08)
+	end)
+	task.delay(0.65, function() reset(j.rightArm, 0.3); reset(j.leftArm, 0.3); reset(j.waist, 0.3) end)
+end
+
+poses.power = function(j)
+	tweenTo(j.rightArm, CFrame.Angles(R(30), 0, R(-70)), 0.2)
+	tweenTo(j.leftArm, CFrame.Angles(R(30), 0, R(70)), 0.2)
+	tweenTo(j.waist, CFrame.Angles(R(-12), 0, 0), 0.2)
+	tweenTo(j.neck, CFrame.Angles(R(25), 0, 0), 0.2)
+	task.delay(0.7, function() reset(j.rightArm, 0.3); reset(j.leftArm, 0.3); reset(j.waist, 0.3); reset(j.neck, 0.3) end)
+end
+
+poses.hit = function(j)
+	tweenTo(j.waist, CFrame.Angles(R(18), 0, R(math.random(-10, 10))), 0.06)
+	tweenTo(j.neck, CFrame.Angles(R(20), 0, 0), 0.06)
+	task.delay(0.2, function() reset(j.waist, 0.25); reset(j.neck, 0.25) end)
+end
+
+poses.dash = function(j)
+	tweenTo(j.waist, CFrame.Angles(R(-25), 0, 0), 0.08)
+	task.delay(0.25, function() reset(j.waist, 0.25) end)
+end
+
+function Anim.play(character, poseName, arg)
+	if not character then
+		return
+	end
+	local pose = poses[poseName]
+	if not pose then
+		return
+	end
+	local ok, err = pcall(pose, joints(character), arg)
+	if not ok then
+		warn(&quot;[OnyxBG] Animation &quot; .. poseName .. &quot; : &quot; .. tostring(err))
+	end
+end
+
+-- Garde de blocage maintenue
+function Anim.block(character, enabled)
+	if not character then
+		return
+	end
+	local j = joints(character)
+	if enabled then
+		tweenTo(j.rightArm, CFrame.Angles(R(110), 0, R(-35)), 0.12)
+		tweenTo(j.leftArm, CFrame.Angles(R(110), 0, R(35)), 0.12)
+		tweenTo(j.waist, CFrame.Angles(R(6), 0, 0), 0.12)
+	else
+		reset(j.rightArm, 0.15)
+		reset(j.leftArm, 0.15)
+		reset(j.waist, 0.15)
+	end
+end
+
+return Anim
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">Effects</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Effets visuels et sonores, animations des autres joueurs, auras, barres de vie au-dessus des tetes.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local Lighting = game:GetService(&quot;Lighting&quot;)
+local Debris = game:GetService(&quot;Debris&quot;)
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local State = require(script.Parent.State)
+local Anim = require(script.Parent.Anim)
+
+local Effects = {}
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local HUD -- injecte
+
+local SOUNDS = {
+	swing = &quot;rbxasset://sounds/swoosh.wav&quot;,
+	hit = &quot;rbxasset://sounds/snap.wav&quot;,
+	heavy = &quot;rbxasset://sounds/collide.wav&quot;,
+	whoosh = &quot;rbxasset://sounds/swoosh.wav&quot;,
+	slam = &quot;rbxasset://sounds/bass.wav&quot;,
+	zap = &quot;rbxasset://sounds/flashbulb.wav&quot;,
+	fire = &quot;rbxasset://sounds/Rocket shot.wav&quot;,
+	explosion = &quot;rbxasset://sounds/collide.wav&quot;,
+	thunder = &quot;rbxasset://sounds/bass.wav&quot;,
+	charge = &quot;rbxasset://sounds/electronicpingshort.wav&quot;,
+	block = &quot;rbxasset://sounds/button.wav&quot;,
+	dash = &quot;rbxasset://sounds/swoosh.wav&quot;,
+	ult = &quot;rbxasset://sounds/HalloweenGhost.wav&quot;,
+	death = &quot;rbxasset://sounds/uuhhh.mp3&quot;,
+	win = &quot;rbxasset://sounds/victory.wav&quot;,
+	level = &quot;rbxasset://sounds/victory.wav&quot;,
+}
+
+local function playSound(name, volume, pitch, position)
+	local s = Instance.new(&quot;Sound&quot;)
+	s.SoundId = SOUNDS[name] or SOUNDS.hit
+	s.Volume = volume or 0.5
+	s.PlaybackSpeed = pitch or 1
+	if position then
+		local holder = Instance.new(&quot;Part&quot;)
+		holder.Anchored = true
+		holder.CanCollide = false
+		holder.CanQuery = false
+		holder.Transparency = 1
+		holder.Size = Vector3.new(1, 1, 1)
+		holder.Position = position
+		holder.Parent = workspace
+		s.RollOffMaxDistance = 160
+		s.Parent = holder
+		Debris:AddItem(holder, 4)
+	else
+		s.Parent = workspace
+		Debris:AddItem(s, 4)
+	end
+	s:Play()
+end
+
+local function getCharacter(userId)
+	local p = Players:GetPlayerByUserId(userId)
+	return p and p.Character
+end
+
+local function hrpOf(character)
+	return character and character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+end
+
+local function burst(position, color, count, speed, size, gravity, lifetime)
+	local holder = Instance.new(&quot;Part&quot;)
+	holder.Anchored = true
+	holder.CanCollide = false
+	holder.CanQuery = false
+	holder.Transparency = 1
+	holder.Size = Vector3.new(1, 1, 1)
+	holder.Position = position
+	holder.Parent = workspace
+	local att = Instance.new(&quot;Attachment&quot;)
+	att.Parent = holder
+	local e = Instance.new(&quot;ParticleEmitter&quot;)
+	e.Rate = 0
+	e.Lifetime = NumberRange.new((lifetime or 0.6) * 0.6, lifetime or 0.6)
+	e.Speed = NumberRange.new(speed * 0.5, speed)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, 0) })
+	e.Transparency = NumberSequence.new(0, 1)
+	e.LightEmission = 1
+	e.Acceleration = Vector3.new(0, gravity or -10, 0)
+	e.Drag = 3
+	e.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+	e.Parent = att
+	e:Emit(count)
+	Debris:AddItem(holder, 2)
+end
+
+local function shockwave(position, color, size, duration, flat)
+	local ring = Instance.new(&quot;Part&quot;)
+	ring.Shape = flat and Enum.PartType.Cylinder or Enum.PartType.Ball
+	ring.Size = Vector3.new(1, 1, 1)
+	ring.Material = Enum.Material.Neon
+	ring.Color = color
+	ring.Transparency = 0.2
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CFrame = flat and (CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))) or CFrame.new(position)
+	ring.Parent = workspace
+	TweenService:Create(ring, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = flat and Vector3.new(0.5, size, size) or Vector3.new(size, size, size),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(ring, duration + 0.1)
+end
+
+local function floatingText(position, text, color, size)
+	local holder = Instance.new(&quot;Part&quot;)
+	holder.Anchored = true
+	holder.CanCollide = false
+	holder.CanQuery = false
+	holder.Transparency = 1
+	holder.Size = Vector3.new(1, 1, 1)
+	holder.Position = position + Vector3.new(math.random(-2, 2), 2.5, math.random(-2, 2))
+	holder.Parent = workspace
+	local gui = Instance.new(&quot;BillboardGui&quot;)
+	gui.Size = UDim2.fromOffset(size or 120, 40)
+	gui.AlwaysOnTop = true
+	gui.Parent = holder
+	local l = Instance.new(&quot;TextLabel&quot;)
+	l.Size = UDim2.fromScale(1, 1)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.Font = Enum.Font.GothamBlack
+	l.TextScaled = true
+	l.TextColor3 = color
+	l.TextStrokeTransparency = 0.2
+	l.Parent = gui
+	TweenService:Create(holder, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = holder.Position + Vector3.new(0, 4, 0) }):Play()
+	task.delay(0.5, function()
+		TweenService:Create(l, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	end)
+	Debris:AddItem(holder, 1)
+end
+
+local function flashScreen(color, transparency, duration)
+	local gui = player.PlayerGui:FindFirstChild(&quot;OnyxFlash&quot;)
+	if not gui then
+		gui = Instance.new(&quot;ScreenGui&quot;)
+		gui.Name = &quot;OnyxFlash&quot;
+		gui.IgnoreGuiInset = true
+		gui.ResetOnSpawn = false
+		gui.DisplayOrder = 50
+		gui.Parent = player.PlayerGui
+		local frame = Instance.new(&quot;Frame&quot;)
+		frame.Name = &quot;Flash&quot;
+		frame.Size = UDim2.fromScale(1, 1)
+		frame.BackgroundTransparency = 1
+		frame.BorderSizePixel = 0
+		frame.Parent = gui
+	end
+	local frame = gui.Flash
+	frame.BackgroundColor3 = color
+	frame.BackgroundTransparency = transparency
+	TweenService:Create(frame, TweenInfo.new(duration), { BackgroundTransparency = 1 }):Play()
+end
+
+-- Tremblement + FOV
+local shakeAmount = 0
+local fovOffset = 0
+RunService.RenderStepped:Connect(function(dt)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if hum then
+		if shakeAmount &gt; 0.01 then
+			hum.CameraOffset = Vector3.new((math.random() - 0.5) * shakeAmount, (math.random() - 0.5) * shakeAmount, 0)
+			shakeAmount = shakeAmount * math.max(0, 1 - dt * 9)
+		elseif hum.CameraOffset ~= Vector3.zero then
+			hum.CameraOffset = Vector3.zero
+		end
+	end
+	if math.abs(fovOffset) &gt; 0.05 then
+		fovOffset = fovOffset * math.max(0, 1 - dt * 5)
+		camera.FieldOfView = 70 + fovOffset
+	elseif camera.FieldOfView ~= 70 then
+		camera.FieldOfView = 70
+	end
+end)
+
+local function shake(amount)
+	shakeAmount = math.max(shakeAmount, amount)
+end
+
+-- Auras persistantes et trainees ------------------------------------------------------
+
+local auraEmitters = {} -- [character] = { emitter = , id = }
+
+local function colorFor(list, id)
+	for _, item in ipairs(list) do
+		if item.id == id then
+			return item.color
+		end
+	end
+	return nil
+end
+
+local function setAura(character, color, ult)
+	local existing = auraEmitters[character]
+	if existing then
+		existing:Destroy()
+		auraEmitters[character] = nil
+	end
+	if not color then
+		return
+	end
+	local hrp = hrpOf(character)
+	if not hrp then
+		return
+	end
+	local att = Instance.new(&quot;Attachment&quot;)
+	att.Name = &quot;AuraAttachment&quot;
+	att.Position = Vector3.new(0, -1, 0)
+	att.Parent = hrp
+	local e = Instance.new(&quot;ParticleEmitter&quot;)
+	e.Rate = ult and 60 or 18
+	e.Lifetime = NumberRange.new(0.6, 1.1)
+	e.Speed = NumberRange.new(ult and 6 or 3, ult and 9 or 5)
+	e.SpreadAngle = Vector2.new(25, 25)
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, ult and 1.2 or 0.6), NumberSequenceKeypoint.new(1, 0) })
+	e.Transparency = NumberSequence.new(0.3, 1)
+	e.LightEmission = 1
+	e.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+	e.Acceleration = Vector3.new(0, 4, 0)
+	e.Parent = att
+	if ult then
+		local light = Instance.new(&quot;PointLight&quot;)
+		light.Color = color
+		light.Range = 20
+		light.Brightness = 2
+		light.Parent = att
+	end
+	auraEmitters[character] = att
+end
+
+local function refreshAura(character)
+	local p = Players:GetPlayerFromCharacter(character)
+	if not p then
+		return
+	end
+	if character:GetAttribute(&quot;UltActive&quot;) then
+		local def = Config.CharacterById[character:GetAttribute(&quot;CharacterId&quot;) or &quot;&quot;] or Config.Characters[1]
+		setAura(character, def.color, true)
+	else
+		setAura(character, colorFor(Config.Auras, p:GetAttribute(&quot;Aura&quot;) or &quot;none&quot;), false)
+	end
+end
+
+-- Etiquettes au-dessus de la tete (nom, titre, vie) ----------------------------------
+
+local function attachOverhead(character)
+	local p = Players:GetPlayerFromCharacter(character)
+	local head = character:WaitForChild(&quot;Head&quot;, 5)
+	local humanoid = character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if not head or not humanoid then
+		return
+	end
+	if character == player.Character then
+		return
+	end
+	local gui = Instance.new(&quot;BillboardGui&quot;)
+	gui.Name = &quot;Overhead&quot;
+	gui.Size = UDim2.fromOffset(160, 54)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = 120
+	gui.Parent = head
+	local name = Instance.new(&quot;TextLabel&quot;)
+	name.Size = UDim2.new(1, 0, 0, 22)
+	name.BackgroundTransparency = 1
+	name.Font = Enum.Font.GothamBlack
+	name.TextScaled = true
+	name.TextStrokeTransparency = 0.4
+	name.TextColor3 = Color3.new(1, 1, 1)
+	name.Parent = gui
+	local title = Instance.new(&quot;TextLabel&quot;)
+	title.Size = UDim2.new(1, 0, 0, 14)
+	title.Position = UDim2.new(0, 0, 0, 22)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextScaled = true
+	title.TextStrokeTransparency = 0.4
+	title.TextColor3 = Config.Colors.Gold
+	title.Parent = gui
+	local bg = Instance.new(&quot;Frame&quot;)
+	bg.Size = UDim2.new(0.8, 0, 0, 8)
+	bg.Position = UDim2.new(0.1, 0, 0, 42)
+	bg.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	bg.BorderSizePixel = 0
+	bg.Parent = gui
+	local fill = Instance.new(&quot;Frame&quot;)
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BackgroundColor3 = Config.Colors.Health
+	fill.BorderSizePixel = 0
+	fill.Parent = bg
+	local function refresh()
+		local def = Config.CharacterById[character:GetAttribute(&quot;CharacterId&quot;) or &quot;&quot;]
+		if p then
+			name.Text = p.DisplayName .. &quot;  [&quot; .. (p:GetAttribute(&quot;Level&quot;) or 1) .. &quot;]&quot;
+			name.TextColor3 = def and def.color or Color3.new(1, 1, 1)
+			title.Text = p:GetAttribute(&quot;Title&quot;) or &quot;&quot;
+		else
+			name.Text = character.Name
+			title.Text = &quot;Entrainement&quot;
+		end
+		local ratio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
+		fill.Size = UDim2.fromScale(ratio, 1)
+		fill.BackgroundColor3 = Config.Colors.Health:Lerp(Config.Colors.Danger, 1 - ratio)
+	end
+	refresh()
+	humanoid.HealthChanged:Connect(refresh)
+	if p then
+		p:GetAttributeChangedSignal(&quot;Title&quot;):Connect(refresh)
+		p:GetAttributeChangedSignal(&quot;Level&quot;):Connect(refresh)
+		character:GetAttributeChangedSignal(&quot;CharacterId&quot;):Connect(refresh)
+	end
+end
+
+local function hookCharacter(character)
+	task.spawn(attachOverhead, character)
+	local p = Players:GetPlayerFromCharacter(character)
+	if p then
+		task.delay(0.5, function()
+			refreshAura(character)
+		end)
+		character:GetAttributeChangedSignal(&quot;UltActive&quot;):Connect(function()
+			refreshAura(character)
+		end)
+		p:GetAttributeChangedSignal(&quot;Aura&quot;):Connect(function()
+			refreshAura(character)
+		end)
+	end
+end
+
+local function hookPlayer(p)
+	if p.Character then
+		hookCharacter(p.Character)
+	end
+	p.CharacterAdded:Connect(function(character)
+		task.wait(0.2)
+		hookCharacter(character)
+	end)
+end
+
+-- Evenements de combat ----------------------------------------------------------------
+
+local handlers = {}
+
+handlers.Swing = function(data)
+	local character = getCharacter(data.userId)
+	Anim.play(character, &quot;m1&quot;, data.combo)
+	local hrp = hrpOf(character)
+	if hrp then
+		playSound(&quot;swing&quot;, 0.5, 0.9 + data.combo * 0.1, hrp.Position)
+		if data.combo == 4 then
+			burst((hrp.CFrame * CFrame.new(0, 0, -3)).Position, data.color or Config.Colors.Accent, 12, 14, 0.5)
+		end
+	end
+	if data.userId == player.UserId then
+		HUD.showCombo(data.combo)
+		fovOffset = 2
+	end
+end
+
+handlers.Hit = function(data)
+	local color = data.color or Config.Colors.Accent
+	if data.blocked then
+		burst(data.position, Config.Colors.Gold, 10, 8, 0.4)
+		shockwave(data.position, Config.Colors.Gold, 5, 0.25, false)
+		playSound(&quot;block&quot;, 0.7, 1.2, data.position)
+		floatingText(data.position, &quot;BLOQUE &quot; .. data.damage, Config.Colors.Gold, 120)
+	else
+		burst(data.position, color, data.heavy and 30 or 14, data.heavy and 22 or 12, data.heavy and 0.8 or 0.45)
+		shockwave(data.position, Color3.new(1, 1, 1), data.heavy and 12 or 5, 0.25, false)
+		playSound(data.heavy and &quot;heavy&quot; or &quot;hit&quot;, data.heavy and 1 or 0.7, data.heavy and 0.9 or (0.9 + math.random() * 0.3), data.position)
+		floatingText(data.position, tostring(data.damage), data.heavy and Config.Colors.Accent2 or Color3.new(1, 1, 1), data.heavy and 150 or 100)
+		-- Animation de recul de la victime
+		local victim = workspace:FindFirstChild(data.victimName, true)
+		if victim and victim:IsA(&quot;Model&quot;) then
+			Anim.play(victim, &quot;hit&quot;)
+		end
+	end
+	if data.attacker == player.UserId then
+		shake(data.heavy and 1.5 or 0.5)
+		fovOffset = data.heavy and 6 or 2
+	elseif player.Character and data.victimName == player.Character.Name then
+		shake(data.heavy and 2.5 or 1)
+		flashScreen(Config.Colors.Danger, data.heavy and 0.6 or 0.85, 0.35)
+	end
+end
+
+handlers.Block = function(data)
+	local character = getCharacter(data.userId)
+	Anim.block(character, data.enabled)
+	local hrp = hrpOf(character)
+	if not hrp then
+		return
+	end
+	local existing = hrp:FindFirstChild(&quot;BlockShield&quot;)
+	if existing then
+		existing:Destroy()
+	end
+	if data.enabled then
+		local shield = Instance.new(&quot;Part&quot;)
+		shield.Name = &quot;BlockShield&quot;
+		shield.Shape = Enum.PartType.Ball
+		shield.Size = Vector3.new(7, 7, 7)
+		shield.Material = Enum.Material.ForceField
+		shield.Color = Config.Colors.Gold
+		shield.Transparency = 0.4
+		shield.CanCollide = false
+		shield.CanQuery = false
+		shield.Massless = true
+		shield.CFrame = hrp.CFrame
+		local weld = Instance.new(&quot;WeldConstraint&quot;)
+		weld.Part0 = hrp
+		weld.Part1 = shield
+		weld.Parent = shield
+		shield.Parent = hrp
+		playSound(&quot;block&quot;, 0.4, 0.8, hrp.Position)
+	end
+end
+
+handlers.Dash = function(data)
+	local p = Players:GetPlayerByUserId(data.userId)
+	local character = p and p.Character
+	local hrp = hrpOf(character)
+	if not hrp then
+		return
+	end
+	if data.userId ~= player.UserId then
+		Anim.play(character, &quot;dash&quot;)
+	end
+	local color = colorFor(Config.Trails, p:GetAttribute(&quot;Trail&quot;) or &quot;none&quot;)
+	playSound(&quot;dash&quot;, 0.5, 1.4, hrp.Position)
+	if color then
+		local a0 = Instance.new(&quot;Attachment&quot;)
+		a0.Position = Vector3.new(0, 1.5, 0)
+		a0.Parent = hrp
+		local a1 = Instance.new(&quot;Attachment&quot;)
+		a1.Position = Vector3.new(0, -1.5, 0)
+		a1.Parent = hrp
+		local trail = Instance.new(&quot;Trail&quot;)
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Lifetime = 0.35
+		trail.LightEmission = 1
+		trail.WidthScale = NumberSequence.new(1, 0)
+		trail.Transparency = NumberSequence.new(0.2, 1)
+		trail.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+		trail.Parent = hrp
+		Debris:AddItem(a0, 0.7)
+		Debris:AddItem(a1, 0.7)
+		Debris:AddItem(trail, 0.7)
+		burst(hrp.Position, color, 10, 8, 0.4, 0)
+	else
+		burst(hrp.Position - Vector3.new(0, 2, 0), Color3.fromRGB(220, 220, 230), 8, 6, 0.4, 0)
+	end
+	if data.userId == player.UserId then
+		fovOffset = 8
+	end
+end
+
+handlers.Cast = function(data)
+	local character = getCharacter(data.userId)
+	Anim.play(character, data.pose or &quot;cast&quot;)
+	local hrp = hrpOf(character)
+	if not hrp then
+		return
+	end
+	local color = data.ult and Config.Colors.Ult or (data.color or Config.Colors.Accent)
+	burst(hrp.Position, color, data.ult and 40 or 18, 6, 0.5, 6, data.windup + 0.3)
+	playSound(&quot;charge&quot;, 0.5, data.ult and 0.7 or 1.1, hrp.Position)
+	floatingText(hrp.Position + Vector3.new(0, 2, 0), data.name, color, 200)
+	if data.userId == player.UserId then
+		fovOffset = -4
+	end
+end
+
+handlers.Strike = function(data)
+	shockwave(data.position, data.color or Config.Colors.Accent, (data.size or 8) * 1.4, 0.3, false)
+	playSound(&quot;heavy&quot;, 0.6, 1.1, data.position)
+end
+
+handlers.AOE = function(data)
+	local color = data.color or Config.Colors.Accent
+	shockwave(data.position, color, data.radius * 2, 0.6, true)
+	shockwave(data.position + Vector3.new(0, 1, 0), color, data.radius * 1.4, 0.5, false)
+	burst(data.position, color, 60, 30, 1, -15, 1)
+	playSound(data.sound or &quot;slam&quot;, 1, 0.9, data.position)
+	local hrp = hrpOf(player.Character)
+	local dist = hrp and (hrp.Position - data.position).Magnitude or 999
+	shake(math.clamp(3 - dist / 25, 0.2, 3))
+	if dist &lt; data.radius + 10 then
+		flashScreen(color, 0.8, 0.4)
+	end
+end
+
+handlers.Buff = function(data)
+	local character = getCharacter(data.userId)
+	local hrp = hrpOf(character)
+	if hrp then
+		shockwave(hrp.Position, data.color or Config.Colors.Accent, 14, 0.6, false)
+		burst(hrp.Position, data.color or Config.Colors.Accent, 40, 12, 0.6, 8)
+		playSound(&quot;charge&quot;, 0.8, 1.4, hrp.Position)
+	end
+end
+
+local ultSound = nil
+handlers.UltStart = function(data)
+	local character = getCharacter(data.userId)
+	local hrp = hrpOf(character)
+	if hrp then
+		shockwave(hrp.Position, data.color, 40, 1, false)
+		shockwave(hrp.Position, Config.Colors.Ult, 50, 1.2, true)
+		burst(hrp.Position, Config.Colors.Ult, 80, 30, 1.2, 5, 1.2)
+		playSound(&quot;ult&quot;, 1, 0.8, hrp.Position)
+	end
+	shake(2)
+	flashScreen(Config.Colors.Ult, 0.5, 1)
+	if data.userId == player.UserId then
+		local cc = Lighting:FindFirstChild(&quot;BGColor&quot;)
+		if cc then
+			TweenService:Create(cc, TweenInfo.new(1), { TintColor = Color3.fromRGB(255, 220, 255), Saturation = 0.5, Contrast = 0.3 }):Play()
+		end
+		if ultSound then
+			ultSound:Destroy()
+		end
+		ultSound = Instance.new(&quot;Sound&quot;)
+		ultSound.SoundId = SOUNDS.ult
+		ultSound.Volume = 0.35
+		ultSound.PlaybackSpeed = 0.5
+		ultSound.Looped = true
+		ultSound.Parent = workspace
+		ultSound:Play()
+	end
+end
+
+handlers.UltEnd = function(data)
+	if data.userId == player.UserId then
+		local cc = Lighting:FindFirstChild(&quot;BGColor&quot;)
+		if cc then
+			TweenService:Create(cc, TweenInfo.new(1), { TintColor = Color3.new(1, 1, 1), Saturation = 0.1, Contrast = 0.15 }):Play()
+		end
+		if ultSound then
+			ultSound:Destroy()
+			ultSound = nil
+		end
+	end
+end
+
+handlers.Death = function(data)
+	burst(data.position, Config.Colors.Danger, 40, 20, 0.8)
+	shockwave(data.position, Config.Colors.Danger, 16, 0.5, false)
+	playSound(&quot;death&quot;, 0.8, 1, data.position)
+	if data.userId == player.UserId then
+		flashScreen(Config.Colors.Danger, 0.4, 1.5)
+		shake(3)
+		if ultSound then
+			ultSound:Destroy()
+			ultSound = nil
+		end
+		local cc = Lighting:FindFirstChild(&quot;BGColor&quot;)
+		if cc then
+			TweenService:Create(cc, TweenInfo.new(0.5), { TintColor = Color3.new(1, 1, 1), Saturation = 0.1, Contrast = 0.15 }):Play()
+		end
+	end
+end
+
+handlers.LevelUp = function(data)
+	local hrp = hrpOf(getCharacter(data.userId))
+	if hrp then
+		burst(hrp.Position, Config.Colors.Gold, 40, 12, 0.6, 6)
+		shockwave(hrp.Position, Config.Colors.Gold, 14, 0.7, false)
+	end
+	if data.userId == player.UserId then
+		playSound(&quot;level&quot;, 0.8, 1.2)
+		flashScreen(Config.Colors.Gold, 0.8, 0.8)
+	end
+end
+
+handlers.Win = function(data)
+	local hrp = hrpOf(getCharacter(data.userId))
+	if hrp then
+		shockwave(hrp.Position, Config.Colors.Gold, 30, 1, true)
+	end
+	if data.userId == player.UserId then
+		playSound(&quot;win&quot;, 1, 1)
+		flashScreen(Config.Colors.Gold, 0.6, 1.2)
+	end
+end
+
+function Effects.Init(hudModule)
+	HUD = hudModule
+	Remotes.CombatFX.OnClientEvent:Connect(function(kind, data)
+		local handler = handlers[kind]
+		if handler then
+			local ok, err = pcall(handler, data or {})
+			if not ok then
+				warn(&quot;[OnyxBG] Effet &quot; .. kind .. &quot; : &quot; .. tostring(err))
+			end
+		end
+	end)
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		hookPlayer(p)
+	end
+	Players.PlayerAdded:Connect(hookPlayer)
+	for _, dummy in ipairs(CollectionService:GetTagged(&quot;Dummy&quot;)) do
+		task.spawn(attachOverhead, dummy)
+	end
+	CollectionService:GetInstanceAddedSignal(&quot;Dummy&quot;):Connect(function(dummy)
+		task.spawn(attachOverhead, dummy)
+	end)
+
+	State.Changed.Event:Connect(function(what, data)
+		if what == &quot;block&quot; then
+			-- feedback local immediat (le serveur diffuse aussi l'evenement)
+			if data then
+				fovOffset = -2
+			end
+		end
+	end)
+end
+
+return Effects
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">HUD</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Interface : vie, ultimate, competences, combo, stats, selection de personnage, cosmetiques, notifications.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local UserInputService = game:GetService(&quot;UserInputService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local State = require(script.Parent.State)
+
+local HUD = {}
+local C = Config.Combat
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild(&quot;PlayerGui&quot;)
+local FONT = Enum.Font.GothamBlack
+local FONT_BOLD = Enum.Font.GothamBold
+local TOUCH = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+local ui = {}
+local Input
+
+local function new(class, props, parent)
+	local inst = Instance.new(class)
+	for k, v in pairs(props) do
+		inst[k] = v
+	end
+	inst.Parent = parent
+	return inst
+end
+local function corner(p, r)
+	return new(&quot;UICorner&quot;, { CornerRadius = UDim.new(0, r or 10) }, p)
+end
+local function stroke(p, color, thickness, transparency)
+	return new(&quot;UIStroke&quot;, { Color = color, Thickness = thickness or 2, Transparency = transparency or 0 }, p)
+end
+local function label(props, parent)
+	local base = { BackgroundTransparency = 1, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, TextStrokeTransparency = 0.6, TextStrokeColor3 = Color3.new(0, 0, 0) }
+	for k, v in pairs(props) do
+		base[k] = v
+	end
+	return new(&quot;TextLabel&quot;, base, parent)
+end
+local function button(props, parent)
+	local base = { BackgroundColor3 = Config.Colors.Accent, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, AutoButtonColor = true, Text = &quot;&quot; }
+	for k, v in pairs(props) do
+		base[k] = v
+	end
+	local b = new(&quot;TextButton&quot;, base, parent)
+	corner(b, 10)
+	return b
+end
+local function panel(name, size, title, color, parent)
+	local frame = new(&quot;Frame&quot;, { Name = name, Size = size, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.06, Visible = false }, parent)
+	corner(frame, 18)
+	stroke(frame, color, 3, 0.2)
+	label({ Size = UDim2.new(1, -70, 0, 36), Position = UDim2.new(0, 16, 0, 10), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color }, frame)
+	local close = button({ Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -8, 0, 8), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Config.Colors.Danger, Text = &quot;X&quot; }, frame)
+	close.Activated:Connect(function()
+		frame.Visible = false
+	end)
+	return frame
+end
+local function scrollList(parent, top, bottom)
+	local scroll = new(&quot;ScrollingFrame&quot;, { Size = UDim2.new(1, -24, 1, -(top + (bottom or 12))), Position = UDim2.new(0, 12, 0, top), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 6, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y }, parent)
+	new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+	return scroll
+end
+
+local function skillSlot(parent, index, key)
+	local slot = new(&quot;TextButton&quot;, { Name = &quot;Skill&quot; .. index, Size = UDim2.fromOffset(92, 92), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.15, Text = &quot;&quot;, AutoButtonColor = false, LayoutOrder = index }, parent)
+	corner(slot, 14)
+	local st = stroke(slot, Config.Colors.Accent, 3)
+	local fill = new(&quot;Frame&quot;, { Name = &quot;Cooldown&quot;, Size = UDim2.fromScale(1, 0), Position = UDim2.fromScale(0, 1), AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.7, BorderSizePixel = 0 }, slot)
+	corner(fill, 14)
+	label({ Name = &quot;Key&quot;, Size = UDim2.fromOffset(24, 20), Position = UDim2.new(0, 6, 0, 4), Text = key, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(210, 210, 220) }, slot)
+	label({ Name = &quot;Title&quot;, Size = UDim2.new(1, -8, 0, 40), Position = UDim2.new(0, 4, 0, 26), Text = &quot;&quot;, TextWrapped = true, Font = FONT_BOLD }, slot)
+	label({ Name = &quot;Timer&quot;, Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), Text = &quot;&quot;, Font = FONT_BOLD, TextColor3 = Config.Colors.Gold }, slot)
+	return slot, st
+end
+
+local function build()
+	local gui = new(&quot;ScreenGui&quot;, { Name = &quot;OnyxHUD&quot;, ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
+	ui.gui = gui
+
+	-- Stats (haut gauche)
+	local stats = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(260, 108), Position = UDim2.new(0, 14, 0, 14), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.2 }, gui)
+	corner(stats, 14)
+	stroke(stats, Config.Colors.Gold, 2, 0.3)
+	ui.levelText = label({ Size = UDim2.new(1, -16, 0, 26), Position = UDim2.new(0, 8, 0, 6), Text = &quot;Niveau 1&quot;, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, stats)
+	local xpBg = new(&quot;Frame&quot;, { Size = UDim2.new(1, -16, 0, 10), Position = UDim2.new(0, 8, 0, 36), BackgroundColor3 = Color3.fromRGB(40, 40, 55), BorderSizePixel = 0 }, stats)
+	corner(xpBg, 5)
+	ui.xpFill = new(&quot;Frame&quot;, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Gold, BorderSizePixel = 0 }, xpBg)
+	corner(ui.xpFill, 5)
+	ui.coinsText = label({ Size = UDim2.new(1, -16, 0, 24), Position = UDim2.new(0, 8, 0, 50), Text = &quot;0 pieces&quot;, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left }, stats)
+	ui.recordText = label({ Size = UDim2.new(1, -16, 0, 24), Position = UDim2.new(0, 8, 0, 76), Text = &quot;&quot;, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 220) }, stats)
+
+	-- Boutons menus (haut droite)
+	local right = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(170, 110), Position = UDim2.new(1, -14, 0, 14), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, gui)
+	new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }, right)
+	ui.charButton = button({ Size = UDim2.fromOffset(170, 44), Text = TOUCH and &quot;PERSONNAGE&quot; or &quot;PERSONNAGE (C)&quot;, LayoutOrder = 1 }, right)
+	ui.cosmButton = button({ Size = UDim2.fromOffset(170, 44), Text = TOUCH and &quot;COSMETIQUES&quot; or &quot;COSMETIQUES (K)&quot;, BackgroundColor3 = Config.Colors.Ult, LayoutOrder = 2 }, right)
+
+	-- Vie + ultimate (bas centre)
+	local bars = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(460, 54), Position = UDim2.new(0.5, 0, 1, -136), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
+	local hpBg = new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(30, 30, 40), BorderSizePixel = 0 }, bars)
+	corner(hpBg, 8)
+	stroke(hpBg, Color3.new(0, 0, 0), 2, 0.4)
+	ui.hpFill = new(&quot;Frame&quot;, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Health, BorderSizePixel = 0 }, hpBg)
+	corner(ui.hpFill, 8)
+	ui.hpText = label({ Size = UDim2.fromScale(1, 1), Text = &quot;100 / 100&quot;, Font = FONT_BOLD }, hpBg)
+	ui.hpText.ZIndex = 2
+	local ultBg = new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 0, 32), BackgroundColor3 = Color3.fromRGB(30, 30, 40), BorderSizePixel = 0 }, bars)
+	corner(ultBg, 8)
+	stroke(ultBg, Color3.new(0, 0, 0), 2, 0.4)
+	ui.ultFill = new(&quot;Frame&quot;, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Ult, BorderSizePixel = 0 }, ultBg)
+	corner(ui.ultFill, 8)
+	ui.ultText = label({ Size = UDim2.fromScale(1, 1), Text = &quot;ULTIMATE 0 %&quot;, Font = FONT_BOLD }, ultBg)
+	ui.ultText.ZIndex = 2
+
+	-- Competences (bas)
+	local skills = new(&quot;Frame&quot;, { Name = &quot;Skills&quot;, Size = UDim2.fromOffset(640, 100), Position = UDim2.new(0.5, 0, 1, -22), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
+	new(&quot;UIListLayout&quot;, { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, skills)
+	ui.slots = {}
+	ui.slotStrokes = {}
+	for i = 1, 4 do
+		local slot, st = skillSlot(skills, i, tostring(i))
+		ui.slots[i] = slot
+		ui.slotStrokes[i] = st
+		slot.Activated:Connect(function()
+			Input.skill(i)
+		end)
+	end
+	ui.ultButton = button({ Size = UDim2.fromOffset(92, 92), Text = TOUCH and &quot;ULT&quot; or &quot;ULT\n(G)&quot;, BackgroundColor3 = Config.Colors.Ult, LayoutOrder = 5 }, skills)
+	stroke(ui.ultButton, Color3.new(1, 1, 1), 2, 0.5)
+	ui.ultButton.Activated:Connect(function()
+		Input.ultimate()
+	end)
+
+	-- Boutons tactiles M1 / bloquer / dash
+	if TOUCH then
+		local touch = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(220, 160), Position = UDim2.new(1, -20, 1, -140), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1 }, gui)
+		local m1 = button({ Size = UDim2.fromOffset(110, 110), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), Text = &quot;M1&quot;, BackgroundColor3 = Config.Colors.Accent2 }, touch)
+		m1.Activated:Connect(function()
+			Input.m1()
+		end)
+		local dash = button({ Size = UDim2.fromOffset(80, 80), Position = UDim2.new(0, 0, 1, 0), AnchorPoint = Vector2.new(0, 1), Text = &quot;DASH&quot; }, touch)
+		dash.Activated:Connect(function()
+			Input.dash()
+		end)
+		local block = button({ Size = UDim2.fromOffset(80, 60), Position = UDim2.new(0, 0, 0, 0), Text = &quot;BLOC&quot;, BackgroundColor3 = Config.Colors.Gold }, touch)
+		block.MouseButton1Down:Connect(function()
+			Input.setBlock(true)
+		end)
+		block.MouseButton1Up:Connect(function()
+			Input.setBlock(false)
+		end)
+		block.MouseLeave:Connect(function()
+			Input.setBlock(false)
+		end)
+	end
+
+	-- Combo + etat
+	ui.combo = label({ Size = UDim2.fromOffset(300, 50), Position = UDim2.new(0.5, 0, 0.62, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = &quot;&quot;, TextColor3 = Config.Colors.Accent2, Visible = false }, gui)
+	ui.status = label({ Size = UDim2.fromOffset(400, 34), Position = UDim2.new(0.5, 0, 0.7, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = &quot;&quot;, Font = FONT_BOLD, TextColor3 = Config.Colors.Gold }, gui)
+	ui.dashHint = label({ Size = UDim2.fromOffset(200, 22), Position = UDim2.new(0.5, 0, 1, -200), AnchorPoint = Vector2.new(0.5, 1), Text = &quot;&quot;, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 210) }, gui)
+
+	-- Notifications
+	ui.toasts = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(560, 220), Position = UDim2.new(0.5, 0, 0, 20), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, gui)
+	new(&quot;UIListLayout&quot;, { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, ui.toasts)
+
+	-- Panneau personnages
+	ui.characters = panel(&quot;Characters&quot;, UDim2.fromOffset(640, 420), &quot;CHOISIS TON PERSONNAGE&quot;, Config.Colors.Accent, gui)
+	ui.charGrid = new(&quot;Frame&quot;, { Size = UDim2.new(1, -24, 1, -70), Position = UDim2.new(0, 12, 0, 58), BackgroundTransparency = 1 }, ui.characters)
+	new(&quot;UIGridLayout&quot;, { CellSize = UDim2.fromOffset(296, 165), CellPadding = UDim2.fromOffset(12, 12), SortOrder = Enum.SortOrder.LayoutOrder }, ui.charGrid)
+
+	-- Panneau cosmetiques
+	ui.cosmetics = panel(&quot;Cosmetics&quot;, UDim2.fromOffset(560, 520), &quot;COSMETIQUES&quot;, Config.Colors.Ult, gui)
+	ui.cosmList = scrollList(ui.cosmetics, 58)
+end
+
+-- Notifications ----------------------------------------------------------------
+
+local toastCount = 0
+function HUD.toast(text, kind)
+	toastCount += 1
+	local colors = { danger = Config.Colors.Danger, gold = Config.Colors.Gold, good = Config.Colors.Accent, kill = Config.Colors.Accent2, ult = Config.Colors.Ult }
+	local color = colors[kind] or Color3.new(1, 1, 1)
+	local frame = new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.3, LayoutOrder = toastCount }, ui.toasts)
+	corner(frame, 8)
+	stroke(frame, color, 2, 0.4)
+	local l = label({ Size = UDim2.new(1, -16, 1, -8), Position = UDim2.new(0, 8, 0, 4), Text = text, TextColor3 = color, Font = FONT_BOLD }, frame)
+	task.delay(3.5, function()
+		TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(l, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		task.wait(0.45)
+		frame:Destroy()
+	end)
+end
+
+-- Personnages -----------------------------------------------------------------------
+
+local function rebuildCharacters()
+	for _, child in ipairs(ui.charGrid:GetChildren()) do
+		if child:IsA(&quot;Frame&quot;) then
+			child:Destroy()
+		end
+	end
+	for i, def in ipairs(Config.Characters) do
+		local selected = State.stats.character == def.id
+		local card = new(&quot;Frame&quot;, { BackgroundColor3 = Color3.fromRGB(30, 34, 46), LayoutOrder = i }, ui.charGrid)
+		corner(card, 12)
+		stroke(card, selected and Config.Colors.Gold or def.color, selected and 4 or 2)
+		label({ Size = UDim2.new(1, -16, 0, 30), Position = UDim2.new(0, 8, 0, 6), Text = def.name .. (selected and &quot;  (actuel)&quot; or &quot;&quot;), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = def.color }, card)
+		label({ Size = UDim2.new(1, -16, 0, 20), Position = UDim2.new(0, 8, 0, 38), Text = def.description, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 220) }, card)
+		label({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 60), Text = string.format(&quot;Vie %d  |  Vitesse %d  |  M1 %d dmg&quot;, def.health, def.walkSpeed, def.m1Damage), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(180, 180, 190) }, card)
+		local names = {}
+		for _, s in ipairs(def.skills) do
+			table.insert(names, s.name)
+		end
+		label({ Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 80), Text = table.concat(names, &quot;  •  &quot;), TextWrapped = true, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 230) }, card)
+		local b = button({ Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 1, -42), Text = selected and &quot;SELECTIONNE&quot; or &quot;CHOISIR&quot;, BackgroundColor3 = selected and Color3.fromRGB(60, 60, 70) or def.color }, card)
+		b.Activated:Connect(function()
+			Remotes.Menu:FireServer(&quot;character&quot;, def.id)
+			ui.characters.Visible = false
+		end)
+	end
+end
+
+-- Cosmetiques -----------------------------------------------------------------------
+
+local function rebuildCosmetics()
+	for _, child in ipairs(ui.cosmList:GetChildren()) do
+		if child:IsA(&quot;Frame&quot;) or child:IsA(&quot;TextLabel&quot;) then
+			child:Destroy()
+		end
+	end
+	local order = 0
+	local function section(title, kind, list, equipped, bag, color)
+		order += 1
+		label({ Size = UDim2.new(1, 0, 0, 28), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, LayoutOrder = order }, ui.cosmList)
+		for _, item in ipairs(list) do
+			order += 1
+			local owned = bag[item.id] == true
+			local isEquipped = equipped == item.id
+			local row = new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Color3.fromRGB(30, 34, 46), LayoutOrder = order }, ui.cosmList)
+			corner(row, 8)
+			if item.color then
+				local dot = new(&quot;Frame&quot;, { Size = UDim2.fromOffset(22, 22), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = item.color }, row)
+				corner(dot, 11)
+			end
+			label({ Size = UDim2.new(0.5, 0, 1, -12), Position = UDim2.new(0, 42, 0, 6), Text = item.name, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left }, row)
+			local info
+			if kind == &quot;title&quot; then
+				local req = item.requirement
+				info = (req.kind == &quot;level&quot; and (&quot;Niveau &quot; .. req.value)) or (req.kind == &quot;kills&quot; and (req.value .. &quot; kills&quot;)) or (req.value .. &quot; victoires&quot;)
+			else
+				info = owned and &quot;Possede&quot; or (item.price .. &quot; pieces&quot;)
+			end
+			label({ Size = UDim2.new(0.25, 0, 1, -12), Position = UDim2.new(0.5, 0, 0, 6), Text = info, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(190, 190, 200) }, row)
+			local b = button({ Size = UDim2.fromOffset(100, 32), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), Text = isEquipped and &quot;EQUIPE&quot; or (owned and &quot;EQUIPER&quot; or (kind == &quot;title&quot; and &quot;VERROUILLE&quot; or &quot;ACHETER&quot;)), BackgroundColor3 = isEquipped and Color3.fromRGB(60, 60, 70) or (owned and Config.Colors.Accent or (kind == &quot;title&quot; and Color3.fromRGB(80, 80, 90) or Config.Colors.Gold)) }, row)
+			b.Activated:Connect(function()
+				if isEquipped then
+					return
+				end
+				if owned then
+					Remotes.Menu:FireServer(&quot;equip&quot;, kind, item.id)
+				elseif kind ~= &quot;title&quot; then
+					Remotes.Menu:FireServer(&quot;buy&quot;, kind, item.id)
+				end
+			end)
+		end
+	end
+	local s = State.stats
+	section(&quot;AURAS&quot;, &quot;aura&quot;, Config.Auras, s.aura, s.unlocked.auras or {}, Config.Colors.Accent)
+	section(&quot;EFFETS DE DASH&quot;, &quot;trail&quot;, Config.Trails, s.trail, s.unlocked.trails or {}, Config.Colors.Accent2)
+	section(&quot;TITRES&quot;, &quot;title&quot;, Config.Titles, s.title, s.unlocked.titles or {}, Config.Colors.Gold)
+end
+
+-- Mises a jour -----------------------------------------------------------------------
+
+local function onStats(stats)
+	State.stats = stats
+	ui.levelText.Text = &quot;Niveau &quot; .. stats.level .. &quot;  -  &quot; .. stats.character
+	ui.xpFill.Size = UDim2.fromScale(math.clamp(stats.xp / math.max(1, stats.xpNext), 0, 1), 1)
+	ui.coinsText.Text = stats.coins .. &quot; pieces&quot;
+	ui.recordText.Text = string.format(&quot;%d kills  |  %d victoires  |  %d morts&quot;, stats.kills, stats.wins, stats.deaths)
+	if ui.characters.Visible then
+		rebuildCharacters()
+	end
+	if ui.cosmetics.Visible then
+		rebuildCosmetics()
+	end
+	State.fire(&quot;stats&quot;, stats)
+end
+
+local function refreshSkillNames()
+	local character = player.Character
+	local id = (character and character:GetAttribute(&quot;CharacterId&quot;)) or State.stats.character
+	local def = Config.CharacterById[id] or Config.Characters[1]
+	local ult = character and character:GetAttribute(&quot;UltActive&quot;) == true
+	local list = ult and def.ultSkills or def.skills
+	for i = 1, 4 do
+		local skill = list[i]
+		ui.slots[i].Title.Text = skill and skill.name or &quot;&quot;
+		ui.slotStrokes[i].Color = ult and Config.Colors.Ult or def.color
+	end
+end
+
+local function toggle(name)
+	if name == &quot;close&quot; then
+		ui.characters.Visible = false
+		ui.cosmetics.Visible = false
+	elseif name == &quot;characters&quot; then
+		ui.characters.Visible = not ui.characters.Visible
+		ui.cosmetics.Visible = false
+		if ui.characters.Visible then
+			rebuildCharacters()
+		end
+	elseif name == &quot;cosmetics&quot; then
+		ui.cosmetics.Visible = not ui.cosmetics.Visible
+		ui.characters.Visible = false
+		if ui.cosmetics.Visible then
+			rebuildCosmetics()
+			Remotes.Menu:FireServer(&quot;stats&quot;)
+		end
+	end
+end
+
+local function update()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	if humanoid then
+		local ratio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
+		ui.hpFill.Size = UDim2.fromScale(ratio, 1)
+		ui.hpFill.BackgroundColor3 = Config.Colors.Health:Lerp(Config.Colors.Danger, 1 - ratio)
+		ui.hpText.Text = math.floor(humanoid.Health) .. &quot; / &quot; .. math.floor(humanoid.MaxHealth)
+		local ult = character:GetAttribute(&quot;Ult&quot;) or 0
+		local active = character:GetAttribute(&quot;UltActive&quot;) == true
+		ui.ultFill.Size = UDim2.fromScale(ult / 100, 1)
+		if active then
+			ui.ultText.Text = &quot;ULTIMATE MODE&quot;
+			ui.ultFill.BackgroundColor3 = Config.Colors.Gold
+		elseif ult &gt;= 100 then
+			ui.ultText.Text = TOUCH and &quot;ULTIMATE PRET !&quot; or &quot;ULTIMATE PRET !  (G)&quot;
+			ui.ultFill.BackgroundColor3 = Config.Colors.Ult:Lerp(Color3.new(1, 1, 1), 0.5 + 0.5 * math.sin(os.clock() * 8))
+		else
+			ui.ultText.Text = &quot;ULTIMATE &quot; .. math.floor(ult) .. &quot; %&quot;
+			ui.ultFill.BackgroundColor3 = Config.Colors.Ult
+		end
+		ui.ultButton.BackgroundColor3 = (ult &gt;= 100 and not active) and Config.Colors.Gold or Config.Colors.Ult
+
+		local stunned = (character:GetAttribute(&quot;StunUntil&quot;) or 0) &gt; os.clock()
+		if stunned then
+			ui.status.Text = &quot;ETOURDI&quot;
+			ui.status.TextColor3 = Config.Colors.Danger
+		elseif State.blocking then
+			ui.status.Text = &quot;BLOCAGE&quot;
+			ui.status.TextColor3 = Config.Colors.Gold
+		else
+			ui.status.Text = &quot;&quot;
+		end
+	end
+	for i = 1, 4 do
+		local cd = State.cooldowns[i]
+		local slot = ui.slots[i]
+		if cd and cd.untilTime &gt; os.clock() then
+			local left = cd.untilTime - os.clock()
+			slot.Cooldown.Size = UDim2.fromScale(1, math.clamp(left / cd.duration, 0, 1))
+			slot.Timer.Text = string.format(&quot;%.1f&quot;, left)
+		else
+			slot.Cooldown.Size = UDim2.fromScale(1, 0)
+			slot.Timer.Text = &quot;&quot;
+		end
+	end
+	local dashLeft = State.dashReadyAt - os.clock()
+	ui.dashHint.Text = dashLeft &gt; 0 and string.format(&quot;Dash %.1fs&quot;, dashLeft) or (TOUCH and &quot;Dash pret&quot; or &quot;Dash pret (Q)&quot;)
+	if os.clock() - State.comboAt &gt; C.ComboReset then
+		ui.combo.Visible = false
+	end
+end
+
+function HUD.showCombo(count)
+	State.combo = count
+	State.comboAt = os.clock()
+	ui.combo.Text = count .. &quot; HIT&quot; .. (count &gt; 1 and &quot;S&quot; or &quot;&quot;)
+	ui.combo.Visible = true
+	ui.combo.Size = UDim2.fromOffset(200, 30)
+	TweenService:Create(ui.combo, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 50) }):Play()
+end
+
+function HUD.Init(inputModule)
+	Input = inputModule
+	build()
+	Remotes.Stats.OnClientEvent:Connect(onStats)
+	Remotes.Notify.OnClientEvent:Connect(HUD.toast)
+	ui.charButton.Activated:Connect(function()
+		toggle(&quot;characters&quot;)
+	end)
+	ui.cosmButton.Activated:Connect(function()
+		toggle(&quot;cosmetics&quot;)
+	end)
+	State.Changed.Event:Connect(function(what, data)
+		if what == &quot;toggle&quot; then
+			toggle(data)
+		elseif what == &quot;notify&quot; then
+			HUD.toast(data.text, data.kind)
+		elseif what == &quot;respawn&quot; then
+			task.delay(0.5, refreshSkillNames)
+		end
+	end)
+	local function hookCharacter(character)
+		task.wait(0.3)
+		refreshSkillNames()
+		character:GetAttributeChangedSignal(&quot;UltActive&quot;):Connect(refreshSkillNames)
+		character:GetAttributeChangedSignal(&quot;CharacterId&quot;):Connect(refreshSkillNames)
+	end
+	if player.Character then
+		task.spawn(hookCharacter, player.Character)
+	end
+	player.CharacterAdded:Connect(hookCharacter)
+	RunService.RenderStepped:Connect(update)
+end
+
+return HUD
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">Input</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Controles : M1, blocage, dash directionnel, competences, ultimate, menus, boutons tactiles.
+
+local Players = game:GetService(&quot;Players&quot;)
+local UserInputService = game:GetService(&quot;UserInputService&quot;)
+local ContextActionService = game:GetService(&quot;ContextActionService&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local Debris = game:GetService(&quot;Debris&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local State = require(script.Parent.State)
+local Anim = require(script.Parent.Anim)
+
+local Input = {}
+local C = Config.Combat
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local function getChar()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass(&quot;Humanoid&quot;)
+	local hrp = character and character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if humanoid and hrp and humanoid.Health &gt; 0 then
+		return character, humanoid, hrp
+	end
+	return nil
+end
+
+local function isStunned(character)
+	return (character:GetAttribute(&quot;StunUntil&quot;) or 0) &gt; os.clock()
+end
+
+-- Oriente le personnage vers la camera (comme un shift-lock au moment de l'attaque)
+local function faceCamera(hrp)
+	local look = camera.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude &gt; 0.01 then
+		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+	end
+end
+
+local lastM1 = 0
+function Input.m1()
+	local character, _, hrp = getChar()
+	if not character or isStunned(character) or State.blocking then
+		return
+	end
+	if os.clock() - lastM1 &lt; C.M1Cooldown then
+		return
+	end
+	lastM1 = os.clock()
+	faceCamera(hrp)
+	Remotes.Combat:FireServer(&quot;m1&quot;)
+end
+
+function Input.setBlock(enabled)
+	local character = getChar()
+	if not character then
+		return
+	end
+	if enabled and isStunned(character) then
+		return
+	end
+	if State.blocking == enabled then
+		return
+	end
+	State.blocking = enabled
+	Remotes.Combat:FireServer(&quot;block&quot;, enabled)
+	State.fire(&quot;block&quot;, enabled)
+end
+
+local function dashDirection(humanoid, hrp)
+	local move = humanoid.MoveDirection
+	local look = camera.CFrame.LookVector
+	local flatLook = Vector3.new(look.X, 0, look.Z)
+	if flatLook.Magnitude &lt; 0.01 then
+		flatLook = hrp.CFrame.LookVector
+	end
+	flatLook = flatLook.Unit
+	if move.Magnitude &lt; 0.1 then
+		return flatLook, &quot;avant&quot;
+	end
+	local right = Vector3.new(-flatLook.Z, 0, flatLook.X)
+	local f = move:Dot(flatLook)
+	local r = move:Dot(right)
+	local name
+	if math.abs(f) &gt;= math.abs(r) then
+		name = f &gt; 0 and &quot;avant&quot; or &quot;arriere&quot;
+	else
+		name = r &gt; 0 and &quot;droite&quot; or &quot;gauche&quot;
+	end
+	return move.Unit, name
+end
+
+function Input.dash()
+	local character, humanoid, hrp = getChar()
+	if not character or isStunned(character) then
+		return
+	end
+	if os.clock() &lt; State.dashReadyAt then
+		return
+	end
+	State.dashReadyAt = os.clock() + C.DashCooldown
+	local direction, name = dashDirection(humanoid, hrp)
+	if State.blocking then
+		Input.setBlock(false)
+	end
+	local attachment = hrp:FindFirstChild(&quot;RootAttachment&quot;) or Instance.new(&quot;Attachment&quot;, hrp)
+	local lv = Instance.new(&quot;LinearVelocity&quot;)
+	lv.Attachment0 = attachment
+	lv.RelativeTo = Enum.ActuatorRelativeTo.World
+	lv.MaxForce = 1e6
+	lv.VectorVelocity = direction * C.DashSpeed + Vector3.new(0, 4, 0)
+	lv.Parent = hrp
+	Debris:AddItem(lv, C.DashDuration)
+	Anim.play(character, &quot;dash&quot;)
+	Remotes.Combat:FireServer(&quot;dash&quot;, name)
+	State.fire(&quot;dash&quot;, name)
+end
+
+function Input.skill(slot)
+	local character, _, hrp = getChar()
+	if not character or isStunned(character) or State.blocking then
+		return
+	end
+	local cd = State.cooldowns[slot]
+	if cd and cd.untilTime &gt; os.clock() then
+		return
+	end
+	faceCamera(hrp)
+	Remotes.Combat:FireServer(&quot;skill&quot;, slot)
+end
+
+function Input.ultimate()
+	local character = getChar()
+	if not character then
+		return
+	end
+	if (character:GetAttribute(&quot;Ult&quot;) or 0) &lt; 100 or character:GetAttribute(&quot;UltActive&quot;) then
+		State.fire(&quot;notify&quot;, { text = &quot;Ultimate pas encore charge.&quot;, kind = &quot;info&quot; })
+		return
+	end
+	Remotes.Combat:FireServer(&quot;ult&quot;)
+end
+
+-- Reponse du serveur : cooldown + mouvement des rush
+local function onSkillAck(data)
+	State.cooldowns[data.slot] = { untilTime = os.clock() + data.cooldown, duration = data.cooldown }
+	State.fire(&quot;cooldown&quot;, data.slot)
+	if data.type == &quot;rush&quot; then
+		task.delay(data.windup, function()
+			local character, _, hrp = getChar()
+			if not character or isStunned(character) then
+				return
+			end
+			faceCamera(hrp)
+			local attachment = hrp:FindFirstChild(&quot;RootAttachment&quot;) or Instance.new(&quot;Attachment&quot;, hrp)
+			local lv = Instance.new(&quot;LinearVelocity&quot;)
+			lv.Attachment0 = attachment
+			lv.RelativeTo = Enum.ActuatorRelativeTo.World
+			lv.MaxForce = 1e6
+			lv.VectorVelocity = hrp.CFrame.LookVector * (data.distance / data.duration)
+			lv.Parent = hrp
+			Debris:AddItem(lv, data.duration)
+		end)
+	end
+end
+
+local function bind(name, handler, touch, ...)
+	ContextActionService:BindAction(name, function(_, inputState)
+		if inputState == Enum.UserInputState.Begin then
+			handler()
+		end
+		return Enum.ContextActionResult.Pass
+	end, touch, ...)
+end
+
+function Input.Init()
+	Remotes.SkillAck.OnClientEvent:Connect(onSkillAck)
+
+	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+	bind(&quot;BG_M1&quot;, Input.m1, false, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
+	bind(&quot;BG_Dash&quot;, Input.dash, false, Enum.KeyCode.Q, Enum.KeyCode.ButtonL1)
+	bind(&quot;BG_Ult&quot;, Input.ultimate, false, Enum.KeyCode.G, Enum.KeyCode.ButtonY)
+	for slot = 1, 4 do
+		local keys = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
+		local pads = { Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonA, Enum.KeyCode.ButtonR1 }
+		bind(&quot;BG_Skill&quot; .. slot, function()
+			Input.skill(slot)
+		end, false, keys[slot], pads[slot])
+	end
+
+	ContextActionService:BindAction(&quot;BG_Block&quot;, function(_, inputState)
+		if inputState == Enum.UserInputState.Begin then
+			Input.setBlock(true)
+		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+			Input.setBlock(false)
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonL2)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.C then
+			State.fire(&quot;toggle&quot;, &quot;characters&quot;)
+		elseif input.KeyCode == Enum.KeyCode.K then
+			State.fire(&quot;toggle&quot;, &quot;cosmetics&quot;)
+		elseif input.KeyCode == Enum.KeyCode.Escape then
+			State.fire(&quot;toggle&quot;, &quot;close&quot;)
+		end
+	end)
+
+	-- Le blocage s'arrete si on est stun (le serveur l'a deja annule)
+	RunService.Heartbeat:Connect(function()
+		local character = getChar()
+		if character and State.blocking and not character:GetAttribute(&quot;Blocking&quot;) then
+			State.blocking = false
+			State.fire(&quot;block&quot;, false)
+		end
+	end)
+
+	player.CharacterAdded:Connect(function()
+		State.blocking = false
+		State.cooldowns = {}
+		State.fire(&quot;respawn&quot;)
+	end)
+
+	Input.touch = touch
+end
+
+return Input
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">State</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Etat partage cote client.
+
+local State = {}
+
+State.stats = { xp = 0, level = 1, xpNext = 100, coins = 0, kills = 0, deaths = 0, wins = 0, character = &quot;Fighter&quot;, aura = &quot;none&quot;, trail = &quot;none&quot;, title = &quot;rookie&quot;, unlocked = { auras = {}, trails = {}, titles = {} } }
+State.cooldowns = {} -- [slot] = { untilTime, duration }
+State.dashReadyAt = 0
+State.blocking = false
+State.combo = 0
+State.comboAt = 0
+
+State.Changed = Instance.new(&quot;BindableEvent&quot;)
+
+function State.fire(what, data)
+	State.Changed:Fire(what, data)
+end
+
+return State
+</ProtectedString></Properties></Item></Item></Item></Item></Item>
+</roblox>

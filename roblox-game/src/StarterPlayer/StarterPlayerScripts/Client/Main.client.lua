@@ -1,10 +1,10 @@
--- Point d'entree client d'ONYX FARM.
+-- Point d'entree client d'ONYX BATTLEGROUNDS.
 
 local Modules = script.Parent.Modules
 local Input = require(Modules.Input)
 local HUD = require(Modules.HUD)
 local Effects = require(Modules.Effects)
 
-HUD.Init()
 Input.Init()
-Effects.Init()
+HUD.Init(Input)
+Effects.Init(HUD)

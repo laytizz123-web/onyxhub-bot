@@ -1,4 +1,4 @@
--- Point d'entree serveur d'ONYX FARM.
+-- Point d'entree serveur d'ONYX BATTLEGROUNDS.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7,14 +7,14 @@ require(ReplicatedStorage.Shared.Remotes) -- cree les RemoteEvents avant tout
 local Modules = script.Parent.Modules
 local MapBuilder = require(Modules.MapBuilder)
 local DataService = require(Modules.DataService)
-local PlotService = require(Modules.PlotService)
-local WeatherService = require(Modules.WeatherService)
-local ShopService = require(Modules.ShopService)
+local ProgressionService = require(Modules.ProgressionService)
+local CharacterService = require(Modules.CharacterService)
+local CombatService = require(Modules.CombatService)
 
 MapBuilder.Build()
 DataService.Init()
-PlotService.Init(WeatherService)
-WeatherService.Init(PlotService)
-ShopService.Init(PlotService)
+ProgressionService.Init(CharacterService)
+CharacterService.Init()
+CombatService.Init()
 
-print("[OnyxFarm] Serveur pret.")
+print("[OnyxBG] Serveur pret.")

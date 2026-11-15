@@ -1,26 +1,26 @@
--- Interface : pieces, meteo, barre de graines, sac, boutique, agrandissement, notifications.
+-- Interface : vie, ultimate, competences, combo, stats, selection de personnage, cosmetiques, notifications.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Economy = require(ReplicatedStorage.Shared.Economy)
 local State = require(script.Parent.State)
 
 local HUD = {}
+local C = Config.Combat
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local FONT = Enum.Font.FredokaOne
+local FONT = Enum.Font.GothamBlack
 local FONT_BOLD = Enum.Font.GothamBold
 local TOUCH = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local ui = {}
+local Input
 
 local function new(class, props, parent)
 	local inst = Instance.new(class)
@@ -30,39 +30,21 @@ local function new(class, props, parent)
 	inst.Parent = parent
 	return inst
 end
-
-local function corner(parent, radius)
-	return new("UICorner", { CornerRadius = UDim.new(0, radius or 10) }, parent)
+local function corner(p, r)
+	return new("UICorner", { CornerRadius = UDim.new(0, r or 10) }, p)
 end
-
-local function stroke(parent, color, thickness, transparency)
-	return new("UIStroke", { Color = color, Thickness = thickness or 2, Transparency = transparency or 0 }, parent)
+local function stroke(p, color, thickness, transparency)
+	return new("UIStroke", { Color = color, Thickness = thickness or 2, Transparency = transparency or 0 }, p)
 end
-
 local function label(props, parent)
-	local base = {
-		BackgroundTransparency = 1,
-		Font = FONT,
-		TextColor3 = Color3.new(1, 1, 1),
-		TextScaled = true,
-		TextStrokeTransparency = 0.7,
-		TextStrokeColor3 = Color3.new(0, 0, 0),
-	}
+	local base = { BackgroundTransparency = 1, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, TextStrokeTransparency = 0.6, TextStrokeColor3 = Color3.new(0, 0, 0) }
 	for k, v in pairs(props) do
 		base[k] = v
 	end
 	return new("TextLabel", base, parent)
 end
-
 local function button(props, parent)
-	local base = {
-		BackgroundColor3 = Config.Colors.Accent,
-		Font = FONT,
-		TextColor3 = Color3.new(1, 1, 1),
-		TextScaled = true,
-		AutoButtonColor = true,
-		Text = "",
-	}
+	local base = { BackgroundColor3 = Config.Colors.Accent, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, AutoButtonColor = true, Text = "" }
 	for k, v in pairs(props) do
 		base[k] = v
 	end
@@ -70,121 +52,145 @@ local function button(props, parent)
 	corner(b, 10)
 	return b
 end
-
-local function panel(name, size, parent)
-	local frame = new("Frame", {
-		Name = name,
-		Size = size,
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Config.Colors.Dark,
-		BackgroundTransparency = 0.08,
-		Visible = false,
-	}, parent)
+local function panel(name, size, title, color, parent)
+	local frame = new("Frame", { Name = name, Size = size, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.06, Visible = false }, parent)
 	corner(frame, 18)
-	stroke(frame, Config.Colors.Accent, 3, 0.2)
-	local close = button({
-		Size = UDim2.fromOffset(36, 36),
-		Position = UDim2.new(1, -8, 0, 8),
-		AnchorPoint = Vector2.new(1, 0),
-		BackgroundColor3 = Config.Colors.Danger,
-		Text = "X",
-	}, frame)
+	stroke(frame, color, 3, 0.2)
+	label({ Size = UDim2.new(1, -70, 0, 36), Position = UDim2.new(0, 16, 0, 10), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color }, frame)
+	local close = button({ Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -8, 0, 8), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Config.Colors.Danger, Text = "X" }, frame)
 	close.Activated:Connect(function()
 		frame.Visible = false
 	end)
 	return frame
 end
-
-local function scrollList(parent, top)
-	local scroll = new("ScrollingFrame", {
-		Size = UDim2.new(1, -24, 1, -(top + 12)),
-		Position = UDim2.new(0, 12, 0, top),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-	}, parent)
+local function scrollList(parent, top, bottom)
+	local scroll = new("ScrollingFrame", { Size = UDim2.new(1, -24, 1, -(top + (bottom or 12))), Position = UDim2.new(0, 12, 0, top), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 6, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y }, parent)
 	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
 	return scroll
 end
 
--- Construction ---------------------------------------------------------------
+local function skillSlot(parent, index, key)
+	local slot = new("TextButton", { Name = "Skill" .. index, Size = UDim2.fromOffset(92, 92), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.15, Text = "", AutoButtonColor = false, LayoutOrder = index }, parent)
+	corner(slot, 14)
+	local st = stroke(slot, Config.Colors.Accent, 3)
+	local fill = new("Frame", { Name = "Cooldown", Size = UDim2.fromScale(1, 0), Position = UDim2.fromScale(0, 1), AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.7, BorderSizePixel = 0 }, slot)
+	corner(fill, 14)
+	label({ Name = "Key", Size = UDim2.fromOffset(24, 20), Position = UDim2.new(0, 6, 0, 4), Text = key, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(210, 210, 220) }, slot)
+	label({ Name = "Title", Size = UDim2.new(1, -8, 0, 40), Position = UDim2.new(0, 4, 0, 26), Text = "", TextWrapped = true, Font = FONT_BOLD }, slot)
+	label({ Name = "Timer", Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), Text = "", Font = FONT_BOLD, TextColor3 = Config.Colors.Gold }, slot)
+	return slot, st
+end
 
 local function build()
 	local gui = new("ScreenGui", { Name = "OnyxHUD", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
 	ui.gui = gui
 
-	-- Pieces (haut gauche)
-	local coins = new("Frame", { Size = UDim2.fromOffset(230, 52), Position = UDim2.new(0, 14, 0, 14), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.2 }, gui)
-	corner(coins, 14)
-	stroke(coins, Config.Colors.Gold, 2, 0.2)
-	ui.coins = label({ Size = UDim2.new(1, -16, 1, -10), Position = UDim2.new(0, 8, 0, 5), Text = "0 pieces", TextColor3 = Config.Colors.Gold, TextXAlignment = Enum.TextXAlignment.Left }, coins)
-	ui.harvests = label({ Size = UDim2.fromOffset(230, 24), Position = UDim2.new(0, 14, 0, 70), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(230, 230, 230) }, gui)
+	-- Stats (haut gauche)
+	local stats = new("Frame", { Size = UDim2.fromOffset(260, 108), Position = UDim2.new(0, 14, 0, 14), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.2 }, gui)
+	corner(stats, 14)
+	stroke(stats, Config.Colors.Gold, 2, 0.3)
+	ui.levelText = label({ Size = UDim2.new(1, -16, 0, 26), Position = UDim2.new(0, 8, 0, 6), Text = "Niveau 1", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, stats)
+	local xpBg = new("Frame", { Size = UDim2.new(1, -16, 0, 10), Position = UDim2.new(0, 8, 0, 36), BackgroundColor3 = Color3.fromRGB(40, 40, 55), BorderSizePixel = 0 }, stats)
+	corner(xpBg, 5)
+	ui.xpFill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Gold, BorderSizePixel = 0 }, xpBg)
+	corner(ui.xpFill, 5)
+	ui.coinsText = label({ Size = UDim2.new(1, -16, 0, 24), Position = UDim2.new(0, 8, 0, 50), Text = "0 pieces", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left }, stats)
+	ui.recordText = label({ Size = UDim2.new(1, -16, 0, 24), Position = UDim2.new(0, 8, 0, 76), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 220) }, stats)
 
-	-- Meteo (haut centre)
-	local weather = new("Frame", { Size = UDim2.fromOffset(320, 50), Position = UDim2.new(0.5, 0, 0, 14), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.2 }, gui)
-	corner(weather, 14)
-	ui.weatherStroke = stroke(weather, Config.Colors.Sky, 2, 0.2)
-	ui.weather = label({ Size = UDim2.new(1, -16, 1, -10), Position = UDim2.new(0, 8, 0, 5), Text = "Ciel clair", TextColor3 = Config.Colors.Sky }, weather)
-	ui.restock = label({ Size = UDim2.fromOffset(320, 22), Position = UDim2.new(0.5, 0, 0, 68), AnchorPoint = Vector2.new(0.5, 0), Text = "", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(230, 230, 230) }, gui)
-
-	-- Boutons droite
-	local right = new("Frame", { Size = UDim2.fromOffset(150, 200), Position = UDim2.new(1, -14, 0, 14), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, gui)
+	-- Boutons menus (haut droite)
+	local right = new("Frame", { Size = UDim2.fromOffset(170, 110), Position = UDim2.new(1, -14, 0, 14), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, gui)
 	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }, right)
-	ui.backpackButton = button({ Size = UDim2.fromOffset(150, 44), Text = TOUCH and "SAC" or "SAC (B)", BackgroundColor3 = Config.Colors.Accent2, LayoutOrder = 1 }, right)
-	ui.shopButton = button({ Size = UDim2.fromOffset(150, 44), Text = "BOUTIQUE", BackgroundColor3 = Config.Colors.Accent, LayoutOrder = 2 }, right)
-	ui.expandButton = button({ Size = UDim2.fromOffset(150, 44), Text = "AGRANDIR", BackgroundColor3 = Config.Colors.Gold, LayoutOrder = 3 }, right)
-	ui.sellButton = button({ Size = UDim2.fromOffset(150, 44), Text = "VENDRE", BackgroundColor3 = Config.Colors.Gold, LayoutOrder = 4, Visible = false }, right)
-	for _, b in ipairs({ ui.backpackButton, ui.shopButton, ui.expandButton, ui.sellButton }) do
-		stroke(b, Color3.new(0, 0, 0), 2, 0.6)
+	ui.charButton = button({ Size = UDim2.fromOffset(170, 44), Text = TOUCH and "PERSONNAGE" or "PERSONNAGE (C)", LayoutOrder = 1 }, right)
+	ui.cosmButton = button({ Size = UDim2.fromOffset(170, 44), Text = TOUCH and "COSMETIQUES" or "COSMETIQUES (K)", BackgroundColor3 = Config.Colors.Ult, LayoutOrder = 2 }, right)
+
+	-- Vie + ultimate (bas centre)
+	local bars = new("Frame", { Size = UDim2.fromOffset(460, 54), Position = UDim2.new(0.5, 0, 1, -136), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
+	local hpBg = new("Frame", { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(30, 30, 40), BorderSizePixel = 0 }, bars)
+	corner(hpBg, 8)
+	stroke(hpBg, Color3.new(0, 0, 0), 2, 0.4)
+	ui.hpFill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Health, BorderSizePixel = 0 }, hpBg)
+	corner(ui.hpFill, 8)
+	ui.hpText = label({ Size = UDim2.fromScale(1, 1), Text = "100 / 100", Font = FONT_BOLD }, hpBg)
+	ui.hpText.ZIndex = 2
+	local ultBg = new("Frame", { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 0, 32), BackgroundColor3 = Color3.fromRGB(30, 30, 40), BorderSizePixel = 0 }, bars)
+	corner(ultBg, 8)
+	stroke(ultBg, Color3.new(0, 0, 0), 2, 0.4)
+	ui.ultFill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Ult, BorderSizePixel = 0 }, ultBg)
+	corner(ui.ultFill, 8)
+	ui.ultText = label({ Size = UDim2.fromScale(1, 1), Text = "ULTIMATE 0 %", Font = FONT_BOLD }, ultBg)
+	ui.ultText.ZIndex = 2
+
+	-- Competences (bas)
+	local skills = new("Frame", { Name = "Skills", Size = UDim2.fromOffset(640, 100), Position = UDim2.new(0.5, 0, 1, -22), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, skills)
+	ui.slots = {}
+	ui.slotStrokes = {}
+	for i = 1, 4 do
+		local slot, st = skillSlot(skills, i, tostring(i))
+		ui.slots[i] = slot
+		ui.slotStrokes[i] = st
+		slot.Activated:Connect(function()
+			Input.skill(i)
+		end)
+	end
+	ui.ultButton = button({ Size = UDim2.fromOffset(92, 92), Text = TOUCH and "ULT" or "ULT\n(G)", BackgroundColor3 = Config.Colors.Ult, LayoutOrder = 5 }, skills)
+	stroke(ui.ultButton, Color3.new(1, 1, 1), 2, 0.5)
+	ui.ultButton.Activated:Connect(function()
+		Input.ultimate()
+	end)
+
+	-- Boutons tactiles M1 / bloquer / dash
+	if TOUCH then
+		local touch = new("Frame", { Size = UDim2.fromOffset(220, 160), Position = UDim2.new(1, -20, 1, -140), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1 }, gui)
+		local m1 = button({ Size = UDim2.fromOffset(110, 110), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), Text = "M1", BackgroundColor3 = Config.Colors.Accent2 }, touch)
+		m1.Activated:Connect(function()
+			Input.m1()
+		end)
+		local dash = button({ Size = UDim2.fromOffset(80, 80), Position = UDim2.new(0, 0, 1, 0), AnchorPoint = Vector2.new(0, 1), Text = "DASH" }, touch)
+		dash.Activated:Connect(function()
+			Input.dash()
+		end)
+		local block = button({ Size = UDim2.fromOffset(80, 60), Position = UDim2.new(0, 0, 0, 0), Text = "BLOC", BackgroundColor3 = Config.Colors.Gold }, touch)
+		block.MouseButton1Down:Connect(function()
+			Input.setBlock(true)
+		end)
+		block.MouseButton1Up:Connect(function()
+			Input.setBlock(false)
+		end)
+		block.MouseLeave:Connect(function()
+			Input.setBlock(false)
+		end)
 	end
 
-	-- Barre de graines (bas)
-	local hotbar = new("Frame", { Name = "Hotbar", Size = UDim2.fromOffset(700, 86), Position = UDim2.new(0.5, 0, 1, -16), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
-	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, hotbar)
-	ui.hotbar = hotbar
-	ui.hotbarHint = label({ Size = UDim2.fromOffset(700, 22), Position = UDim2.new(0.5, 0, 1, -106), AnchorPoint = Vector2.new(0.5, 1), Text = "", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(235, 235, 235) }, gui)
+	-- Combo + etat
+	ui.combo = label({ Size = UDim2.fromOffset(300, 50), Position = UDim2.new(0.5, 0, 0.62, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", TextColor3 = Config.Colors.Accent2, Visible = false }, gui)
+	ui.status = label({ Size = UDim2.fromOffset(400, 34), Position = UDim2.new(0.5, 0, 0.7, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", Font = FONT_BOLD, TextColor3 = Config.Colors.Gold }, gui)
+	ui.dashHint = label({ Size = UDim2.fromOffset(200, 22), Position = UDim2.new(0.5, 0, 1, -200), AnchorPoint = Vector2.new(0.5, 1), Text = "", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 210) }, gui)
 
 	-- Notifications
-	local toasts = new("Frame", { Name = "Toasts", Size = UDim2.fromOffset(520, 220), Position = UDim2.new(0.5, 0, 0, 100), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, gui)
-	new("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, toasts)
-	ui.toasts = toasts
+	ui.toasts = new("Frame", { Size = UDim2.fromOffset(560, 220), Position = UDim2.new(0.5, 0, 0, 20), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, gui)
+	new("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, ui.toasts)
 
-	-- Panneau SAC
-	ui.backpack = panel("Backpack", UDim2.fromOffset(460, 440), gui)
-	label({ Size = UDim2.new(1, -60, 0, 36), Position = UDim2.new(0, 16, 0, 10), Text = "MON SAC", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Accent2 }, ui.backpack)
-	ui.backpackTotal = label({ Size = UDim2.new(1, -32, 0, 24), Position = UDim2.new(0, 16, 0, 48), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, ui.backpack)
-	ui.backpackList = scrollList(ui.backpack, 80)
-	ui.backpackHint = label({ Size = UDim2.new(1, -32, 0, 22), Position = UDim2.new(0, 16, 1, -30), Text = "Va au stand VENTE pour tout vendre", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 200) }, ui.backpack)
-	ui.backpackList.Size = UDim2.new(1, -24, 1, -120)
+	-- Panneau personnages
+	ui.characters = panel("Characters", UDim2.fromOffset(640, 420), "CHOISIS TON PERSONNAGE", Config.Colors.Accent, gui)
+	ui.charGrid = new("Frame", { Size = UDim2.new(1, -24, 1, -70), Position = UDim2.new(0, 12, 0, 58), BackgroundTransparency = 1 }, ui.characters)
+	new("UIGridLayout", { CellSize = UDim2.fromOffset(296, 165), CellPadding = UDim2.fromOffset(12, 12), SortOrder = Enum.SortOrder.LayoutOrder }, ui.charGrid)
 
-	-- Panneau BOUTIQUE
-	ui.shop = panel("Shop", UDim2.fromOffset(520, 520), gui)
-	label({ Size = UDim2.new(1, -60, 0, 36), Position = UDim2.new(0, 16, 0, 10), Text = "BOUTIQUE DE GRAINES", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Accent }, ui.shop)
-	ui.shopRestock = label({ Size = UDim2.new(1, -32, 0, 24), Position = UDim2.new(0, 16, 0, 48), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 210) }, ui.shop)
-	ui.shopList = scrollList(ui.shop, 80)
+	-- Panneau cosmetiques
+	ui.cosmetics = panel("Cosmetics", UDim2.fromOffset(560, 520), "COSMETIQUES", Config.Colors.Ult, gui)
+	ui.cosmList = scrollList(ui.cosmetics, 58)
 end
 
--- Notifications ---------------------------------------------------------------
+-- Notifications ----------------------------------------------------------------
 
 local toastCount = 0
 function HUD.toast(text, kind)
 	toastCount += 1
-	local colors = {
-		danger = Config.Colors.Danger,
-		gold = Config.Colors.Gold,
-		good = Config.Colors.Accent,
-		weather = Config.Colors.Sky,
-		shop = Config.Colors.Accent2,
-		mutation = Color3.fromRGB(255, 120, 255),
-	}
+	local colors = { danger = Config.Colors.Danger, gold = Config.Colors.Gold, good = Config.Colors.Accent, kill = Config.Colors.Accent2, ult = Config.Colors.Ult }
 	local color = colors[kind] or Color3.new(1, 1, 1)
-	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.25, LayoutOrder = toastCount }, ui.toasts)
-	corner(frame, 10)
-	stroke(frame, color, 2, 0.3)
+	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Config.Colors.Dark, BackgroundTransparency = 0.3, LayoutOrder = toastCount }, ui.toasts)
+	corner(frame, 8)
+	stroke(frame, color, 2, 0.4)
 	local l = label({ Size = UDim2.new(1, -16, 1, -8), Position = UDim2.new(0, 8, 0, 4), Text = text, TextColor3 = color, Font = FONT_BOLD }, frame)
 	task.delay(3.5, function()
 		TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
@@ -194,252 +200,228 @@ function HUD.toast(text, kind)
 	end)
 end
 
--- Barre de graines ----------------------------------------------------------------
+-- Personnages -----------------------------------------------------------------------
 
-local hotbarSlots = {}
-
-local function rebuildHotbar()
-	for _, slot in ipairs(hotbarSlots) do
-		slot:Destroy()
-	end
-	hotbarSlots = {}
-	local seeds = {}
-	for _, plant in ipairs(Config.Plants) do
-		local count = State.inventory.seeds[plant.id]
-		if count and count > 0 then
-			table.insert(seeds, { plant = plant, count = count })
+local function rebuildCharacters()
+	for _, child in ipairs(ui.charGrid:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
 		end
 	end
-	if State.selectedSeed and not State.inventory.seeds[State.selectedSeed] then
-		State.selectedSeed = nil
-	end
-	if #seeds == 0 then
-		ui.hotbarHint.Text = "Aucune graine : passe a la BOUTIQUE !"
-	else
-		ui.hotbarHint.Text = State.selectedSeed and ("Graine : " .. State.selectedSeed .. "  |  Clique sur une case de ta parcelle") or "Choisis une graine (clic ou touches 1-9)"
-	end
-	for i, entry in ipairs(seeds) do
-		if i > 9 then
-			break
+	for i, def in ipairs(Config.Characters) do
+		local selected = State.stats.character == def.id
+		local card = new("Frame", { BackgroundColor3 = Color3.fromRGB(30, 34, 46), LayoutOrder = i }, ui.charGrid)
+		corner(card, 12)
+		stroke(card, selected and Config.Colors.Gold or def.color, selected and 4 or 2)
+		label({ Size = UDim2.new(1, -16, 0, 30), Position = UDim2.new(0, 8, 0, 6), Text = def.name .. (selected and "  (actuel)" or ""), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = def.color }, card)
+		label({ Size = UDim2.new(1, -16, 0, 20), Position = UDim2.new(0, 8, 0, 38), Text = def.description, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 220) }, card)
+		label({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 60), Text = string.format("Vie %d  |  Vitesse %d  |  M1 %d dmg", def.health, def.walkSpeed, def.m1Damage), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(180, 180, 190) }, card)
+		local names = {}
+		for _, s in ipairs(def.skills) do
+			table.insert(names, s.name)
 		end
-		local selected = State.selectedSeed == entry.plant.id
-		local slot = button({
-			Size = UDim2.fromOffset(78, 78),
-			BackgroundColor3 = Config.Colors.Dark,
-			BackgroundTransparency = selected and 0 or 0.3,
-			LayoutOrder = i,
-		}, ui.hotbar)
-		stroke(slot, selected and Config.Colors.Gold or entry.plant.color, selected and 4 or 2)
-		local dot = new("Frame", { Size = UDim2.fromOffset(26, 26), Position = UDim2.new(0.5, 0, 0, 10), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = entry.plant.color }, slot)
-		corner(dot, 13)
-		label({ Size = UDim2.new(1, -4, 0, 18), Position = UDim2.new(0, 2, 0, 40), Text = entry.plant.id, Font = FONT_BOLD }, slot)
-		label({ Size = UDim2.new(1, -4, 0, 16), Position = UDim2.new(0, 2, 1, -18), Text = "x" .. entry.count, TextColor3 = Config.Colors.Gold, Font = FONT_BOLD }, slot)
-		if not TOUCH then
-			label({ Size = UDim2.fromOffset(16, 16), Position = UDim2.new(0, 4, 0, 2), Text = tostring(i), TextColor3 = Color3.fromRGB(200, 200, 200), Font = FONT_BOLD }, slot)
-		end
-		slot.Activated:Connect(function()
-			State.selectedSeed = (State.selectedSeed == entry.plant.id) and nil or entry.plant.id
-			rebuildHotbar()
+		label({ Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 80), Text = table.concat(names, "  •  "), TextWrapped = true, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 230) }, card)
+		local b = button({ Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 1, -42), Text = selected and "SELECTIONNE" or "CHOISIR", BackgroundColor3 = selected and Color3.fromRGB(60, 60, 70) or def.color }, card)
+		b.Activated:Connect(function()
+			Remotes.Menu:FireServer("character", def.id)
+			ui.characters.Visible = false
 		end)
-		table.insert(hotbarSlots, slot)
 	end
-	ui.hotbarSeeds = seeds
 end
 
--- Sac ---------------------------------------------------------------------------
+-- Cosmetiques -----------------------------------------------------------------------
 
-local function rebuildBackpack()
-	for _, child in ipairs(ui.backpackList:GetChildren()) do
-		if child:IsA("Frame") then
+local function rebuildCosmetics()
+	for _, child in ipairs(ui.cosmList:GetChildren()) do
+		if child:IsA("Frame") or child:IsA("TextLabel") then
 			child:Destroy()
 		end
 	end
-	local fruits = State.inventory.fruits
-	ui.backpackTotal.Text = #fruits .. " fruit(s)  |  Valeur : " .. Economy.formatCoins(State.inventory.fruitValue) .. " pieces"
-	-- Tri par valeur decroissante
-	local sorted = table.clone(fruits)
-	table.sort(sorted, function(a, b)
-		return a.value > b.value
-	end)
-	for i, fruit in ipairs(sorted) do
-		if i > 60 then
-			break
-		end
-		local plant = Config.PlantById[fruit.id]
-		local row = new("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Color3.fromRGB(40, 50, 42), LayoutOrder = i }, ui.backpackList)
-		corner(row, 8)
-		local hasMutation = fruit.mutations and #fruit.mutations > 0
-		local dot = new("Frame", { Size = UDim2.fromOffset(22, 22), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = plant and plant.color or Color3.new(1, 1, 1) }, row)
-		corner(dot, 11)
-		label({ Size = UDim2.new(0.55, 0, 1, -10), Position = UDim2.new(0, 42, 0, 5), Text = Economy.fruitName(fruit), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = hasMutation and Color3.fromRGB(255, 200, 255) or Color3.new(1, 1, 1) }, row)
-		label({ Size = UDim2.new(0.18, 0, 1, -10), Position = UDim2.new(0.6, 0, 0, 5), Text = Economy.formatWeight(fruit.weight), Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 200) }, row)
-		label({ Size = UDim2.new(0.2, -10, 1, -10), Position = UDim2.new(0.8, 0, 0, 5), Text = Economy.formatCoins(fruit.value), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Config.Colors.Gold }, row)
-	end
-	if #sorted > 60 then
-		label({ Size = UDim2.new(1, 0, 0, 24), Text = "... et " .. (#sorted - 60) .. " autres", Font = FONT_BOLD, LayoutOrder = 999 }, ui.backpackList)
-	end
-end
-
--- Boutique ---------------------------------------------------------------------------
-
-local function rebuildShop()
-	for _, child in ipairs(ui.shopList:GetChildren()) do
-		if child:IsA("Frame") then
-			child:Destroy()
-		end
-	end
-	for i, plant in ipairs(Config.Plants) do
-		local stock = State.shop.stock[plant.id] or 0
-		local row = new("Frame", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = stock > 0 and Color3.fromRGB(40, 50, 42) or Color3.fromRGB(45, 40, 40), LayoutOrder = i }, ui.shopList)
-		corner(row, 8)
-		local dot = new("Frame", { Size = UDim2.fromOffset(26, 26), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = plant.color }, row)
-		corner(dot, 13)
-		label({ Size = UDim2.new(0.42, 0, 0, 24), Position = UDim2.new(0, 46, 0, 6), Text = plant.id, TextXAlignment = Enum.TextXAlignment.Left }, row)
-		local info = string.format("%s pieces  |  %ds  |  vend %s", Economy.formatCoins(plant.price), plant.growTime, Economy.formatCoins(plant.value))
-		if plant.multi then
-			info = info .. "  |  repousse"
-		end
-		label({ Size = UDim2.new(0.6, 0, 0, 18), Position = UDim2.new(0, 46, 0, 32), Text = info, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 200, 200) }, row)
-		label({ Size = UDim2.new(0.14, 0, 0, 22), Position = UDim2.new(0.62, 0, 0, 6), Text = stock > 0 and ("Stock " .. stock) or "Epuise", Font = FONT_BOLD, TextColor3 = stock > 0 and Config.Colors.Accent or Config.Colors.Danger }, row)
-		if stock > 0 then
-			local b1 = button({ Size = UDim2.fromOffset(44, 36), Position = UDim2.new(1, -100, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), Text = "x1", BackgroundColor3 = Config.Colors.Accent }, row)
-			local bAll = button({ Size = UDim2.fromOffset(46, 36), Position = UDim2.new(1, -52, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), Text = "MAX", BackgroundColor3 = Config.Colors.Accent2 }, row)
-			b1.Activated:Connect(function()
-				Remotes.Shop:FireServer("buy", plant.id, 1)
-			end)
-			bAll.Activated:Connect(function()
-				Remotes.Shop:FireServer("buy", plant.id, 99)
+	local order = 0
+	local function section(title, kind, list, equipped, bag, color)
+		order += 1
+		label({ Size = UDim2.new(1, 0, 0, 28), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, LayoutOrder = order }, ui.cosmList)
+		for _, item in ipairs(list) do
+			order += 1
+			local owned = bag[item.id] == true
+			local isEquipped = equipped == item.id
+			local row = new("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Color3.fromRGB(30, 34, 46), LayoutOrder = order }, ui.cosmList)
+			corner(row, 8)
+			if item.color then
+				local dot = new("Frame", { Size = UDim2.fromOffset(22, 22), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = item.color }, row)
+				corner(dot, 11)
+			end
+			label({ Size = UDim2.new(0.5, 0, 1, -12), Position = UDim2.new(0, 42, 0, 6), Text = item.name, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left }, row)
+			local info
+			if kind == "title" then
+				local req = item.requirement
+				info = (req.kind == "level" and ("Niveau " .. req.value)) or (req.kind == "kills" and (req.value .. " kills")) or (req.value .. " victoires")
+			else
+				info = owned and "Possede" or (item.price .. " pieces")
+			end
+			label({ Size = UDim2.new(0.25, 0, 1, -12), Position = UDim2.new(0.5, 0, 0, 6), Text = info, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(190, 190, 200) }, row)
+			local b = button({ Size = UDim2.fromOffset(100, 32), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), Text = isEquipped and "EQUIPE" or (owned and "EQUIPER" or (kind == "title" and "VERROUILLE" or "ACHETER")), BackgroundColor3 = isEquipped and Color3.fromRGB(60, 60, 70) or (owned and Config.Colors.Accent or (kind == "title" and Color3.fromRGB(80, 80, 90) or Config.Colors.Gold)) }, row)
+			b.Activated:Connect(function()
+				if isEquipped then
+					return
+				end
+				if owned then
+					Remotes.Menu:FireServer("equip", kind, item.id)
+				elseif kind ~= "title" then
+					Remotes.Menu:FireServer("buy", kind, item.id)
+				end
 			end)
 		end
 	end
+	local s = State.stats
+	section("AURAS", "aura", Config.Auras, s.aura, s.unlocked.auras or {}, Config.Colors.Accent)
+	section("EFFETS DE DASH", "trail", Config.Trails, s.trail, s.unlocked.trails or {}, Config.Colors.Accent2)
+	section("TITRES", "title", Config.Titles, s.title, s.unlocked.titles or {}, Config.Colors.Gold)
 end
 
--- Mises a jour ----------------------------------------------------------------------
+-- Mises a jour -----------------------------------------------------------------------
 
-local function onInventory(inv)
-	State.inventory = inv
-	ui.coins.Text = Economy.formatCoins(inv.coins) .. " pieces"
-	ui.harvests.Text = inv.harvests .. " recoltes  |  Parcelle " .. inv.plotId
-	if inv.expandPrice then
-		ui.expandButton.Text = "AGRANDIR " .. Economy.formatCoins(inv.expandPrice)
-		ui.expandButton.Visible = true
-	else
-		ui.expandButton.Visible = false
+local function onStats(stats)
+	State.stats = stats
+	ui.levelText.Text = "Niveau " .. stats.level .. "  -  " .. stats.character
+	ui.xpFill.Size = UDim2.fromScale(math.clamp(stats.xp / math.max(1, stats.xpNext), 0, 1), 1)
+	ui.coinsText.Text = stats.coins .. " pieces"
+	ui.recordText.Text = string.format("%d kills  |  %d victoires  |  %d morts", stats.kills, stats.wins, stats.deaths)
+	if ui.characters.Visible then
+		rebuildCharacters()
 	end
-	ui.backpackButton.Text = (TOUCH and "SAC " or "SAC (B) ") .. #inv.fruits
-	rebuildHotbar()
-	if ui.backpack.Visible then
-		rebuildBackpack()
+	if ui.cosmetics.Visible then
+		rebuildCosmetics()
 	end
-	State.fire("inventory", inv)
+	State.fire("stats", stats)
 end
 
-local function onShopState(shop)
-	State.shop = shop
-	if ui.shop.Visible then
-		rebuildShop()
+local function refreshSkillNames()
+	local character = player.Character
+	local id = (character and character:GetAttribute("CharacterId")) or State.stats.character
+	local def = Config.CharacterById[id] or Config.Characters[1]
+	local ult = character and character:GetAttribute("UltActive") == true
+	local list = ult and def.ultSkills or def.skills
+	for i = 1, 4 do
+		local skill = list[i]
+		ui.slots[i].Title.Text = skill and skill.name or ""
+		ui.slotStrokes[i].Color = ult and Config.Colors.Ult or def.color
 	end
-end
-
-local function onWeather(weather)
-	State.weather = weather
-	if weather.id == "Clair" then
-		ui.weather.Text = "Ciel clair"
-		ui.weather.TextColor3 = Config.Colors.Sky
-		ui.weatherStroke.Color = Config.Colors.Sky
-	else
-		local color = weather.id == "Gel" and Color3.fromRGB(190, 240, 255) or (weather.id == "Orage" and Color3.fromRGB(255, 240, 120) or Color3.fromRGB(120, 180, 255))
-		ui.weather.TextColor3 = color
-		ui.weatherStroke.Color = color
-	end
-	State.fire("weather", weather)
-end
-
-local function isNear(tag, distance)
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then
-		return false
-	end
-	for _, stand in ipairs(CollectionService:GetTagged(tag)) do
-		if (stand.Position - hrp.Position).Magnitude <= distance then
-			return true
-		end
-	end
-	return false
 end
 
 local function toggle(name)
 	if name == "close" then
-		ui.shop.Visible = false
-		ui.backpack.Visible = false
-	elseif name == "backpack" then
-		ui.backpack.Visible = not ui.backpack.Visible
-		ui.shop.Visible = false
-		if ui.backpack.Visible then
-			rebuildBackpack()
+		ui.characters.Visible = false
+		ui.cosmetics.Visible = false
+	elseif name == "characters" then
+		ui.characters.Visible = not ui.characters.Visible
+		ui.cosmetics.Visible = false
+		if ui.characters.Visible then
+			rebuildCharacters()
 		end
-	elseif name == "shop" then
-		if not ui.shop.Visible and not isNear("ShopStand", 40) then
-			HUD.toast("Va au stand GRAINES pour ouvrir la boutique.", "info")
-			return
-		end
-		ui.shop.Visible = not ui.shop.Visible
-		ui.backpack.Visible = false
-		if ui.shop.Visible then
-			rebuildShop()
-			Remotes.Shop:FireServer("state")
+	elseif name == "cosmetics" then
+		ui.cosmetics.Visible = not ui.cosmetics.Visible
+		ui.characters.Visible = false
+		if ui.cosmetics.Visible then
+			rebuildCosmetics()
+			Remotes.Menu:FireServer("stats")
 		end
 	end
 end
 
-function HUD.Init()
+local function update()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local ratio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
+		ui.hpFill.Size = UDim2.fromScale(ratio, 1)
+		ui.hpFill.BackgroundColor3 = Config.Colors.Health:Lerp(Config.Colors.Danger, 1 - ratio)
+		ui.hpText.Text = math.floor(humanoid.Health) .. " / " .. math.floor(humanoid.MaxHealth)
+		local ult = character:GetAttribute("Ult") or 0
+		local active = character:GetAttribute("UltActive") == true
+		ui.ultFill.Size = UDim2.fromScale(ult / 100, 1)
+		if active then
+			ui.ultText.Text = "ULTIMATE MODE"
+			ui.ultFill.BackgroundColor3 = Config.Colors.Gold
+		elseif ult >= 100 then
+			ui.ultText.Text = TOUCH and "ULTIMATE PRET !" or "ULTIMATE PRET !  (G)"
+			ui.ultFill.BackgroundColor3 = Config.Colors.Ult:Lerp(Color3.new(1, 1, 1), 0.5 + 0.5 * math.sin(os.clock() * 8))
+		else
+			ui.ultText.Text = "ULTIMATE " .. math.floor(ult) .. " %"
+			ui.ultFill.BackgroundColor3 = Config.Colors.Ult
+		end
+		ui.ultButton.BackgroundColor3 = (ult >= 100 and not active) and Config.Colors.Gold or Config.Colors.Ult
+
+		local stunned = (character:GetAttribute("StunUntil") or 0) > os.clock()
+		if stunned then
+			ui.status.Text = "ETOURDI"
+			ui.status.TextColor3 = Config.Colors.Danger
+		elseif State.blocking then
+			ui.status.Text = "BLOCAGE"
+			ui.status.TextColor3 = Config.Colors.Gold
+		else
+			ui.status.Text = ""
+		end
+	end
+	for i = 1, 4 do
+		local cd = State.cooldowns[i]
+		local slot = ui.slots[i]
+		if cd and cd.untilTime > os.clock() then
+			local left = cd.untilTime - os.clock()
+			slot.Cooldown.Size = UDim2.fromScale(1, math.clamp(left / cd.duration, 0, 1))
+			slot.Timer.Text = string.format("%.1f", left)
+		else
+			slot.Cooldown.Size = UDim2.fromScale(1, 0)
+			slot.Timer.Text = ""
+		end
+	end
+	local dashLeft = State.dashReadyAt - os.clock()
+	ui.dashHint.Text = dashLeft > 0 and string.format("Dash %.1fs", dashLeft) or (TOUCH and "Dash pret" or "Dash pret (Q)")
+	if os.clock() - State.comboAt > C.ComboReset then
+		ui.combo.Visible = false
+	end
+end
+
+function HUD.showCombo(count)
+	State.combo = count
+	State.comboAt = os.clock()
+	ui.combo.Text = count .. " HIT" .. (count > 1 and "S" or "")
+	ui.combo.Visible = true
+	ui.combo.Size = UDim2.fromOffset(200, 30)
+	TweenService:Create(ui.combo, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 50) }):Play()
+end
+
+function HUD.Init(inputModule)
+	Input = inputModule
 	build()
-	Remotes.Inventory.OnClientEvent:Connect(onInventory)
-	Remotes.ShopState.OnClientEvent:Connect(onShopState)
-	Remotes.Weather.OnClientEvent:Connect(onWeather)
+	Remotes.Stats.OnClientEvent:Connect(onStats)
 	Remotes.Notify.OnClientEvent:Connect(HUD.toast)
-
-	ui.backpackButton.Activated:Connect(function()
-		toggle("backpack")
+	ui.charButton.Activated:Connect(function()
+		toggle("characters")
 	end)
-	ui.shopButton.Activated:Connect(function()
-		toggle("shop")
+	ui.cosmButton.Activated:Connect(function()
+		toggle("cosmetics")
 	end)
-	ui.expandButton.Activated:Connect(function()
-		Remotes.Shop:FireServer("expand")
-	end)
-	ui.sellButton.Activated:Connect(function()
-		Remotes.Shop:FireServer("sell")
-	end)
-
 	State.Changed.Event:Connect(function(what, data)
 		if what == "toggle" then
 			toggle(data)
-		elseif what == "hotbar" then
-			local entry = ui.hotbarSeeds and ui.hotbarSeeds[data]
-			if entry then
-				State.selectedSeed = (State.selectedSeed == entry.plant.id) and nil or entry.plant.id
-				rebuildHotbar()
-			end
 		elseif what == "notify" then
 			HUD.toast(data.text, data.kind)
+		elseif what == "respawn" then
+			task.delay(0.5, refreshSkillNames)
 		end
 	end)
-
-	-- Timers (meteo, reassort, bouton vendre a proximite)
-	RunService.Heartbeat:Connect(function()
-		local now = workspace:GetServerTimeNow()
-		if State.weather.id ~= "Clair" then
-			local left = math.max(0, math.floor(State.weather.endsAt - now))
-			ui.weather.Text = State.weather.label .. "  " .. left .. "s"
-		end
-		local restockLeft = math.max(0, math.floor((State.shop.nextRestock or 0) - now))
-		local text = string.format("Reassort dans %d:%02d", math.floor(restockLeft / 60), restockLeft % 60)
-		ui.restock.Text = text
-		ui.shopRestock.Text = text
-		ui.sellButton.Visible = #State.inventory.fruits > 0 and isNear("SellStand", 40)
-	end)
+	local function hookCharacter(character)
+		task.wait(0.3)
+		refreshSkillNames()
+		character:GetAttributeChangedSignal("UltActive"):Connect(refreshSkillNames)
+		character:GetAttributeChangedSignal("CharacterId"):Connect(refreshSkillNames)
+	end
+	if player.Character then
+		task.spawn(hookCharacter, player.Character)
+	end
+	player.CharacterAdded:Connect(hookCharacter)
+	RunService.RenderStepped:Connect(update)
 end
 
 return HUD

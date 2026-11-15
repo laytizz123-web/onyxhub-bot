@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Genere OnyxFarm.rbxlx a partir de src/ (aucune dependance).
+// Genere OnyxBattlegrounds.rbxlx a partir de src/ (aucune dependance).
 // Usage : node build-place.js
 const fs = require("fs");
 const path = require("path");
 
 const ROOT = __dirname;
 const SRC = path.join(ROOT, "src");
-const OUT = path.join(ROOT, "OnyxFarm.rbxlx");
+const OUT = path.join(ROOT, "OnyxBattlegrounds.rbxlx");
 
 let referent = 0;
 const nextRef = () => "RBX" + (referent++).toString(16).toUpperCase().padStart(8, "0");

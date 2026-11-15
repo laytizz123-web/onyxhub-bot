@@ -1,14 +1,15 @@
--- Etat partage entre les modules client.
+-- Etat partage cote client.
 
 local State = {}
 
-State.inventory = { coins = 0, seeds = {}, fruits = {}, fruitValue = 0, plotId = 0, expandLevel = 0, expandPrice = nil, harvests = 0 }
-State.shop = { stock = {}, nextRestock = 0 }
-State.weather = { id = "Clair", label = "", endsAt = 0 }
-State.selectedSeed = nil
-State.waterReadyAt = 0
+State.stats = { xp = 0, level = 1, xpNext = 100, coins = 0, kills = 0, deaths = 0, wins = 0, character = "Fighter", aura = "none", trail = "none", title = "rookie", unlocked = { auras = {}, trails = {}, titles = {} } }
+State.cooldowns = {} -- [slot] = { untilTime, duration }
+State.dashReadyAt = 0
+State.blocking = false
+State.combo = 0
+State.comboAt = 0
 
-State.Changed = Instance.new("BindableEvent") -- (what, data)
+State.Changed = Instance.new("BindableEvent")
 
 function State.fire(what, data)
 	State.Changed:Fire(what, data)

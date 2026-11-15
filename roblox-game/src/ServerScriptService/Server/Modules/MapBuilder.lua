@@ -1,9 +1,8 @@
--- Construit la ferme : terrain, place centrale, boutique, stand de vente, 8 parcelles.
--- Aucun asset externe : tout est fait avec des Parts.
+-- Construit la map : spawn (zone sure), arene centrale, centre-ville, zone calme, classement.
+-- Aucun asset externe.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
-local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 
@@ -22,347 +21,401 @@ local function makePart(props)
 	return p
 end
 
-local function addLabel(parent, text, face, color, font)
+local function addLabel(parent, text, face, color, scale)
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = face or Enum.NormalId.Front
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = 24
 	gui.LightInfluence = 0
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
+	label.Size = UDim2.fromScale(1, scale or 1)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextColor3 = color or Color3.new(1, 1, 1)
-	label.Font = font or Enum.Font.FredokaOne
+	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
-	label.TextStrokeTransparency = 0.6
+	label.TextStrokeTransparency = 0.5
 	label.Parent = gui
 	gui.Parent = parent
-	return label
+	return gui
 end
 
 local function buildLighting()
-	Lighting.ClockTime = 13.5
-	Lighting.Brightness = 2.5
-	Lighting.Ambient = Color3.fromRGB(120, 130, 120)
-	Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 140)
-	Lighting.FogColor = Color3.fromRGB(200, 225, 255)
-	Lighting.FogStart = 300
-	Lighting.FogEnd = 1200
+	Lighting.ClockTime = 17.5
+	Lighting.Brightness = 2.2
+	Lighting.Ambient = Color3.fromRGB(70, 70, 90)
+	Lighting.OutdoorAmbient = Color3.fromRGB(110, 110, 140)
+	Lighting.FogColor = Color3.fromRGB(150, 140, 180)
+	Lighting.FogStart = 250
+	Lighting.FogEnd = 1100
 	Lighting.GlobalShadows = true
-	Lighting.ExposureCompensation = 0.1
-
 	for _, child in ipairs(Lighting:GetChildren()) do
 		if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") then
 			child:Destroy()
 		end
 	end
-
 	local bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 0.4
-	bloom.Size = 24
-	bloom.Threshold = 1.5
+	bloom.Intensity = 0.6
+	bloom.Size = 28
+	bloom.Threshold = 1.3
 	bloom.Parent = Lighting
-
 	local cc = Instance.new("ColorCorrectionEffect")
-	cc.Name = "FarmColor"
-	cc.Contrast = 0.08
-	cc.Saturation = 0.25
+	cc.Name = "BGColor"
+	cc.Contrast = 0.15
+	cc.Saturation = 0.1
 	cc.Parent = Lighting
-
 	local atmosphere = Instance.new("Atmosphere")
-	atmosphere.Density = 0.25
-	atmosphere.Offset = 0.1
-	atmosphere.Color = Color3.fromRGB(199, 220, 255)
-	atmosphere.Decay = Color3.fromRGB(120, 160, 220)
-	atmosphere.Glare = 0.4
-	atmosphere.Haze = 1.2
+	atmosphere.Density = 0.3
+	atmosphere.Offset = 0.3
+	atmosphere.Color = Color3.fromRGB(220, 170, 200)
+	atmosphere.Decay = Color3.fromRGB(120, 80, 160)
+	atmosphere.Glare = 0.5
+	atmosphere.Haze = 2
 	atmosphere.Parent = Lighting
-
 	local sky = Instance.new("Sky")
-	sky.SunAngularSize = 14
+	sky.SunAngularSize = 18
 	sky.Parent = Lighting
 end
 
-local function buildTree(root, position, scale)
-	scale = scale or 1
-	local trunk = makePart({
-		Name = "Tree",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(7 * scale, 1.6 * scale, 1.6 * scale),
-		CFrame = CFrame.new(position + Vector3.new(0, 3.5 * scale, 0)) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Wood,
-		Color = Color3.fromRGB(110, 75, 45),
-	})
-	trunk.Parent = root
-	for i = 1, 3 do
-		local r = (5.5 - i * 0.9) * scale
-		local leaves = makePart({
-			Name = "Leaves",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(r * 2, r * 2, r * 2),
-			CFrame = CFrame.new(position + Vector3.new(0, (6 + i * 2.2) * scale, 0)),
-			Material = Enum.Material.Grass,
-			Color = Color3.fromRGB(60 + i * 15, 150 + i * 15, 60),
-			CanCollide = false,
-		})
-		leaves.Parent = root
-	end
-end
-
-local function buildStand(root, position, lookAt, title, color, promptText, tag)
-	local base = makePart({
-		Name = tag,
-		Size = Vector3.new(12, 4, 5),
-		CFrame = CFrame.lookAt(position + Vector3.new(0, 2, 0), Vector3.new(lookAt.X, position.Y + 2, lookAt.Z)),
-		Material = Enum.Material.WoodPlanks,
-		Color = Config.Colors.Wood,
-	})
-	base.Parent = root
-	local roof = makePart({
-		Name = "Roof",
-		Size = Vector3.new(14, 0.6, 8),
-		CFrame = base.CFrame * CFrame.new(0, 6, 0),
-		Material = Enum.Material.Fabric,
-		Color = color,
-	})
-	roof.Parent = root
-	for _, x in ipairs({ -6, 6 }) do
-		local pole = makePart({
-			Name = "Pole",
-			Size = Vector3.new(0.6, 8, 0.6),
-			CFrame = base.CFrame * CFrame.new(x, 2.5, 2.5),
-			Material = Enum.Material.Wood,
-			Color = Config.Colors.Wood,
-		})
-		pole.Parent = root
-	end
-	local sign = makePart({
-		Name = "Sign",
-		Size = Vector3.new(12, 2.4, 0.4),
-		CFrame = base.CFrame * CFrame.new(0, 4.6, -3.2),
-		Material = Enum.Material.SmoothPlastic,
-		Color = Config.Colors.Dark,
-	})
-	sign.Parent = root
-	addLabel(sign, title, Enum.NormalId.Front, color)
-
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = promptText
-	prompt.ObjectText = title
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 14
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = base
-	CollectionService:AddTag(base, tag)
-	return base
-end
-
-local function buildHub(root)
-	local ground = makePart({
+local function buildGround(root)
+	makePart({
 		Name = "Ground",
-		Size = Vector3.new(520, 4, 520),
-		CFrame = CFrame.new(0, -2, 0),
-		Material = Enum.Material.Grass,
-		Color = Config.Colors.Grass,
-	})
-	ground.Parent = root
+		Size = Vector3.new(700, 6, 700),
+		CFrame = CFrame.new(0, -3, 0),
+		Material = Enum.Material.Concrete,
+		Color = Color3.fromRGB(70, 72, 80),
+	}).Parent = root
+	-- Routes
+	for _, def in ipairs({
+		{ Vector3.new(24, 0.3, 700), CFrame.new(0, 0.15, 0) },
+		{ Vector3.new(700, 0.3, 24), CFrame.new(0, 0.15, 0) },
+		{ Vector3.new(24, 0.3, 500), CFrame.new(-120, 0.15, -40) },
+		{ Vector3.new(24, 0.3, 500), CFrame.new(120, 0.15, -40) },
+	}) do
+		makePart({ Name = "Road", Size = def[1], CFrame = def[2], Material = Enum.Material.Asphalt, Color = Color3.fromRGB(40, 40, 46) }).Parent = root
+	end
+	-- Murs d'enceinte
+	for _, def in ipairs({
+		{ Vector3.new(700, 60, 4), CFrame.new(0, 30, 350) },
+		{ Vector3.new(700, 60, 4), CFrame.new(0, 30, -350) },
+		{ Vector3.new(4, 60, 700), CFrame.new(350, 30, 0) },
+		{ Vector3.new(4, 60, 700), CFrame.new(-350, 30, 0) },
+	}) do
+		makePart({ Name = "Border", Size = def[1], CFrame = def[2], Transparency = 0.9, Material = Enum.Material.ForceField, Color = Config.Colors.Accent }).Parent = root
+	end
+end
 
-	local plaza = makePart({
-		Name = "Plaza",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.4, 70, 70),
-		CFrame = CFrame.new(0, 0.2, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Cobblestone,
-		Color = Color3.fromRGB(190, 180, 160),
-	})
-	plaza.Parent = root
-
-	-- Fontaine centrale
-	local fountain = makePart({
-		Name = "Fountain",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(2, 14, 14),
-		CFrame = CFrame.new(0, 1.2, 0) * CFrame.Angles(0, 0, math.rad(90)),
+local function buildSpawn(root)
+	local pos = Config.Map.SpawnPosition
+	local plate = makePart({
+		Name = "SafeZone",
+		Size = Vector3.new(70, 1, 50),
+		CFrame = CFrame.new(pos.X, 0.5, pos.Z),
 		Material = Enum.Material.Marble,
-		Color = Color3.fromRGB(230, 230, 235),
+		Color = Color3.fromRGB(220, 225, 235),
 	})
-	fountain.Parent = root
-	local water = makePart({
-		Name = "Water",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.6, 12, 12),
-		CFrame = CFrame.new(0, 2.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Glass,
-		Color = Color3.fromRGB(80, 170, 255),
-		Transparency = 0.3,
-		CanCollide = false,
+	plate:SetAttribute("SafeRadius", 45)
+	CollectionService:AddTag(plate, "SafeZone")
+	plate.Parent = root
+	local ring = makePart({
+		Name = "SafeRing",
+		Size = Vector3.new(72, 0.4, 52),
+		CFrame = CFrame.new(pos.X, 0.2, pos.Z),
+		Material = Enum.Material.Neon,
+		Color = Config.Colors.Accent,
 	})
-	water.Parent = root
-	local jet = makePart({
-		Name = "Jet",
-		Size = Vector3.new(1, 1, 1),
-		CFrame = CFrame.new(0, 3, 0),
-		Transparency = 1,
-		CanCollide = false,
-	})
-	jet.Parent = root
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Rate = 40
-	emitter.Lifetime = NumberRange.new(1, 1.4)
-	emitter.Speed = NumberRange.new(18, 24)
-	emitter.SpreadAngle = Vector2.new(8, 8)
-	emitter.Acceleration = Vector3.new(0, -40, 0)
-	emitter.Size = NumberSequence.new(0.6)
-	emitter.Transparency = NumberSequence.new(0.3, 1)
-	emitter.Color = ColorSequence.new(Color3.fromRGB(170, 220, 255))
-	emitter.Parent = jet
+	ring.Parent = root
 
-	-- Boutique et stand de vente
-	buildStand(root, Vector3.new(-22, 0.4, -14), Vector3.new(0, 0, 0), "GRAINES", Config.Colors.Accent, "Ouvrir", "ShopStand")
-	buildStand(root, Vector3.new(22, 0.4, -14), Vector3.new(0, 0, 0), "VENTE", Config.Colors.Gold, "Tout vendre", "SellStand")
-
-	-- Spawn
 	local existingSpawn = workspace:FindFirstChildOfClass("SpawnLocation")
 	if existingSpawn then
 		existingSpawn:Destroy()
 	end
 	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "HubSpawn"
-	spawn.Size = Vector3.new(10, 0.4, 10)
-	spawn.CFrame = CFrame.new(0, 0.5, 16)
+	spawn.Name = "MainSpawn"
+	spawn.Size = Vector3.new(12, 0.5, 12)
+	spawn.CFrame = CFrame.new(pos.X, 1.25, pos.Z)
 	spawn.Anchored = true
-	spawn.Material = Enum.Material.Cobblestone
-	spawn.Color = Color3.fromRGB(210, 200, 180)
+	spawn.Material = Enum.Material.Neon
+	spawn.Color = Config.Colors.Accent
 	spawn.Neutral = true
 	spawn.Duration = 0
 	spawn.Parent = root
 
-	-- Decor
-	for i = 1, 26 do
-		local angle = (i / 26) * math.pi * 2 + 0.3
-		local radius = 150 + (i % 3) * 25
-		buildTree(root, Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius), 0.9 + (i % 4) * 0.25)
-	end
-	for i = 1, 40 do
-		local angle = math.random() * math.pi * 2
-		local radius = 40 + math.random() * 200
-		local flower = makePart({
-			Name = "Flower",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(0.8, 0.8, 0.8),
-			CFrame = CFrame.new(math.cos(angle) * radius, 0.4, math.sin(angle) * radius),
+	-- Panneau de bienvenue
+	local sign = makePart({ Name = "WelcomeSign", Size = Vector3.new(40, 8, 1), CFrame = CFrame.new(pos.X, 8, pos.Z + 24), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	sign.Parent = root
+	addLabel(sign, Config.GameName, Enum.NormalId.Back, Config.Colors.Accent)
+	local hint = makePart({ Name = "HintSign", Size = Vector3.new(40, 3, 1), CFrame = CFrame.new(pos.X, 3, pos.Z + 24), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	hint.Parent = root
+	addLabel(hint, "Clic : M1  |  F : Bloquer  |  Q : Dash  |  1-4 : Competences  |  G : Ultimate  |  C : Personnage", Enum.NormalId.Back, Color3.new(1, 1, 1))
+
+	-- Tableau de classement
+	local board = makePart({ Name = "Leaderboard", Size = Vector3.new(22, 16, 1), CFrame = CFrame.new(pos.X - 40, 9, pos.Z), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	board.Parent = root
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "BoardGui"
+	gui.Face = Enum.NormalId.Right
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 30
+	gui.LightInfluence = 0
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0.14, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "TOP JOUEURS"
+	title.TextColor3 = Config.Colors.Gold
+	title.Font = Enum.Font.GothamBlack
+	title.TextScaled = true
+	title.Parent = gui
+	local list = Instance.new("TextLabel")
+	list.Name = "List"
+	list.Size = UDim2.new(1, -20, 0.84, 0)
+	list.Position = UDim2.new(0, 10, 0.15, 0)
+	list.BackgroundTransparency = 1
+	list.Text = "Chargement..."
+	list.TextColor3 = Color3.new(1, 1, 1)
+	list.Font = Enum.Font.GothamBold
+	list.TextScaled = true
+	list.TextXAlignment = Enum.TextXAlignment.Left
+	list.TextYAlignment = Enum.TextYAlignment.Top
+	list.Parent = gui
+	gui.Parent = board
+	local frame = makePart({ Name = "BoardFrame", Size = Vector3.new(23, 17, 0.6), CFrame = board.CFrame * CFrame.new(0, 0, 0.1), Material = Enum.Material.Neon, Color = Config.Colors.Gold })
+	frame.Parent = root
+	MapBuilder.LeaderboardLabel = list
+end
+
+local function buildArena(root)
+	local center = Config.Map.ArenaCenter
+	local R = Config.Map.ArenaRadius
+	local floor = makePart({
+		Name = "ArenaFloor",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(2, R * 2, R * 2),
+		CFrame = CFrame.new(center + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Slate,
+		Color = Color3.fromRGB(45, 45, 60),
+	})
+	floor.Parent = root
+	local ring = makePart({
+		Name = "ArenaRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1.6, R * 2 + 4, R * 2 + 4),
+		CFrame = CFrame.new(center + Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Neon,
+		Color = Config.Colors.Accent2,
+	})
+	ring.Parent = root
+	-- Piliers lumineux autour de l'arene
+	for i = 1, 8 do
+		local a = (i / 8) * math.pi * 2
+		local pillar = makePart({
+			Name = "ArenaPillar",
+			Size = Vector3.new(3, 18, 3),
+			CFrame = CFrame.new(center + Vector3.new(math.cos(a) * (R + 6), 9, math.sin(a) * (R + 6))),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(60, 60, 75),
+		})
+		pillar.Parent = root
+		local top = makePart({
+			Name = "PillarLight",
+			Size = Vector3.new(3.4, 1, 3.4),
+			CFrame = pillar.CFrame * CFrame.new(0, 9.5, 0),
 			Material = Enum.Material.Neon,
-			Color = ({ Color3.fromRGB(255, 120, 180), Color3.fromRGB(255, 230, 80), Color3.fromRGB(150, 150, 255) })[(i % 3) + 1],
-			CanCollide = false,
+			Color = Config.Colors.Accent2,
 		})
-		flower.Parent = root
+		top.Parent = root
 	end
 end
 
--- Parcelles --------------------------------------------------------------
-
-local plotFolders = {}
-local plotSpawns = {}
-
-local function plotOrigin(plotId)
-	local angle = ((plotId - 1) / Config.Plot.Count) * math.pi * 2
-	return Vector3.new(math.cos(angle) * Config.Plot.Distance, 0, math.sin(angle) * Config.Plot.Distance), angle
+local function buildCity(root)
+	local origin = Config.Map.CityOrigin
+	local palette = {
+		Color3.fromRGB(60, 65, 85),
+		Color3.fromRGB(85, 70, 80),
+		Color3.fromRGB(50, 75, 90),
+		Color3.fromRGB(95, 90, 85),
+	}
+	local i = 0
+	for gx = -3, 3 do
+		for gz = -3, 0 do
+			i += 1
+			-- laisse les routes libres
+			if gx ~= 0 and math.abs(gx) ~= 2 then
+				local w = 22 + (i % 3) * 6
+				local d = 22 + ((i * 7) % 3) * 6
+				local h = 18 + ((i * 13) % 5) * 12
+				local x = origin.X + gx * 60
+				local z = origin.Z + gz * 60 - 30
+				local building = makePart({
+					Name = "Building",
+					Size = Vector3.new(w, h, d),
+					CFrame = CFrame.new(x, h / 2, z),
+					Material = Enum.Material.Concrete,
+					Color = palette[(i % #palette) + 1],
+				})
+				building.Parent = root
+				-- Fenetres
+				local windows = makePart({
+					Name = "Windows",
+					Size = Vector3.new(w + 0.2, h - 4, d + 0.2),
+					CFrame = CFrame.new(x, h / 2, z),
+					Material = Enum.Material.Glass,
+					Color = Config.Colors.Accent,
+					Transparency = 0.65,
+					CanCollide = false,
+				})
+				windows.Parent = root
+				-- Toit accessible avec rebord neon
+				local roof = makePart({
+					Name = "RoofEdge",
+					Size = Vector3.new(w + 1, 0.6, d + 1),
+					CFrame = CFrame.new(x, h + 0.3, z),
+					Material = Enum.Material.Neon,
+					Color = (i % 2 == 0) and Config.Colors.Accent or Config.Colors.Accent2,
+				})
+				roof.Parent = root
+				-- Escalier de caisses pour monter sur le toit
+				local steps = math.floor(h / 4)
+				for s = 1, steps do
+					local box = makePart({
+						Name = "Step",
+						Size = Vector3.new(5, 4, 5),
+						CFrame = CFrame.new(x + w / 2 + 3 + (s % 2) * 5, s * 4 - 2, z + d / 2 - 3 - s * 3.5),
+						Material = Enum.Material.Metal,
+						Color = Color3.fromRGB(90, 90, 100),
+					})
+					box.Parent = root
+				end
+			end
+		end
+	end
+	-- Lampadaires
+	for k = 1, 10 do
+		local x = -150 + k * 30
+		for _, z in ipairs({ -60, -180 }) do
+			local pole = makePart({ Name = "Lamp", Size = Vector3.new(0.6, 12, 0.6), CFrame = CFrame.new(x + 13, 6, z + 13), Material = Enum.Material.Metal, Color = Color3.fromRGB(50, 50, 55) })
+			pole.Parent = root
+			local lamp = makePart({ Name = "LampLight", Size = Vector3.new(1.5, 1, 1.5), CFrame = pole.CFrame * CFrame.new(0, 6.3, 0), Material = Enum.Material.Neon, Color = Color3.fromRGB(255, 230, 180) })
+			local light = Instance.new("PointLight")
+			light.Range = 30
+			light.Brightness = 1.5
+			light.Color = Color3.fromRGB(255, 230, 180)
+			light.Parent = lamp
+			lamp.Parent = root
+		end
+	end
 end
 
-local function buildPlot(root, plotId)
-	local plot = Config.Plot
-	local origin, angle = plotOrigin(plotId)
-	local pitch = plot.TileSize + plot.TileGap
-	local span = plot.Grid * pitch
-
-	local folder = Instance.new("Folder")
-	folder.Name = "Plot" .. plotId
-	folder:SetAttribute("PlotId", plotId)
-	folder:SetAttribute("OwnerId", 0)
-	folder:SetAttribute("OwnerName", "")
-	folder:SetAttribute("ExpandLevel", 0)
-
-	local rotation = CFrame.new(origin) * CFrame.Angles(0, -angle + math.pi / 2, 0)
-
-	local base = makePart({
-		Name = "PlotBase",
-		Size = Vector3.new(span + 8, 0.6, span + 8),
-		CFrame = rotation * CFrame.new(0, 0.3, 0),
-		Material = Enum.Material.Grass,
-		Color = Color3.fromRGB(120, 190, 85),
-	})
-	base.Parent = folder
-
-	-- Cloture
-	local half = (span + 8) / 2
-	local fenceLen = span + 8
-	for _, side in ipairs({ { 0, half }, { 0, -half }, { half, 0 }, { -half, 0 } }) do
-		local horizontal = side[2] ~= 0
-		local fence = makePart({
-			Name = "Fence",
-			Size = horizontal and Vector3.new(fenceLen, 2.2, 0.4) or Vector3.new(0.4, 2.2, fenceLen),
-			CFrame = rotation * CFrame.new(side[1], 1.5, side[2]),
-			Material = Enum.Material.WoodPlanks,
-			Color = Color3.fromRGB(220, 200, 160),
-			CanCollide = false,
-		})
-		fence.Parent = folder
+local function buildTree(root, position, scale)
+	local trunk = makePart({ Name = "Tree", Size = Vector3.new(1.6 * scale, 7 * scale, 1.6 * scale), CFrame = CFrame.new(position + Vector3.new(0, 3.5 * scale, 0)), Material = Enum.Material.Wood, Color = Color3.fromRGB(110, 75, 45) })
+	trunk.Parent = root
+	for i = 1, 3 do
+		local r = (5 - i * 0.8) * scale
+		makePart({ Name = "Leaves", Shape = Enum.PartType.Ball, Size = Vector3.new(r * 2, r * 2, r * 2), CFrame = CFrame.new(position + Vector3.new(0, (6 + i * 2) * scale, 0)), Material = Enum.Material.Grass, Color = Color3.fromRGB(50 + i * 15, 140 + i * 15, 70), CanCollide = false }).Parent = root
 	end
+end
 
-	-- Panneau du proprietaire
-	local sign = makePart({
-		Name = "Sign",
-		Size = Vector3.new(14, 3, 0.5),
-		CFrame = rotation * CFrame.new(0, 4.5, -half - 1),
-		Material = Enum.Material.WoodPlanks,
-		Color = Config.Colors.Wood,
-	})
-	sign.Parent = folder
-	local label = addLabel(sign, "Parcelle libre", Enum.NormalId.Front, Color3.new(1, 1, 1))
-	label.Name = "OwnerLabel"
-	addLabel(sign, "Parcelle libre", Enum.NormalId.Back, Color3.new(1, 1, 1)).Name = "OwnerLabelBack"
+local function buildCalmZone(root)
+	local pos = Config.Map.CalmZone
+	local grass = makePart({ Name = "Park", Size = Vector3.new(130, 0.6, 110), CFrame = CFrame.new(pos.X, 0.3, pos.Z), Material = Enum.Material.Grass, Color = Color3.fromRGB(90, 160, 70) })
+	grass.Parent = root
+	for i = 1, 10 do
+		local a = (i / 10) * math.pi * 2
+		buildTree(root, pos + Vector3.new(math.cos(a) * 52, 0.6, math.sin(a) * 45), 0.9 + (i % 3) * 0.3)
+	end
+	local sign = makePart({ Name = "TrainingSign", Size = Vector3.new(26, 5, 1), CFrame = CFrame.new(pos.X, 7, pos.Z - 50), Material = Enum.Material.SmoothPlastic, Color = Config.Colors.Dark })
+	sign.Parent = root
+	addLabel(sign, "ZONE D'ENTRAINEMENT", Enum.NormalId.Front, Config.Colors.Accent)
+	addLabel(sign, "ZONE D'ENTRAINEMENT", Enum.NormalId.Back, Config.Colors.Accent)
+end
 
-	-- Point d'apparition du joueur devant sa parcelle (cote centre)
-	local spawnPoint = rotation * CFrame.new(0, 3, -half - 5)
-	plotSpawns[plotId] = spawnPoint
+-- Mannequins d'entrainement ---------------------------------------------------------
 
-	-- Cases
-	local tiles = Instance.new("Folder")
-	tiles.Name = "Tiles"
-	tiles.Parent = folder
-	local center = (plot.Grid + 1) / 2
-	for row = 1, plot.Grid do
-		for col = 1, plot.Grid do
-			local index = (row - 1) * plot.Grid + col
-			local ring = math.max(math.abs(row - center), math.abs(col - center)) -- 0 = centre, 1, 2
-			local tile = makePart({
-				Name = "Tile" .. index,
-				Size = Vector3.new(plot.TileSize, 0.5, plot.TileSize),
-				CFrame = rotation * CFrame.new((col - center) * pitch, 0.75, (row - center) * pitch),
-				Material = Enum.Material.Ground,
-				Color = Config.Colors.Soil,
-			})
-			tile:SetAttribute("PlotId", plotId)
-			tile:SetAttribute("Index", index)
-			tile:SetAttribute("Ring", ring)
-			tile:SetAttribute("Plant", "")
-			tile:SetAttribute("Progress", 0)
-			tile:SetAttribute("Ripe", false)
-			tile:SetAttribute("Mutations", "")
-			tile:SetAttribute("Locked", ring >= 1)
-			CollectionService:AddTag(tile, "Tile")
-			tile.Parent = tiles
+local function buildDummy(root, position, index)
+	local model = Instance.new("Model")
+	model.Name = "Mannequin " .. index
+	local color = Color3.fromRGB(200, 200, 210)
+
+	local hrp = Instance.new("Part")
+	hrp.Name = "HumanoidRootPart"
+	hrp.Size = Vector3.new(2, 2, 1)
+	hrp.Transparency = 1
+	hrp.CanCollide = false
+	hrp.Anchored = true
+	hrp.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
+	hrp.Parent = model
+
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(2, 2, 1)
+	torso.Color = color
+	torso.Material = Enum.Material.SmoothPlastic
+	torso.CFrame = hrp.CFrame
+	torso.Parent = model
+
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Shape = Enum.PartType.Ball
+	head.Size = Vector3.new(1.4, 1.4, 1.4)
+	head.Color = Color3.fromRGB(255, 200, 60)
+	head.Material = Enum.Material.SmoothPlastic
+	head.CFrame = hrp.CFrame * CFrame.new(0, 1.7, 0)
+	head.Parent = model
+
+	local limbs = {
+		{ "Left Arm", Vector3.new(1, 2, 1), Vector3.new(-1.5, 0, 0) },
+		{ "Right Arm", Vector3.new(1, 2, 1), Vector3.new(1.5, 0, 0) },
+		{ "Left Leg", Vector3.new(1, 2, 1), Vector3.new(-0.5, -2, 0) },
+		{ "Right Leg", Vector3.new(1, 2, 1), Vector3.new(0.5, -2, 0) },
+	}
+	for _, def in ipairs(limbs) do
+		local limb = Instance.new("Part")
+		limb.Name = def[1]
+		limb.Size = def[2]
+		limb.Color = color
+		limb.Material = Enum.Material.SmoothPlastic
+		limb.CFrame = hrp.CFrame * CFrame.new(def[3])
+		limb.Parent = model
+	end
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") and part ~= hrp then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = hrp
+			weld.Part1 = part
+			weld.Parent = part
+			part.Anchored = false
 		end
 	end
 
-	folder.Parent = root
-	plotFolders[plotId] = folder
-	return folder
+	local humanoid = Instance.new("Humanoid")
+	humanoid.MaxHealth = Config.Map.DummyHealth
+	humanoid.Health = Config.Map.DummyHealth
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.Parent = model
+	model.PrimaryPart = hrp
+	model:SetAttribute("Dummy", true)
+	CollectionService:AddTag(model, "Dummy")
+	model.Parent = root
+
+	humanoid.Died:Connect(function()
+		task.delay(3, function()
+			model:Destroy()
+			buildDummy(root, position, index)
+		end)
+	end)
+	-- Regeneration
+	task.spawn(function()
+		while model.Parent and humanoid.Health > 0 do
+			task.wait(2)
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 15)
+		end
+	end)
 end
 
 function MapBuilder.Build()
-	local old = workspace:FindFirstChild("OnyxFarm")
+	local old = workspace:FindFirstChild("OnyxBattlegrounds")
 	if old then
 		old:Destroy()
 	end
@@ -370,49 +423,39 @@ function MapBuilder.Build()
 	if baseplate then
 		baseplate:Destroy()
 	end
-
 	local root = Instance.new("Folder")
-	root.Name = "OnyxFarm"
+	root.Name = "OnyxBattlegrounds"
 	root.Parent = workspace
 
 	buildLighting()
-	buildHub(root)
-	for plotId = 1, Config.Plot.Count do
-		buildPlot(root, plotId)
+	buildGround(root)
+	buildSpawn(root)
+	buildArena(root)
+	buildCity(root)
+	buildCalmZone(root)
+
+	local dummies = Instance.new("Folder")
+	dummies.Name = "Dummies"
+	dummies.Parent = workspace
+	local pos = Config.Map.CalmZone
+	for i = 1, Config.Map.DummyCount do
+		buildDummy(dummies, pos + Vector3.new(-30 + i * 15, 0.6, 0), i)
 	end
 
-	Players.RespawnTime = 2
+	Players.RespawnTime = Config.Combat.RespawnTime
 	return root
 end
 
-function MapBuilder.GetPlotFolder(plotId)
-	return plotFolders[plotId]
-end
-
-function MapBuilder.GetTile(plotId, index)
-	local folder = plotFolders[plotId]
-	return folder and folder.Tiles:FindFirstChild("Tile" .. index)
-end
-
-function MapBuilder.SetPlotOwner(plotId, player)
-	local folder = plotFolders[plotId]
-	if not folder then
-		return
-	end
-	folder:SetAttribute("OwnerId", player and player.UserId or 0)
-	folder:SetAttribute("OwnerName", player and player.DisplayName or "")
-	local text = player and ("Ferme de " .. player.DisplayName) or "Parcelle libre"
-	for _, gui in ipairs(folder.Sign:GetChildren()) do
-		local label = gui:IsA("SurfaceGui") and gui:FindFirstChildOfClass("TextLabel")
-		if label then
-			label.Text = text
-			label.TextColor3 = player and Config.Colors.Accent or Color3.new(1, 1, 1)
+-- Un point est-il dans une zone sure ?
+function MapBuilder.IsSafe(position)
+	for _, zone in ipairs(CollectionService:GetTagged("SafeZone")) do
+		local radius = zone:GetAttribute("SafeRadius") or 40
+		local flat = (Vector3.new(position.X, 0, position.Z) - Vector3.new(zone.Position.X, 0, zone.Position.Z)).Magnitude
+		if flat <= radius then
+			return true
 		end
 	end
-end
-
-function MapBuilder.GetPlotSpawn(plotId)
-	return plotSpawns[plotId]
+	return false
 end
 
 return MapBuilder
