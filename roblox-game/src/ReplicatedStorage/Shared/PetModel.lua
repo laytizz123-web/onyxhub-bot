@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
+local PetMeshFactory = require(ReplicatedStorage.Shared.PetMeshFactory)
 
 local PetModel = {}
 
@@ -244,7 +245,7 @@ local function applyEvolution(model, evo, root)
 		return
 	end
 	for _, part in ipairs(model:GetDescendants()) do
-		if part:IsA("BasePart") then
+		if part:IsA("BasePart") and not part:GetAttribute("Sculpted") then
 			local role = roleOf(part)
 			if role == "base" then
 				part.Color = colors.base
@@ -276,14 +277,16 @@ function PetModel.Build(petId, evoIndex, cf)
 	cf = cf or CFrame.new()
 	local folder = ReplicatedStorage:FindFirstChild("Pets")
 	-- cherche d'abord directement dans Pets, puis dans un modele importe d'un bloc (ex. TousLesPets)
-	local template = folder and (folder:FindFirstChild(petId) or folder:FindFirstChild(petId .. "_Node", true) or folder:FindFirstChild(petId, true))
-	if not template then
+	-- 1) pet sculpte (maillage organique construit en jeu), 2) modele du dossier Pets, 3) formes de secours
+	local sculpted = PetMeshFactory.Get(petId, evoIndex or 1)
+	local template = not sculpted and folder and (folder:FindFirstChild(petId) or folder:FindFirstChild(petId .. "_Node", true) or folder:FindFirstChild(petId, true))
+	if not sculpted and not template then
 		return buildProcedural(petId, evoIndex, cf)
 	end
 	local def = Config.PetById[petId] or Config.Pets[1]
 	local evo = Config.Evolutions[evoIndex or 1] or Config.Evolutions[1]
 	local rarity = Config.RarityById[def.rarity]
-	local model = template:Clone()
+	local model = sculpted or template:Clone()
 	if model:IsA("BasePart") then
 		-- piece importee posee seule dans le dossier : on l'emballe dans un Model
 		local wrapper = Instance.new("Model")

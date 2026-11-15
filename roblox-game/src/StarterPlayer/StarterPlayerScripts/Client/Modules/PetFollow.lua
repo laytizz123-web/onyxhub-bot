@@ -10,6 +10,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PetModel = require(ReplicatedStorage.Shared.PetModel)
 local PetAnimator = require(ReplicatedStorage.Shared.PetAnimator)
+local PetMeshFactory = require(ReplicatedStorage.Shared.PetMeshFactory)
+local Config = require(ReplicatedStorage.Shared.Config)
 
 local PetFollow = {}
 
@@ -286,6 +288,36 @@ function PetFollow.Init()
 		end
 	end)
 	RunService.RenderStepped:Connect(update)
+	-- pets sculptes : quand un maillage est pret, on remplace les pets affiches par la version sculptee
+	local refreshQueued = false
+	PetMeshFactory.Ready:Connect(function()
+		if refreshQueued then
+			return
+		end
+		refreshQueued = true
+		task.delay(0.3, function()
+			refreshQueued = false
+			for player, entry in pairs(tracked) do
+				entry.json = ""
+				rebuild(player)
+			end
+		end)
+	end)
+	task.spawn(function()
+		local list = {}
+		local ok, mine = pcall(function()
+			return HttpService:JSONDecode(Players.LocalPlayer:GetAttribute("EquippedPets") or "[]")
+		end)
+		if ok and type(mine) == "table" then
+			for _, pet in ipairs(mine) do
+				table.insert(list, { pet.id, evoIndexOf(pet.evo) })
+			end
+		end
+		for _, def in ipairs(Config.Pets) do
+			table.insert(list, { def.id, 1 })
+		end
+		PetMeshFactory.Preload(list)
+	end)
 end
 
 return PetFollow
