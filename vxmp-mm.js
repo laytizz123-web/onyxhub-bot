@@ -6531,9 +6531,9 @@ const tools = (() => {
   async function googleTranslate(text, target) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
     let status = "network";
-    for (const wait of [0, 1500, 4000, 8000]) {
+    for (const wait of [0, 400, 1200]) {
       if (wait) await pause(wait);
-      const res = await fetch(url, { signal: AbortSignal.timeout?.(10_000) }).catch(() => null);
+      const res = await fetch(url, { signal: AbortSignal.timeout?.(5000) }).catch(() => null);
       if (res?.ok) {
         const data = await res.json().catch(() => null);
         const out = (data?.[0] || []).map((part) => part?.[0] || "").join("");
@@ -6548,27 +6548,36 @@ const tools = (() => {
     }
     return null;
   }
-  /* One translation at a time, in the order of the messages: no burst of requests when people type fast. */
-  let translateChain = Promise.resolve();
+  /* One translation at a time per ticket (the order is kept), different tickets in parallel. */
+  const translateChains = new Map();
   function translateTicket(message) {
-    const job = translateChain.then(() => translateOne(message));
-    translateChain = job.catch(() => {});
+    const key = message.channel?.id || "x";
+    const job = (translateChains.get(key) || Promise.resolve()).then(() => translateOne(message));
+    const tail = job.catch(() => {});
+    translateChains.set(key, tail);
+    tail.then(() => translateChains.get(key) === tail && translateChains.delete(key));
     return job;
   }
+  const translateCache = new Map(); // same text -> same translation, no request
   async function translateOne(message) {
     if (!db.cfg.translate.on || message.author?.bot || !message.guild || !isTicket(message.channel)) return false;
     // what is worth translating: words, not only links, mentions, emojis or numbers
     const clean = String(message.content || "").replace(/https?:\/\/\S+/g, " ").replace(/<a?:\w+:\d+>|<[@#][!&]?\d+>/g, " ").trim();
     if ((clean.match(/\p{L}/gu) || []).length < 2) return false;
     const text = clean.slice(0, 1500);
-    let result = await googleTranslate(text, "fr");
-    if (!result) return false;
-    const from = result.lang.split("-")[0] || "?";
-    // French -> English; any other language (English, slang read as another language...) -> French
-    if (from === "fr") {
-      result = await googleTranslate(text, "en");
-      if (!result) return false;
+    let pair = translateCache.get(text);
+    if (!pair) {
+      // both directions at the same time: one wait instead of two
+      const [toFr, toEn] = await Promise.all([googleTranslate(text, "fr"), googleTranslate(text, "en")]);
+      const lang = (toFr || toEn)?.lang.split("-")[0] || "";
+      if (!lang) return false;
+      pair = { from: lang, result: lang === "fr" ? toEn : toFr };
+      if (!pair.result) return false;
+      translateCache.set(text, pair);
+      if (translateCache.size > 500) translateCache.delete(translateCache.keys().next().value);
     }
+    const from = pair.from;
+    const result = pair.result;
     const to = from === "fr" ? "EN" : "FR";
     const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
     if (!result.text || norm(result.text) === norm(clean)) return false; // the same once translated ("ok", "yo", a name...): nothing to show
