@@ -278,6 +278,58 @@ def write_glb(path, pos, nrm, uv, tris, atlas):
         f.write(struct.pack("<II", len(blob), 0x004E4942) + blob)
 
 
+def write_combined_glb(path, pets):
+    """Un seul fichier avec tous les pets (un noeud nomme par pet), cote a cote."""
+    blob = b""
+    views, accessors, meshes, nodes, materials, textures, images = [], [], [], [], [], [], []
+
+    def add_view(data, target=None):
+        nonlocal blob
+        blob += b"\0" * ((-len(blob)) % 4)
+        view = {"buffer": 0, "byteOffset": len(blob), "byteLength": len(data)}
+        if target:
+            view["target"] = target
+        blob += data
+        views.append(view)
+        return len(views) - 1
+
+    for k, (name, pos, nrm, uv, tris, atlas) in enumerate(pets):
+        png = io.BytesIO()
+        atlas.save(png, "PNG", optimize=True)
+        vp = add_view(pos.tobytes(), 34962)
+        vn = add_view(nrm.astype(np.float32).tobytes(), 34962)
+        vt = add_view(uv.tobytes(), 34962)
+        vi = add_view(tris.astype(np.uint32).tobytes(), 34963)
+        vimg = add_view(png.getvalue())
+        a0 = len(accessors)
+        accessors += [
+            {"bufferView": vp, "componentType": 5126, "count": len(pos), "type": "VEC3", "min": pos.min(0).tolist(), "max": pos.max(0).tolist()},
+            {"bufferView": vn, "componentType": 5126, "count": len(nrm), "type": "VEC3"},
+            {"bufferView": vt, "componentType": 5126, "count": len(uv), "type": "VEC2"},
+            {"bufferView": vi, "componentType": 5125, "count": int(tris.size), "type": "SCALAR"},
+        ]
+        images.append({"bufferView": vimg, "mimeType": "image/png", "name": name})
+        textures.append({"source": len(images) - 1, "sampler": 0})
+        materials.append({"name": name, "pbrMetallicRoughness": {"baseColorTexture": {"index": len(textures) - 1}, "metallicFactor": 0.0, "roughnessFactor": 0.8}})
+        meshes.append({"name": name, "primitives": [{"attributes": {"POSITION": a0, "NORMAL": a0 + 1, "TEXCOORD_0": a0 + 2}, "indices": a0 + 3, "material": len(materials) - 1}]})
+        nodes.append({"name": name, "mesh": len(meshes) - 1, "translation": [(k % 5) * 7.0, 0.0, (k // 5) * 7.0]})
+    blob += b"\0" * ((-len(blob)) % 4)
+    gltf = {
+        "asset": {"version": "2.0", "generator": "PetRush inflate_pets.py"},
+        "scene": 0,
+        "scenes": [{"name": "TousLesPets", "nodes": list(range(len(nodes)))}],
+        "nodes": nodes, "meshes": meshes, "materials": materials, "textures": textures,
+        "samplers": [{"magFilter": 9729, "minFilter": 9987}], "images": images,
+        "accessors": accessors, "buffers": [{"byteLength": len(blob)}], "bufferViews": views,
+    }
+    js = json.dumps(gltf, separators=(",", ":")).encode()
+    js += b" " * ((-len(js)) % 4)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(blob)))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A) + js)
+        f.write(struct.pack("<II", len(blob), 0x004E4942) + blob)
+
+
 # ------------------------------------------------------------- apercu (rasteriseur)
 def render(pos, nrm, uv, tris, atlas, yaw_deg, size=300, pitch_deg=12):
     tex = np.array(atlas).astype(float) / 255
@@ -332,9 +384,16 @@ def render(pos, nrm, uv, tris, atlas, yaw_deg, size=300, pitch_deg=12):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    names = sys.argv[1:] or sorted(f[:-4] for f in os.listdir(SRC) if f.endswith(".png"))
+    args = sys.argv[1:]
+    combined_only = args == ["--combined"]
+    names = sorted(f[:-4] for f in os.listdir(SRC) if f.endswith(".png")) if (not args or combined_only) else args
+    built = []
     for name in names:
         pos, nrm, uv, tris, atlas = build(name)
+        built.append((name, pos, nrm, uv, tris, atlas))
+        if combined_only:
+            print(f"{name}: pret")
+            continue
         write_glb(os.path.join(OUT, name + ".glb"), pos, nrm, uv, tris, atlas)
         views = [render(pos, nrm, uv, tris, atlas, yaw) for yaw in (180, 145, 90, 35, 0)]
         sheet = Image.new("RGB", (300 * len(views), 300))
@@ -342,6 +401,9 @@ def main():
             sheet.paste(im, (300 * k, 0))
         sheet.save(os.path.join(OUT, name + "_apercu.png"))
         print(f"{name}: {len(pos)} sommets, {len(tris)} triangles")
+    if not args or combined_only:
+        write_combined_glb(os.path.join(OUT, "TousLesPets.glb"), built)
+        print("-> TousLesPets.glb (les 19 pets dans un seul fichier)")
 
 
 if __name__ == "__main__":

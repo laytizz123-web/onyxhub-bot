@@ -275,7 +275,8 @@ end
 function PetModel.Build(petId, evoIndex, cf)
 	cf = cf or CFrame.new()
 	local folder = ReplicatedStorage:FindFirstChild("Pets")
-	local template = folder and folder:FindFirstChild(petId)
+	-- cherche d'abord directement dans Pets, puis dans un modele importe d'un bloc (ex. TousLesPets)
+	local template = folder and (folder:FindFirstChild(petId) or folder:FindFirstChild(petId, true))
 	if not template then
 		return buildProcedural(petId, evoIndex, cf)
 	end
