@@ -3974,6 +3974,10 @@ const tools = (() => {
     vouchN: 0,
     scams: {}, // user id -> { reason, proof, by, at }
     staffStats: {}, // user id -> { ct, ix } trades and indexes done
+    coins: {}, // user id -> coins
+    daily: {}, // user id -> { at, streak }
+    invites: {}, // inviter id -> { joins, left }
+    invitedBy: {}, // member id -> inviter id
     idle: {}, // ticket channel id -> { warnAt, msgId }
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
@@ -3985,6 +3989,9 @@ const tools = (() => {
       translate: { on: true },
       tickets: { inactiveH: 48, closeH: 24 }, // 0 = no automatic closing
       commandsOnly: { channels: [] },
+      eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 }, // shop: [{ roleId, price }]
+      counting: { channelId: "", n: 0, last: "", best: 0 },
+      counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
       scam: { channelId: "" },
       rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [], text: null }, // text: { title, body, end, button, color } chosen with /reglement modifier
@@ -4029,6 +4036,7 @@ const tools = (() => {
     for (const k of ["roles", "auto", "prices", "cautions", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
     if (!Array.isArray(next.cfg.rules.opened)) next.cfg.rules.opened = [];
     if (!Array.isArray(next.cfg.commandsOnly.channels)) next.cfg.commandsOnly.channels = [];
+    if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
     for (const k of ["words", "channels", "roles"]) if (!Array.isArray(next.cfg.badwords[k])) next.cfg.badwords[k] = k === "words" ? BADWORDS_DEFAULT() : [];
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
@@ -4043,7 +4051,7 @@ const tools = (() => {
     next.indexStats = { ...base.indexStats, ...(raw.indexStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches", "scams", "idle", "staffStats"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches", "scams", "idle", "staffStats", "coins", "daily", "invites", "invitedBy"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     for (const [k, v] of Object.entries(next.vouches)) if (!Array.isArray(v)) delete next.vouches[k];
     if (!Number.isFinite(next.vouchN)) next.vouchN = 0;
@@ -4316,6 +4324,7 @@ const tools = (() => {
     const now = Date.now();
     if (now - (cooldown.get(message.author.id) || 0) < 60_000) return;
     cooldown.set(message.author.id, now);
+    addCoins(message.author.id, db.cfg.eco.perMessage || 0);
     await addXp(message.member, 15 + Math.floor(Math.random() * 11), message.channel);
   }
 
@@ -4695,6 +4704,44 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("off").setDescription(t("Désactiver : tout le monde revoit le serveur", "Turn off: everyone sees the server again")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état du règlement", "See the state of the rules")))
       ),
+      // economy
+      cmd("coins", t("Économie : solde, daily, payer, classement, boutique", "Economy: balance, daily, pay, ranking, shop"))
+        .addSubcommand((s) => s.setName("solde").setDescription(t("Voir ton solde (ou celui d'un membre)", "See your balance (or a member's)")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member"))))
+        .addSubcommand((s) => s.setName("daily").setDescription(t("Récupérer tes pièces du jour", "Get your daily coins")))
+        .addSubcommand((s) =>
+          s
+            .setName("payer")
+            .setDescription(t("Donner des pièces à un membre", "Give coins to a member"))
+            .addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))
+            .addIntegerOption((o) => o.setName("montant").setDescription(t("Combien", "How much")).setMinValue(1).setMaxValue(1_000_000).setRequired(true))
+        )
+        .addSubcommand((s) => s.setName("top").setDescription(t("Les plus riches", "The richest")))
+        .addSubcommand((s) => s.setName("boutique").setDescription(t("Les rôles à acheter", "The roles to buy")))
+        .addSubcommand((s) => s.setName("acheter").setDescription(t("Acheter un rôle de la boutique", "Buy a role from the shop")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro dans la boutique", "Number in the shop")).setMinValue(1).setMaxValue(25).setRequired(true))),
+      D(
+        P.ManageGuild,
+        cmd("ecoadmin", t("Gérer l'économie : donner, retirer, boutique", "Manage the economy: give, take, shop"))
+          .addSubcommand((s) => s.setName("donner").setDescription(t("Donner des pièces", "Give coins")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)).addIntegerOption((o) => o.setName("montant").setDescription(t("Combien", "How much")).setMinValue(1).setMaxValue(10_000_000).setRequired(true)))
+          .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer des pièces", "Take coins")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true)).addIntegerOption((o) => o.setName("montant").setDescription(t("Combien", "How much")).setMinValue(1).setMaxValue(10_000_000).setRequired(true)))
+          .addSubcommand((s) => s.setName("boutique-ajouter").setDescription(t("Mettre un rôle en vente", "Put a role on sale")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)).addIntegerOption((o) => o.setName("prix").setDescription(t("Le prix en pièces", "The price in coins")).setMinValue(1).setMaxValue(10_000_000).setRequired(true)))
+          .addSubcommand((s) => s.setName("boutique-retirer").setDescription(t("Retirer un rôle de la boutique", "Remove a role from the shop")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro dans la boutique", "Number in the shop")).setMinValue(1).setMaxValue(25).setRequired(true)))
+      ),
+      // games with coins
+      cmd("blackjack", t("Blackjack contre le bot (mise en pièces)", "Blackjack against the bot (bet in coins)")).addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true)),
+      cmd("roulette", t("Roulette : rouge, noir ou vert", "Roulette: red, black or green"))
+        .addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true))
+        .addStringOption((o) => o.setName("couleur").setDescription(t("Ton choix", "Your pick")).setRequired(true).addChoices({ name: t("🔴 Rouge (x2)", "🔴 Red (x2)"), value: "red" }, { name: t("⚫ Noir (x2)", "⚫ Black (x2)"), value: "black" }, { name: t("🟢 Vert (x14)", "🟢 Green (x14)"), value: "green" })),
+      cmd("slots", t("Machine à sous (mise en pièces)", "Slot machine (bet in coins)")).addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true)),
+      cmd("morpion", t("Morpion contre un membre", "Tic-tac-toe against a member")).addUserOption((o) => o.setName("adversaire").setDescription(t("Ton adversaire", "Your opponent")).setRequired(true)),
+      cmd("puissance4", t("Puissance 4 contre un membre", "Connect 4 against a member")).addUserOption((o) => o.setName("adversaire").setDescription(t("Ton adversaire", "Your opponent")).setRequired(true)),
+      D(P.ManageGuild, cmd("comptage", t("Salon de comptage 1, 2, 3… (refaire = enlever)", "Counting channel 1, 2, 3… (again = remove)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText))),
+      D(
+        P.ManageGuild,
+        cmd("compteurs", t("Salons compteurs (membres, trades, vouches)", "Counter channels (members, trades, vouches)"))
+          .addSubcommand((s) => s.setName("creer").setDescription(t("Créer la catégorie des compteurs en haut du serveur", "Create the counters category at the top of the server")))
+          .addSubcommand((s) => s.setName("supprimer").setDescription(t("Supprimer les compteurs", "Delete the counters")))
+      ),
+      cmd("invites", t("Invitations : qui a invité qui", "Invites: who invited whom")).addUserOption((o) => o.setName("membre").setDescription(t("Un membre (vide = le classement)", "A member (empty = the ranking)"))),
       // channels where only slash commands are allowed
       D(P.ManageGuild, cmd("commandsonly", t("Salon où on ne peut utiliser que les commandes / (refaire = enlever)", "Channel where only / commands are allowed (again = remove)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText))),
       // bad words filter
@@ -4802,7 +4849,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "blackjack", "roulette", "slots", "morpion", "puissance4", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6455,6 +6502,8 @@ const tools = (() => {
       [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+      [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
+      [t("🎮 Jeux", "🎮 Games"), "`/blackjack` `/roulette` `/slots` `/morpion` `/puissance4` `/invites`"],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
       [t("🔊 Ton vocal", "🔊 Your voice channel"), t("Rejoins « ➕ Créer ton vocal » : les boutons pour le gérer sont dans le chat du vocal", "Join \"➕ Create your voice\": the buttons to manage it are in the room's chat")],
       [t("🔨 Bannir", "🔨 Ban"), "`/ban` `/unban`", P.BanMembers],
@@ -6465,7 +6514,7 @@ const tools = (() => {
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
       [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade` `/traduction`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
-      [t("🛡️ Modération+", "🛡️ Moderation+"), "`/scam` `/antibadwords` `/commandsonly` `/tickets`", P.ManageGuild],
+      [t("🛡️ Modération+", "🛡️ Moderation+"), "`/scam` `/antibadwords` `/commandsonly` `/tickets` `/ecoadmin` `/comptage` `/compteurs`", P.ManageGuild],
       [t("👑 Admin", "👑 Admin"), "`/setup` `/reglement` `/panel` `/access` `/tiers`", P.Administrator],
     ];
     return i.reply({
@@ -6976,6 +7025,413 @@ const tools = (() => {
         )
       )
     );
+  };
+
+  /* ---------- economy ---------- */
+  const coinsOf = (id) => db.coins[id] || 0;
+  const addCoins = (id, n) => {
+    db.coins[id] = Math.max(0, coinsOf(id) + Math.round(n));
+    save();
+    return db.coins[id];
+  };
+  const fmtCoins = (n) => `${Number(n).toLocaleString("fr-FR")} 🪙`;
+  /* takes the bet, or answers why not. Returns true when the bet was taken. */
+  const takeBet = async (i, bet) => {
+    if (coinsOf(i.user.id) < bet) {
+      await reply(i, no(t(`Tu n'as que ${fmtCoins(coinsOf(i.user.id))}. Gagne des pièces en parlant et avec \`/coins daily\`.`, `You only have ${fmtCoins(coinsOf(i.user.id))}. Earn coins by talking and with \`/coins daily\`.`)));
+      return false;
+    }
+    addCoins(i.user.id, -bet);
+    return true;
+  };
+  H.coins = async (i) => {
+    const sub = i.options.getSubcommand();
+    const eco = db.cfg.eco;
+    if (sub === "solde") {
+      const user = i.options.getUser("membre") || i.user;
+      return i.reply({ embeds: [embed(0xf1c40f).setAuthor({ name: user.username, iconURL: user.displayAvatarURL?.() || undefined }).setDescription(t(`💰 **${fmtCoins(coinsOf(user.id))}**`, `💰 **${fmtCoins(coinsOf(user.id))}**`))], allowedMentions: { parse: [] } });
+    }
+    if (sub === "daily") {
+      const d = db.daily[i.user.id] || { at: 0, streak: 0 };
+      const now = Date.now();
+      if (now - d.at < 20 * 3_600_000) return reply(i, no(t(`Déjà récupéré. Reviens <t:${Math.floor((d.at + 20 * 3_600_000) / 1000)}:R>.`, `Already claimed. Come back <t:${Math.floor((d.at + 20 * 3_600_000) / 1000)}:R>.`)));
+      const streak = now - d.at < 48 * 3_600_000 ? d.streak + 1 : 1;
+      const base = eco.dailyMin + Math.floor(Math.random() * (eco.dailyMax - eco.dailyMin + 1));
+      const gain = base + Math.min(streak - 1, 10) * 20;
+      db.daily[i.user.id] = { at: now, streak };
+      addCoins(i.user.id, gain);
+      return i.reply({ embeds: [embed(0x57f287).setTitle(t("🎁  Daily", "🎁  Daily")).setDescription(t(`+**${fmtCoins(gain)}** · série de **${streak}** jour(s) 🔥\nSolde : **${fmtCoins(coinsOf(i.user.id))}**`, `+**${fmtCoins(gain)}** · **${streak}** day streak 🔥\nBalance: **${fmtCoins(coinsOf(i.user.id))}**`))] });
+    }
+    if (sub === "payer") {
+      const user = i.options.getUser("membre");
+      const n = i.options.getInteger("montant");
+      if (user.id === i.user.id || user.bot) return reply(i, no(t("Impossible.", "Not possible.")));
+      if (coinsOf(i.user.id) < n) return reply(i, no(t(`Tu n'as que ${fmtCoins(coinsOf(i.user.id))}.`, `You only have ${fmtCoins(coinsOf(i.user.id))}.`)));
+      addCoins(i.user.id, -n);
+      addCoins(user.id, n);
+      return i.reply({ content: t(`💸 <@${i.user.id}> a donné **${fmtCoins(n)}** à <@${user.id}>.`, `💸 <@${i.user.id}> gave **${fmtCoins(n)}** to <@${user.id}>.`), allowedMentions: { users: [user.id] } });
+    }
+    if (sub === "top") {
+      const rows = Object.entries(db.coins).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      const medal = ["🥇", "🥈", "🥉"];
+      return i.reply({ embeds: [embed(0xf1c40f).setTitle(t("💰  Les plus riches", "💰  The richest")).setDescription(rows.length ? rows.map(([id, n], k) => `${medal[k] || `**${k + 1}.**`} <@${id}> · ${fmtCoins(n)}`).join("\n") : t("*Personne n'a de pièces.*", "*Nobody has coins.*"))], allowedMentions: { parse: [] } });
+    }
+    if (sub === "boutique") {
+      return i.reply({ embeds: [embed(0x9b59b6).setTitle(t("🛒  Boutique", "🛒  Shop")).setDescription(eco.shop.length ? eco.shop.map((x, k) => `**${k + 1}.** <@&${x.roleId}> · ${fmtCoins(x.price)}`).join("\n") + t("\n\n`/coins acheter numero:…`", "\n\n`/coins acheter numero:…`") : t("*La boutique est vide.*", "*The shop is empty.*")).setFooter({ text: t(`Ton solde : ${coinsOf(i.user.id)} pièces`, `Your balance: ${coinsOf(i.user.id)} coins`) })], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "acheter") {
+      const item = eco.shop[i.options.getInteger("numero") - 1];
+      if (!item) return reply(i, no(t("Ce numéro n'existe pas : regarde `/coins boutique`.", "This number does not exist: see `/coins boutique`.")));
+      if (i.member?.roles?.cache?.has?.(item.roleId)) return reply(i, no(t("Tu as déjà ce rôle.", "You already have this role.")));
+      if (coinsOf(i.user.id) < item.price) return reply(i, no(t(`Il te faut ${fmtCoins(item.price)}, tu as ${fmtCoins(coinsOf(i.user.id))}.`, `You need ${fmtCoins(item.price)}, you have ${fmtCoins(coinsOf(i.user.id))}.`)));
+      try {
+        await i.member.roles.add(item.roleId, "shop");
+      } catch {
+        return reply(i, no(t("Je n'ai pas pu te donner le rôle (mon rôle doit être au-dessus). Tu n'as pas payé.", "I could not give you the role (my role must be above it). You did not pay.")));
+      }
+      addCoins(i.user.id, -item.price);
+      return reply(i, ok(t(`Tu as acheté <@&${item.roleId}> pour ${fmtCoins(item.price)} ! Solde : ${fmtCoins(coinsOf(i.user.id))}`, `You bought <@&${item.roleId}> for ${fmtCoins(item.price)}! Balance: ${fmtCoins(coinsOf(i.user.id))}`)));
+    }
+  };
+  H.ecoadmin = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    const eco = db.cfg.eco;
+    if (sub === "donner" || sub === "retirer") {
+      const user = i.options.getUser("membre");
+      const n = i.options.getInteger("montant");
+      const left = addCoins(user.id, sub === "donner" ? n : -n);
+      return reply(i, ok(t(`<@${user.id}> a maintenant ${fmtCoins(left)}.`, `<@${user.id}> now has ${fmtCoins(left)}.`)));
+    }
+    if (sub === "boutique-ajouter") {
+      const role = i.options.getRole("role");
+      if (role.managed || role.id === i.guild.roles.everyone?.id) return reply(i, no(t("Ce rôle ne peut pas être vendu.", "This role cannot be sold.")));
+      const price = i.options.getInteger("prix");
+      const had = eco.shop.find((x) => x.roleId === role.id);
+      if (had) had.price = price;
+      else if (eco.shop.length >= 25) return reply(i, no(t("25 rôles maximum.", "25 roles maximum.")));
+      else eco.shop.push({ roleId: role.id, price });
+      save();
+      return reply(i, ok(t(`<@&${role.id}> est en vente à ${fmtCoins(price)}.`, `<@&${role.id}> is on sale for ${fmtCoins(price)}.`)));
+    }
+    if (sub === "boutique-retirer") {
+      const k = i.options.getInteger("numero") - 1;
+      if (!eco.shop[k]) return reply(i, no(t("Ce numéro n'existe pas.", "This number does not exist.")));
+      const [x] = eco.shop.splice(k, 1);
+      save();
+      return reply(i, ok(t(`<@&${x.roleId}> n'est plus en vente.`, `<@&${x.roleId}> is no longer on sale.`)));
+    }
+  };
+
+  /* ---------- casino ---------- */
+  const SUITS = ["♠️", "♥️", "♦️", "♣️"];
+  const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  const draw1 = () => ({ r: RANKS[Math.floor(Math.random() * 13)], s: SUITS[Math.floor(Math.random() * 4)] });
+  const handValue = (hand) => {
+    let v = 0;
+    let aces = 0;
+    for (const c of hand) {
+      if (c.r === "A") {
+        aces++;
+        v += 11;
+      } else v += ["J", "Q", "K"].includes(c.r) ? 10 : Number(c.r);
+    }
+    while (v > 21 && aces--) v -= 10;
+    return v;
+  };
+  const showHand = (hand) => hand.map((c) => `\`${c.r}${c.s}\``).join(" ");
+  const blackjacks = new Map(); // user id -> game
+  function bjView(g, end) {
+    const pv = handValue(g.player);
+    const dv = handValue(g.dealer);
+    const e = embed(end ? (end.win > 0 ? 0x57f287 : end.win === 0 ? 0x95a5a6 : 0xed4245) : 0x2c2f33)
+      .setTitle(t(`🃏  Blackjack · mise ${fmtCoins(g.bet)}`, `🃏  Blackjack · bet ${fmtCoins(g.bet)}`))
+      .addFields({ name: t(`Toi (${pv})`, `You (${pv})`), value: showHand(g.player), inline: true }, { name: t(`Croupier (${end ? dv : "?"})`, `Dealer (${end ? dv : "?"})`), value: end ? showHand(g.dealer) : `${showHand([g.dealer[0]])} \`??\``, inline: true });
+    if (end) e.setDescription(`**${end.text}**\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(g.user))}`);
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:bj:hit").setLabel(t("Carte", "Hit")).setEmoji("➕").setStyle(ButtonStyle.Primary).setDisabled(Boolean(end)), new ButtonBuilder().setCustomId("tl:bj:stand").setLabel(t("Rester", "Stand")).setEmoji("✋").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(end)));
+    return { embeds: [e], components: [row] };
+  }
+  function bjFinish(g) {
+    blackjacks.delete(g.user);
+    const pv = handValue(g.player);
+    if (pv > 21) return { win: -1, text: t("Perdu, tu as dépassé 21 💥", "Bust, you went over 21 💥") };
+    while (handValue(g.dealer) < 17) g.dealer.push(draw1());
+    const dv = handValue(g.dealer);
+    const natural = pv === 21 && g.player.length === 2;
+    if (dv > 21 || pv > dv) {
+      const prize = Math.floor(g.bet * (natural ? 2.5 : 2));
+      addCoins(g.user, prize);
+      return { win: 1, text: t(`${natural ? "Blackjack ! " : ""}Gagné : +${fmtCoins(prize - g.bet)} 🎉`, `${natural ? "Blackjack! " : ""}You win: +${fmtCoins(prize - g.bet)} 🎉`) };
+    }
+    if (pv === dv) {
+      addCoins(g.user, g.bet);
+      return { win: 0, text: t("Égalité : mise rendue.", "Push: bet returned.") };
+    }
+    return { win: -1, text: t("Le croupier gagne 😢", "The dealer wins 😢") };
+  }
+  H.blackjack = async (i) => {
+    if (blackjacks.has(i.user.id)) return reply(i, no(t("Tu as déjà une partie en cours.", "You already have a game running.")));
+    const bet = i.options.getInteger("mise");
+    if (!(await takeBet(i, bet))) return;
+    const g = { user: i.user.id, bet, player: [draw1(), draw1()], dealer: [draw1(), draw1()] };
+    blackjacks.set(i.user.id, g);
+    if (handValue(g.player) === 21) return i.reply(bjView(g, bjFinish(g)));
+    return i.reply(bjView(g));
+  };
+  async function bjButton(i, action) {
+    const g = blackjacks.get(i.user.id);
+    if (!g || i.message?.interaction?.user?.id && i.message.interaction.user.id !== i.user.id) return reply(i, no(t("Ce n'est pas ta partie (lance `/blackjack`).", "This is not your game (use `/blackjack`).")));
+    if (action === "hit") {
+      g.player.push(draw1());
+      if (handValue(g.player) >= 21) return i.update(bjView(g, bjFinish(g)));
+      return i.update(bjView(g));
+    }
+    return i.update(bjView(g, bjFinish(g)));
+  }
+  const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+  H.roulette = async (i) => {
+    const bet = i.options.getInteger("mise");
+    const pick = i.options.getString("couleur");
+    if (!(await takeBet(i, bet))) return;
+    const n = Math.floor(Math.random() * 37);
+    const color = n === 0 ? "green" : RED.has(n) ? "red" : "black";
+    const icon = { red: "🔴", black: "⚫", green: "🟢" }[color];
+    const win = pick === color ? bet * (color === "green" ? 14 : 2) : 0;
+    if (win) addCoins(i.user.id, win);
+    return i.reply({ embeds: [embed(win ? 0x57f287 : 0xed4245).setTitle(t("🎡  Roulette", "🎡  Roulette")).setDescription(`${t("La bille tombe sur", "The ball lands on")} **${icon} ${n}**\n\n${win ? t(`Gagné : +${fmtCoins(win - bet)} 🎉`, `You win: +${fmtCoins(win - bet)} 🎉`) : t(`Perdu : -${fmtCoins(bet)}`, `You lose: -${fmtCoins(bet)}`)}\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(i.user.id))}`)] });
+  };
+  const REELS = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"];
+  H.slots = async (i) => {
+    const bet = i.options.getInteger("mise");
+    if (!(await takeBet(i, bet))) return;
+    const r = [0, 1, 2].map(() => REELS[Math.floor(Math.random() * REELS.length)]);
+    const same = r[0] === r[1] && r[1] === r[2];
+    const two = !same && (r[0] === r[1] || r[1] === r[2] || r[0] === r[2]);
+    const mult = same ? (r[0] === "7️⃣" ? 10 : r[0] === "💎" ? 7 : 5) : two ? 2 : 0;
+    const win = bet * mult;
+    if (win) addCoins(i.user.id, win);
+    return i.reply({ embeds: [embed(win ? 0x57f287 : 0xed4245).setTitle(t("🎰  Machine à sous", "🎰  Slot machine")).setDescription(`**[ ${r.join(" | ")} ]**\n\n${win ? t(`Gagné : x${mult} → +${fmtCoins(win - bet)} 🎉`, `You win: x${mult} → +${fmtCoins(win - bet)} 🎉`) : t(`Perdu : -${fmtCoins(bet)}`, `You lose: -${fmtCoins(bet)}`)}\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(i.user.id))}`)] });
+  };
+
+  /* ---------- 2 player games: tic-tac-toe and connect 4 ---------- */
+  const duels = new Map(); // game id -> game
+  let duelN = 0;
+  const duelCheck = (i, opp) => {
+    if (!opp || opp.bot || opp.id === i.user.id) return t("Choisis un autre membre (pas toi, pas un bot).", "Pick another member (not you, not a bot).");
+    return "";
+  };
+  const TTT_LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  function tttView(g) {
+    const rows = [0, 1, 2].map((r) => new ActionRowBuilder().addComponents([0, 1, 2].map((c) => {
+      const k = r * 3 + c;
+      const v = g.board[k];
+      return new ButtonBuilder().setCustomId(`tl:ttt:${g.id}:${k}`).setLabel(v === 0 ? "❌" : v === 1 ? "⭕" : "·").setStyle(v === 0 ? ButtonStyle.Danger : v === 1 ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(v !== null || Boolean(g.over));
+    })));
+    const status = g.over || t(`Au tour de <@${g.players[g.turn]}> (${g.turn ? "⭕" : "❌"})`, `<@${g.players[g.turn]}>'s turn (${g.turn ? "⭕" : "❌"})`);
+    return { content: `🎮 **${t("Morpion", "Tic-tac-toe")}** · ❌ <@${g.players[0]}> vs ⭕ <@${g.players[1]}>\n${status}`, components: rows, allowedMentions: { users: g.over ? [] : [g.players[g.turn]] } };
+  }
+  H.morpion = async (i) => {
+    const opp = i.options.getUser("adversaire");
+    const bad = duelCheck(i, opp);
+    if (bad) return reply(i, no(bad));
+    const g = { id: String(++duelN), kind: "ttt", players: [i.user.id, opp.id], turn: 0, board: Array(9).fill(null), over: "" };
+    duels.set(g.id, g);
+    return i.reply(tttView(g));
+  };
+  async function tttPlay(i, id, cell) {
+    const g = duels.get(id);
+    if (!g || g.over) return reply(i, no(t("Cette partie est terminée.", "This game is over.")));
+    if (!g.players.includes(i.user.id)) return reply(i, no(t("Tu ne joues pas dans cette partie.", "You are not playing in this game.")));
+    if (g.players[g.turn] !== i.user.id) return reply(i, no(t("Ce n'est pas ton tour.", "It is not your turn.")));
+    const k = Number(cell);
+    if (!(k >= 0 && k < 9) || g.board[k] !== null) return reply(i, no(t("Case déjà prise.", "Square already taken.")));
+    g.board[k] = g.turn;
+    if (TTT_LINES.some((l) => l.every((x) => g.board[x] === g.turn))) g.over = t(`🏆 <@${i.user.id}> gagne !`, `🏆 <@${i.user.id}> wins!`);
+    else if (g.board.every((x) => x !== null)) g.over = t("🤝 Match nul !", "🤝 Draw!");
+    else g.turn = 1 - g.turn;
+    if (g.over) duels.delete(g.id);
+    return i.update(tttView(g));
+  }
+  const C4_W = 7;
+  const C4_H = 6;
+  function c4View(g) {
+    const grid = [];
+    for (let r = 0; r < C4_H; r++) grid.push(Array.from({ length: C4_W }, (_, c) => (g.board[c][C4_H - 1 - r] === 0 ? "🔴" : g.board[c][C4_H - 1 - r] === 1 ? "🟡" : "⚫")).join(""));
+    const btn = (c) => new ButtonBuilder().setCustomId(`tl:c4:${g.id}:${c}`).setLabel(String(c + 1)).setStyle(ButtonStyle.Secondary).setDisabled(Boolean(g.over) || g.board[c].length >= C4_H);
+    const status = g.over || t(`Au tour de <@${g.players[g.turn]}> (${g.turn ? "🟡" : "🔴"})`, `<@${g.players[g.turn]}>'s turn (${g.turn ? "🟡" : "🔴"})`);
+    return {
+      content: `🎮 **${t("Puissance 4", "Connect 4")}** · 🔴 <@${g.players[0]}> vs 🟡 <@${g.players[1]}>\n${grid.join("\n")}\n${"1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣"}\n${status}`,
+      components: [new ActionRowBuilder().addComponents([0, 1, 2, 3].map(btn)), new ActionRowBuilder().addComponents([4, 5, 6].map(btn))],
+      allowedMentions: { users: g.over ? [] : [g.players[g.turn]] },
+    };
+  }
+  const c4Won = (b, c, p) => {
+    const r = b[c].length - 1;
+    const at = (cc, rr) => (cc >= 0 && cc < C4_W && rr >= 0 && rr < C4_H ? b[cc][rr] : undefined);
+    for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+      let n = 1;
+      for (const s of [1, -1]) for (let k = 1; k < 4 && at(c + dc * k * s, r + dr * k * s) === p; k++) n++;
+      if (n >= 4) return true;
+    }
+    return false;
+  };
+  H.puissance4 = async (i) => {
+    const opp = i.options.getUser("adversaire");
+    const bad = duelCheck(i, opp);
+    if (bad) return reply(i, no(bad));
+    const g = { id: String(++duelN), kind: "c4", players: [i.user.id, opp.id], turn: 0, board: Array.from({ length: C4_W }, () => []), over: "" };
+    duels.set(g.id, g);
+    return i.reply(c4View(g));
+  };
+  async function c4Play(i, id, col) {
+    const g = duels.get(id);
+    if (!g || g.over) return reply(i, no(t("Cette partie est terminée.", "This game is over.")));
+    if (!g.players.includes(i.user.id)) return reply(i, no(t("Tu ne joues pas dans cette partie.", "You are not playing in this game.")));
+    if (g.players[g.turn] !== i.user.id) return reply(i, no(t("Ce n'est pas ton tour.", "It is not your turn.")));
+    const c = Number(col);
+    if (!(c >= 0 && c < C4_W) || g.board[c].length >= C4_H) return reply(i, no(t("Colonne pleine.", "Column full.")));
+    g.board[c].push(g.turn);
+    if (c4Won(g.board, c, g.turn)) g.over = t(`🏆 <@${i.user.id}> gagne !`, `🏆 <@${i.user.id}> wins!`);
+    else if (g.board.every((x) => x.length >= C4_H)) g.over = t("🤝 Match nul !", "🤝 Draw!");
+    else g.turn = 1 - g.turn;
+    if (g.over) duels.delete(g.id);
+    return i.update(c4View(g));
+  }
+
+  /* ---------- counting channel ---------- */
+  async function onCounting(message) {
+    const c = db.cfg.counting;
+    if (!c.channelId || message.channelId !== c.channelId || message.author?.bot) return false;
+    const m = /^\s*(\d{1,9})\b/.exec(String(message.content || ""));
+    if (!m) return false; // not a number: just chat
+    const n = Number(m[1]);
+    if (n === c.n + 1 && message.author.id !== c.last) {
+      c.n = n;
+      c.last = message.author.id;
+      if (n > (c.best || 0)) c.best = n;
+      save();
+      await Promise.resolve(message.react?.(n % 100 === 0 ? "🎉" : "✅")).catch(() => {});
+      return true;
+    }
+    const was = c.n;
+    const why = message.author.id === c.last && n === c.n + 1 ? t("on ne compte pas deux fois de suite", "no counting twice in a row") : t(`le bon nombre était **${c.n + 1}**`, `the right number was **${c.n + 1}**`);
+    c.n = 0;
+    c.last = "";
+    save();
+    await Promise.resolve(message.react?.("❌")).catch(() => {});
+    await Promise.resolve(message.channel.send?.({ content: t(`💥 <@${message.author.id}> a cassé la série à **${was}** (${why}). On recommence à **1** ! Record : **${c.best}**`, `💥 <@${message.author.id}> broke the streak at **${was}** (${why}). Back to **1**! Record: **${c.best}**`), allowedMentions: { users: [message.author.id] } })).catch(() => {});
+    return true;
+  }
+  H.comptage = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const c = db.cfg.counting;
+    const id = i.options.getChannel?.("salon")?.id || i.channelId;
+    if (c.channelId === id) {
+      c.channelId = "";
+      save();
+      return reply(i, ok(t(`<#${id}> n'est plus un salon de comptage.`, `<#${id}> is no longer a counting channel.`)));
+    }
+    Object.assign(c, { channelId: id, n: 0, last: "" });
+    save();
+    return reply(i, ok(t(`<#${id}> est le salon de comptage : commencez à **1** ! Pas deux fois de suite la même personne.`, `<#${id}> is the counting channel: start at **1**! Not twice in a row by the same person.`)));
+  };
+
+  /* ---------- counters (voice channels showing numbers) ---------- */
+  const counterValues = (guild) => ({
+    members: t(`👥 Membres : ${guild.memberCount ?? 0}`, `👥 Members: ${guild.memberCount ?? 0}`),
+    trades: t(`🤝 Trades : ${(db.crossStats.done || 0) + (db.indexStats.done || 0)}`, `🤝 Trades: ${(db.crossStats.done || 0) + (db.indexStats.done || 0)}`),
+    vouches: t(`⭐ Vouches : ${Object.values(db.vouches).reduce((a, l) => a + l.length, 0)}`, `⭐ Vouches: ${Object.values(db.vouches).reduce((a, l) => a + l.length, 0)}`),
+  });
+  let countersAt = 0;
+  async function tickCounters(force = false) {
+    const c = db.cfg.counters;
+    if (!c.categoryId || (!force && Date.now() - countersAt < 10 * 60_000)) return 0; // Discord: 2 renames every 10 minutes
+    countersAt = Date.now();
+    let changed = 0;
+    for (const guild of client?.guilds?.cache?.values?.() || []) {
+      const values = counterValues(guild);
+      for (const key of ["members", "trades", "vouches"]) {
+        const ch = c[key] ? guild.channels.cache?.get?.(c[key]) : null;
+        if (ch && ch.name !== values[key]) if (await Promise.resolve(ch.setName(values[key])).then(() => true).catch(() => false)) changed++;
+      }
+    }
+    return changed;
+  }
+  H.compteurs = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const c = db.cfg.counters;
+    const guild = i.guild;
+    if (i.options.getSubcommand() === "supprimer") {
+      if (!c.categoryId) return reply(i, no(t("Il n'y a pas de compteurs.", "There are no counters.")));
+      for (const id of [c.members, c.trades, c.vouches, c.categoryId]) {
+        const ch = await Promise.resolve(guild.channels.fetch(id)).catch(() => null);
+        await Promise.resolve(ch?.delete?.("counters removed")).catch(() => {});
+      }
+      db.cfg.counters = { categoryId: "", members: "", trades: "", vouches: "" };
+      save();
+      return reply(i, ok(t("Compteurs supprimés.", "Counters deleted.")));
+    }
+    if (c.categoryId && guild.channels.cache?.get?.(c.categoryId)) return reply(i, no(t("Les compteurs existent déjà. `/compteurs supprimer` d'abord.", "The counters already exist. `/compteurs supprimer` first.")));
+    await i.deferReply({ flags: ephemeral });
+    const locked = [{ id: guild.roles.everyone.id, deny: [P.Connect] }];
+    try {
+      const cat = await guild.channels.create({ name: t("📊 STATISTIQUES", "📊 STATISTICS"), type: ChannelType.GuildCategory, position: 0, permissionOverwrites: locked, reason: "counters" });
+      const values = counterValues(guild);
+      const made = {};
+      for (const key of ["members", "trades", "vouches"]) made[key] = (await guild.channels.create({ name: values[key], type: ChannelType.GuildVoice, parent: cat.id, permissionOverwrites: locked, reason: "counters" })).id;
+      db.cfg.counters = { categoryId: cat.id, ...made };
+      await Promise.resolve(cat.setPosition?.(0)).catch(() => {});
+    } catch (error) {
+      console.error("⚠️ Counters:", error?.message || error);
+      save();
+      return i.editReply(no(t("Je n'ai pas pu créer les compteurs (il me faut « Gérer les salons »).", "I could not create the counters (I need Manage Channels).")));
+    }
+    save();
+    return i.editReply(ok(t("Compteurs créés en haut du serveur : membres, trades, vouches. Ils se mettent à jour toutes les 10 minutes (limite de Discord).", "Counters created at the top of the server: members, trades, vouches. They update every 10 minutes (Discord limit).")));
+  };
+
+  /* ---------- invite tracker ---------- */
+  const inviteUses = new Map(); // guild id -> Map(code -> uses)
+  async function cacheInvites(guild) {
+    const list = await Promise.resolve(guild.invites?.fetch?.()).catch(() => null);
+    if (!list) return false;
+    inviteUses.set(guild.id, new Map([...list.values()].map((v) => [v.code, { uses: v.uses || 0, inviter: v.inviter?.id || v.inviterId || "" }])));
+    return true;
+  }
+  async function trackJoin(member) {
+    const guild = member.guild;
+    const old = inviteUses.get(guild.id) || new Map();
+    const list = await Promise.resolve(guild.invites?.fetch?.()).catch(() => null);
+    if (!list) return "";
+    const now = new Map([...list.values()].map((v) => [v.code, { uses: v.uses || 0, inviter: v.inviter?.id || v.inviterId || "" }]));
+    inviteUses.set(guild.id, now);
+    let inviter = "";
+    for (const [code, v] of now) if (v.uses > (old.get(code)?.uses || 0)) inviter = v.inviter;
+    if (!inviter || inviter === member.id) return "";
+    db.invitedBy[member.id] = inviter;
+    const s = (db.invites[inviter] ||= { joins: 0, left: 0 });
+    s.joins++;
+    save();
+    return inviter;
+  }
+  function trackLeave(member) {
+    const inviter = db.invitedBy[member.id];
+    if (!inviter) return;
+    const s = (db.invites[inviter] ||= { joins: 0, left: 0 });
+    s.left++;
+    delete db.invitedBy[member.id];
+    save();
+  }
+  H.invites = async (i) => {
+    const user = i.options.getUser("membre");
+    const real = (s) => Math.max(0, (s?.joins || 0) - (s?.left || 0));
+    if (user) {
+      const s = db.invites[user.id] || { joins: 0, left: 0 };
+      return i.reply({ embeds: [embed(0x5865f2).setTitle(t(`📨  Invitations de ${user.username}`, `📨  ${user.username}'s invites`)).setDescription(t(`**${real(s)}** invitation(s) valide(s)\n📥 ${s.joins} arrivé(s) · 📤 ${s.left} parti(s)`, `**${real(s)}** valid invite(s)\n📥 ${s.joins} joined · 📤 ${s.left} left`))], allowedMentions: { parse: [] } });
+    }
+    const rows = Object.entries(db.invites).map(([id, s]) => [id, real(s), s]).filter((r) => r[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const medal = ["🥇", "🥈", "🥉"];
+    return i.reply({ embeds: [embed(0x5865f2).setTitle(t("📨  Meilleurs inviteurs", "📨  Top inviters")).setDescription(rows.length ? rows.map(([id, n, s], k) => `${medal[k] || `**${k + 1}.**`} <@${id}> · **${n}** (${s.left} ${t("parti(s)", "left")})`).join("\n") : t("*Personne pour le moment.*", "*Nobody yet.*"))], allowedMentions: { parse: [] } });
   };
 
   /* ---------- channels for / commands only ---------- */
@@ -8533,6 +8989,9 @@ const tools = (() => {
         else if (kind === "vr") await roomButton(i, arg);
         else if (kind === "rules") await rulesAccept(i);
         else if (kind === "keep") await keepTicket(i);
+        else if (kind === "bj") await bjButton(i, arg);
+        else if (kind === "ttt") await tttPlay(i, arg, i.customId.split(":")[3]);
+        else if (kind === "c4") await c4Play(i, arg, i.customId.split(":")[3]);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
@@ -8557,6 +9016,7 @@ const tools = (() => {
     client.on(Events.MessageCreate, async (message) => {
       try {
         if (await onCommandsOnly(message)) return;
+        if (await onCounting(message)) return;
         if (await protect(message)) return;
         if (await onVouchChannelMessage(message)) return;
         translateTicket(message).catch((e) => console.error("⚠️ Translation:", e?.message || e)); // does not wait: xp and quiz go on
@@ -8577,6 +9037,10 @@ const tools = (() => {
     client.on(Events.GuildMemberAdd, (m) => onJoin(m).catch((e) => console.error("⚠️ Tools join error:", e?.message || e)));
     client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
     client.on(Events.GuildMemberAdd, (m) => scamOnJoin(m).catch(() => {}));
+    client.on(Events.GuildMemberAdd, (m) => trackJoin(m).catch(() => {}));
+    client.on(Events.GuildMemberRemove, (m) => trackLeave(m));
+    client.on(Events.InviteCreate, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
+    client.on(Events.InviteDelete, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
     client.on(Events.ChannelCreate, (c) => scamCheckChannel(c).catch(() => {}));
     client.on(Events.ChannelUpdate, (_, c) => scamCheckChannel(c).catch(() => {}));
     client.on(Events.VoiceStateUpdate, (a, b) => onVoice(a, b).catch((e) => console.error("⚠️ Tools voice error:", e?.message || e)));
@@ -8590,6 +9054,9 @@ const tools = (() => {
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
       tickIdleTickets().catch((e) => console.error("⚠️ idle tickets:", e?.message || e));
       refreshXpBoard().catch((e) => console.error("⚠️ xp board:", e?.message || e));
+      tickCounters().catch((e) => console.error("⚠️ counters:", e?.message || e));
+      // the invites of each server are read once the bot is connected (needed to know who invited a newcomer)
+      for (const g of client.guilds?.cache?.values?.() || []) if (!inviteUses.has(g.id)) cacheInvites(g).catch(() => {});
     }, 30_000);
     tickTimer.unref?.();
     // the vouch ranking is checked every second and redrawn quietly when it changed
@@ -8604,7 +9071,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { addCoins, coinsOf, blackjacks, duels, handValue, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
@@ -8645,8 +9112,8 @@ const CATEGORY_ID = process.env.MM_CATEGORY_ID || "";
 const LOG_CHANNEL_ID = process.env.MM_LOG_CHANNEL_ID || "";
 const ephemeral = MessageFlags.Ephemeral;
 
-const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates];
-const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates];
+const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
+const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
 let client = new Client({ intents: tools.ON ? FULL_INTENTS : [GatewayIntentBits.Guilds] });
 
 const isStaff = (member) =>
