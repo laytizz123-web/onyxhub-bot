@@ -42,8 +42,12 @@ Pet gratuit 🐱 → ramasser des 🪙 avec ses pets → ouvrir des 🥚 → dé
   `Config.IconImages` (par ex. `pets = "rbxassetid://123"`).
 - Pour changer les icônes : remplace `assets/icon-sheet.webp` (grille 5×4) ou les PNG, puis
   `python3 tools/build_icons.py` et `node build-place.js`.
-- **Portraits 3D** : chaque pet est affiché en 3D (ViewportFrame) dans les menus, l'index,
-  les œufs, la barre d'équipement et l'éclosion.
+- **Images des pets** : `assets/pet-sheet.webp` est découpée en 19 PNG transparents
+  (`python3 tools/cut_pets.py`, qui retire aussi le damier dessiné), puis intégrée dans
+  `PetImageData.lua`. Les pets s'affichent en image dans tous les menus et dans le monde
+  (pets qui suivent le joueur, coureurs), avec teinte et étincelles selon l'évolution.
+  Si l'image n'est pas disponible, le jeu affiche le modèle 3D à la place. Pour utiliser
+  des images uploadées : `Config.PetImages.Chaton = "rbxassetid://..."`.
 - **Décor en îles flottantes cartoon** : dessus d'herbe festonné, falaises de terre en escalier, cascades, ponts en bois entre les zones, mer et nuages en contrebas, étangs avec nénuphars,
   rendu lisse et coloré partout. Props cartoon : maisons à toit pointu, arbres ronds,
   sapins, palmiers, champignons, pyramides à degrés, fontaine, lampadaires, stands à auvent

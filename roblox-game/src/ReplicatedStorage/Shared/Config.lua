@@ -26,6 +26,18 @@ Config.IconImages = {
 	gem = "", star = "", close = "", paw = "", egg = "",
 }
 
+-- Images des pets : integrees depuis assets/pets (PetImageData.lua). Pour utiliser une image uploadee,
+-- mets son ID ici, par ex. Config.PetImages.Chaton = "rbxassetid://1234567890".
+Config.PetImages = {}
+
+-- Teinte appliquee aux images de pets selon l'evolution
+Config.EvolutionTint = {
+	Normal = Color3.new(1, 1, 1),
+	Golden = Color3.fromRGB(255, 225, 110),
+	Rainbow = Color3.fromRGB(255, 185, 255),
+	Cosmic = Color3.fromRGB(175, 150, 255),
+}
+
 -- Codes cadeaux (a changer librement)
 Config.Codes = {
 	PETRUSH = 500,

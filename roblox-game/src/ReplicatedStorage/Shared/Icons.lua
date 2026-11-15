@@ -398,6 +398,7 @@ local AssetService = game:GetService("AssetService")
 local RunService = game:GetService("RunService")
 
 local IconData = nil
+local PetImageData = nil
 local editableCache = {} -- [name] = Content | false
 local editableSupported = RunService:IsClient()
 
@@ -445,11 +446,20 @@ local function buildEditable(name)
 	if not editableSupported then
 		return false
 	end
-	if not IconData then
-		local ok, data = pcall(require, script.Parent:WaitForChild("IconData", 5))
-		IconData = ok and data or {}
+	local entry
+	if string.sub(name, 1, 4) == "pet_" then
+		if not PetImageData then
+			local ok, data = pcall(require, script.Parent:WaitForChild("PetImageData", 5))
+			PetImageData = ok and data or {}
+		end
+		entry = PetImageData[string.sub(name, 5)]
+	else
+		if not IconData then
+			local ok, data = pcall(require, script.Parent:WaitForChild("IconData", 5))
+			IconData = ok and data or {}
+		end
+		entry = IconData[name]
 	end
-	local entry = IconData[name]
 	if not entry then
 		return false
 	end
@@ -488,6 +498,9 @@ function Icons.Apply(target, name, color)
 		end
 	end
 	local asset = Config.IconImages and Config.IconImages[name]
+	if string.sub(name, 1, 4) == "pet_" then
+		asset = Config.PetImages and Config.PetImages[string.sub(name, 5)]
+	end
 	if asset and asset ~= "" then
 		target.Image = asset
 		return target
@@ -540,6 +553,32 @@ function Icons.Button(name, parent, props, color)
 	Icons.Apply(b, name, color)
 	b.Parent = parent
 	return b
+end
+
+-- Vrai si l'image `name` peut etre affichee (ID uploade ou image integree)
+function Icons.HasImage(name)
+	local asset = Config.IconImages and Config.IconImages[name]
+	if string.sub(name, 1, 4) == "pet_" then
+		asset = Config.PetImages and Config.PetImages[string.sub(name, 5)]
+	end
+	if asset and asset ~= "" then
+		return true
+	end
+	return buildEditable(name) ~= false
+end
+
+-- Image d'un pet. Retourne nil si l'image n'est pas disponible (l'appelant utilise alors le modele 3D).
+function Icons.PetImage(petId, parent, props)
+	local name = "pet_" .. petId
+	if not Icons.HasImage(name) then
+		return nil
+	end
+	local label = Icons.Image(name, parent, props)
+	if label:FindFirstChild("VectorIcon") then
+		label:Destroy()
+		return nil
+	end
+	return label
 end
 
 -- Gemme teintee a la couleur de la rarete

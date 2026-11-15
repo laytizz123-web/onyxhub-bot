@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ICONS = os.path.join(ROOT, "assets", "icons")
 SHEET = os.path.join(ROOT, "assets", "icon-sheet.webp")
 OUT_LUA = os.path.join(ROOT, "src", "ReplicatedStorage", "Shared", "IconData.lua")
+PETS = os.path.join(ROOT, "assets", "pets")
+OUT_PETS_LUA = os.path.join(ROOT, "src", "ReplicatedStorage", "Shared", "PetImageData.lua")
 os.makedirs(ICONS, exist_ok=True)
 
 # ---------------------------------------------------------------- 1. planche
@@ -319,7 +321,26 @@ def write_lua():
     print(f"{len(entries)} icones -> IconData.lua ({total // 1024} Ko de donnees)")
 
 
+def write_pets_lua():
+    if not os.path.isdir(PETS):
+        return
+    entries = []
+    total = 0
+    for file in sorted(os.listdir(PETS)):
+        if not file.endswith(".png"):
+            continue
+        name = file[:-4]
+        pal, rle = encode(os.path.join(PETS, file), 160)
+        total += len(rle)
+        entries.append(f'\t{name} = {{ size = 160, palette = "{pal}", data = "{rle}" }},')
+    with open(OUT_PETS_LUA, "w") as f:
+        f.write("-- GENERE AUTOMATIQUEMENT par tools/build_icons.py depuis assets/pets/ : ne pas modifier a la main.\n\n")
+        f.write("return {\n" + "\n".join(entries) + "\n}\n")
+    print(f"{len(entries)} pets -> PetImageData.lua ({total // 1024} Ko de donnees)")
+
+
 if __name__ == "__main__":
     cut_sheet()
     build_drawn()
     write_lua()
+    write_pets_lua()
