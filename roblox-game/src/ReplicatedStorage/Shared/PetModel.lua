@@ -276,7 +276,7 @@ function PetModel.Build(petId, evoIndex, cf)
 	cf = cf or CFrame.new()
 	local folder = ReplicatedStorage:FindFirstChild("Pets")
 	-- cherche d'abord directement dans Pets, puis dans un modele importe d'un bloc (ex. TousLesPets)
-	local template = folder and (folder:FindFirstChild(petId) or folder:FindFirstChild(petId, true))
+	local template = folder and (folder:FindFirstChild(petId) or folder:FindFirstChild(petId .. "_Node", true) or folder:FindFirstChild(petId, true))
 	if not template then
 		return buildProcedural(petId, evoIndex, cf)
 	end
@@ -317,24 +317,23 @@ function PetModel.Build(petId, evoIndex, cf)
 		end
 	end
 	if simple then
-		-- modele importe : remis debout, pivot au centre du dessous, taille d'environ 4,2 studs
-		model.PrimaryPart = nil
-		model.WorldPivot = CFrame.new(model:GetBoundingBox().Position)
-		local _, rawSize = model:GetBoundingBox() -- boite alignee sur le monde
+		-- modele importe : orientation d'origine du fichier, pivot au centre du dessous, taille ~4,2 studs
 		local fix = Config.ImportedPetRotation or {}
-		local rotation = CFrame.new()
-		if rawSize.Y < rawSize.X and rawSize.Y < rawSize.Z then
-			-- couche : l'epaisseur (la plus petite dimension) doit etre en profondeur, pas en hauteur
-			rotation = CFrame.Angles(math.rad(fix.LyingFix or -90), 0, 0)
-		elseif rawSize.X < rawSize.Y and rawSize.X < rawSize.Z then
-			-- de profil : on le tourne face a l'avant
-			rotation = CFrame.Angles(0, math.rad(90), 0)
-		end
 		local extra = fix.Extra or Vector3.zero
-		rotation = rotation * CFrame.Angles(math.rad(extra.X), math.rad(extra.Y), math.rad(extra.Z))
-		model:PivotTo(CFrame.new(model.WorldPivot.Position) * rotation)
+		local extraRot = CFrame.Angles(math.rad(extra.X), math.rad(extra.Y), math.rad(extra.Z))
+		model.PrimaryPart = nil
+		local center = model:GetBoundingBox().Position
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") then
+				local rel = part.Position - center
+				if fix.ResetRotation ~= false then
+					part.CFrame = CFrame.new(center) * extraRot * CFrame.new(rel)
+				else
+					part.CFrame = CFrame.new(center) * extraRot * CFrame.new(rel) * part.CFrame.Rotation
+				end
+			end
+		end
 		model.WorldPivot = CFrame.new(model:GetBoundingBox().Position)
-		model.PrimaryPart = root
 		model.PrimaryPart = nil
 		local boxCF, boxSize = model:GetBoundingBox()
 		model.WorldPivot = CFrame.new(boxCF.Position - Vector3.new(0, boxSize.Y / 2, 0))

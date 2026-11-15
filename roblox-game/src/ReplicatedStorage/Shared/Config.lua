@@ -38,12 +38,12 @@ Config.EvolutionTint = {
 	Cosmic = Color3.fromRGB(175, 150, 255),
 }
 
--- Modeles importes (fichiers .glb) : redressement automatique.
--- Un pet couche est remis debout automatiquement. S'il reste mal tourne, ajuste ces angles (en degres) :
---   LyingFix  : rotation appliquee a un pet couche (essaie 90 si le pet a la tete en bas)
---   Extra     : rotation ajoutee a tous les pets importes (ex. Vector3.new(0, 180, 0) s'ils sont de dos)
+-- Modeles importes (fichiers .glb) : orientation.
+-- ResetRotation : annule la rotation ajoutee par l'importateur (les .glb sont faits debout, face a l'avant).
+-- Extra : rotation en degres ajoutee ensuite, si besoin (ex. Vector3.new(0, 180, 0) si les pets sont de dos,
+--         Vector3.new(-90, 0, 0) ou Vector3.new(90, 0, 0) s'ils sont encore couches).
 Config.ImportedPetRotation = {
-	LyingFix = -90,
+	ResetRotation = true,
 	Extra = Vector3.new(0, 0, 0),
 }
 
