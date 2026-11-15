@@ -31,10 +31,30 @@ local function evoIndexOf(evo)
 	return ({ Normal = 1, Golden = 2, Rainbow = 3, Cosmic = 4 })[evo] or 1
 end
 
+local outlines = 0
+local MAX_OUTLINES = 24 -- Roblox limite le nombre de Highlight affiches en meme temps
+
 local function spawnPet(petId, evo, cf)
 	local model = PetModel.Build(petId, evoIndexOf(evo), cf)
+	-- contour sombre facon dessin anime
+	if outlines < MAX_OUTLINES and not model:FindFirstChildOfClass("Highlight") then
+		local h = Instance.new("Highlight")
+		h.Name = "CartoonOutline"
+		h.FillTransparency = 1
+		h.OutlineColor = Color3.fromRGB(35, 28, 50)
+		h.OutlineTransparency = 0.15
+		h.DepthMode = Enum.HighlightDepthMode.Occluded
+		h.Parent = model
+		outlines += 1
+		model.Destroying:Connect(function()
+			outlines -= 1
+		end)
+	end
 	model.Parent = folder
-	return PetAnimator.new(model, petId)
+	-- petit saut d'apparition
+	local anim = PetAnimator.new(model, petId)
+	anim.trick = { kind = "hop", t0 = os.clock() }
+	return anim
 end
 
 local function clearEntry(entry)

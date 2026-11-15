@@ -55,6 +55,10 @@ function PetAnimator.new(model, petId)
 				group = "Body"
 			end
 			table.insert(self.groups, group)
+			if string.match(part.Name, "%.eye$") then
+				self.eyeIndex = self.eyeIndex or {}
+				self.eyeIndex[#self.parts] = true
+			end
 			if part:GetAttribute("Rainbow") then
 				table.insert(self.rainbow, part)
 			end
@@ -71,6 +75,11 @@ function PetAnimator.new(model, petId)
 		self.glow = model:FindFirstChild("EvolutionGlow")
 	end
 	self.hopPhase = 0
+	self.nextBlink = os.clock() + 1 + math.random() * 3
+	self.blinkUntil = 0
+	self.nextTrick = os.clock() + 4 + math.random() * 5
+	self.trick = nil
+	self.bank = 0
 	self.blink = 0
 	self.nextBlink = os.clock() + math.random(2, 5)
 	return self
@@ -118,6 +127,11 @@ function PetAnimator:updateSimple(rootCF, state, now, dt)
 		roll = sin(t * 0.9) * 4
 		yawWobble = sin(t * 0.55) * 14
 		self.hopPhase = 0
+	self.nextBlink = os.clock() + 1 + math.random() * 3
+	self.blinkUntil = 0
+	self.nextTrick = os.clock() + 4 + math.random() * 5
+	self.trick = nil
+	self.bank = 0
 	end
 	local base = rootCF * CFrame.new(0, y, 0) * CFrame.Angles(0, rad(yawWobble), 0) * CFrame.Angles(rad(pitch), 0, rad(roll))
 	local cframes = self.cframes
@@ -138,10 +152,10 @@ end
 
 -- state : "idle" | "walk" | "run" | "jump" ; speed : vitesse du proprietaire (studs/s)
 function PetAnimator:update(rootCF, state, now)
-	local dt = now - (self.lastUpdate or now)
+	local dt = math.clamp(now - (self.lastUpdate or now), 0, 0.1)
 	self.lastUpdate = now
 	if self.simple then
-		return self:updateSimple(rootCF, state, now, math.clamp(dt, 0, 0.1))
+		return self:updateSimple(rootCF, state, now, dt)
 	end
 	local t = now + self.phase
 	local s = self.scale
@@ -172,6 +186,54 @@ function PetAnimator:update(rootCF, state, now)
 	if state == "jump" then
 		lean = 10
 	end
+	-- sautillement (pets a pattes) : tout le pet bondit, les pattes avant battent un peu
+	local hopY, hopPitch = 0, 0
+	if kind == "quad" and (moving or state == "jump") then
+		self.hopPhase = (self.hopPhase + dt * (state == "run" and 11 or 8)) % math.pi
+		local h = sin(self.hopPhase)
+		hopY = h * (state == "run" and 0.95 or (state == "jump" and 1.4 or 0.65)) * s
+		hopPitch = (self.hopPhase < math.pi / 2) and -h * 10 or h * 6
+		legAmp = 28
+		stride = state == "run" and 11 or 8
+	else
+		self.hopPhase = 0
+	end
+	-- petites figures au repos : saut, pirouette, tortillement
+	local trickY, trickSpin, trickRoll = 0, 0, 0
+	if state ~= "idle" then
+		self.trick = nil
+		self.nextTrick = now + 4 + math.random() * 5
+	elseif not self.trick and now >= self.nextTrick then
+		local kinds = { "hop", "spin", "wiggle" }
+		self.trick = { kind = kinds[math.random(#kinds)], t0 = now }
+	end
+	if self.trick then
+		local k = (now - self.trick.t0) / 0.9
+		if k >= 1 then
+			self.trick = nil
+			self.nextTrick = now + 5 + math.random() * 5
+		else
+			local ease = k * k * (3 - 2 * k)
+			if self.trick.kind == "hop" then
+				trickY = sin(math.pi * k) * 1.3 * s
+			elseif self.trick.kind == "spin" then
+				trickY = sin(math.pi * k) * 0.7 * s
+				trickSpin = 360 * ease
+			else
+				trickRoll = sin(k * math.pi * 6) * 14 * (1 - k)
+			end
+		end
+	end
+	-- virage penche pour les pets qui volent
+	local _, yawNow = rootCF:ToEulerAnglesYXZ()
+	if self.lastYaw and dt > 0 then
+		local dy = (yawNow - self.lastYaw + math.pi) % (2 * math.pi) - math.pi
+		local target = (kind == "fly" or kind == "float") and math.clamp(-dy / dt * 9, -30, 30) or 0
+		self.bank += (target - self.bank) * math.clamp(dt * 6, 0, 1)
+	end
+	self.lastYaw = yawNow
+	rootCF = rootCF * CFrame.new(0, hopY + trickY, 0) * CFrame.Angles(rad(hopPitch), rad(trickSpin), rad(trickRoll + self.bank))
+
 	local bodyPivot = self.pivots.Body
 	local yaw = 0
 	if kind == "slither" then
@@ -252,9 +314,19 @@ function PetAnimator:update(rootCF, state, now)
 		end
 	end
 
+	if now >= self.nextBlink then
+		self.blinkUntil = now + 0.13
+		self.nextBlink = now + 2.2 + math.random() * 3.5
+	end
+	local blinking = now < self.blinkUntil and self.eyeIndex ~= nil
+	local blinkOffset = CFrame.new(0, 0, 0.32 * s)
 	local cframes = self.cframes
 	for i, part in ipairs(self.parts) do
-		cframes[i] = rootCF * (world[self.groups[i]] or world.Body) * self.offsets[i]
+		local cf = rootCF * (world[self.groups[i]] or world.Body) * self.offsets[i]
+		if blinking and self.eyeIndex[i] then
+			cf = cf * blinkOffset -- l'oeil rentre dans la tete un instant
+		end
+		cframes[i] = cf
 	end
 	workspace:BulkMoveTo(self.parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
 
