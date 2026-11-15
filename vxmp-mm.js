@@ -3971,6 +3971,8 @@ const tools = (() => {
     indexStats: { opened: 0, done: 0 },
     vouches: {},
     vouchN: 0,
+    scams: {}, // user id -> { reason, proof, by, at }
+    idle: {}, // ticket channel id -> { warnAt, msgId }
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
@@ -3979,6 +3981,8 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
+      tickets: { inactiveH: 48, closeH: 24 }, // 0 = no automatic closing
+      scam: { channelId: "" },
       rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [], text: null }, // text: { title, body, end, button, color } chosen with /reglement modifier
       index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
@@ -4033,7 +4037,7 @@ const tools = (() => {
     next.indexStats = { ...base.indexStats, ...(raw.indexStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches", "scams", "idle"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     for (const [k, v] of Object.entries(next.vouches)) if (!Array.isArray(v)) delete next.vouches[k];
     if (!Number.isFinite(next.vouchN)) next.vouchN = 0;
@@ -4684,6 +4688,36 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("off").setDescription(t("Désactiver : tout le monde revoit le serveur", "Turn off: everyone sees the server again")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état du règlement", "See the state of the rules")))
       ),
+      // scammers blacklist
+      D(
+        P.ModerateMembers,
+        cmd("scam", t("Blacklist des scammers", "Scammers blacklist"))
+          .addSubcommand((s) =>
+            s
+              .setName("add")
+              .setDescription(t("Ajouter un scammer", "Add a scammer"))
+              .addUserOption((o) => o.setName("membre").setDescription(t("Le scammer", "The scammer")).setRequired(true))
+              .addStringOption((o) => o.setName("raison").setDescription(t("Ce qu'il a fait", "What he did")).setRequired(true).setMaxLength(300))
+              .addStringOption((o) => o.setName("preuve").setDescription(t("Lien de la preuve (capture, message…)", "Proof link (screenshot, message…)")).setMaxLength(300))
+          )
+          .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer quelqu'un de la blacklist", "Remove someone from the blacklist")).addUserOption((o) => o.setName("membre").setDescription(t("La personne", "The person")).setRequired(true)))
+          .addSubcommand((s) => s.setName("list").setDescription(t("Voir la blacklist", "See the blacklist")))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Salon où les scammers sont affichés (vide = celui-ci)", "Channel where scammers are shown (empty = this one)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon", "The channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+      ),
+      cmd("scamcheck", t("Vérifier si quelqu'un est un scammer connu", "Check if someone is a known scammer")).addUserOption((o) => o.setName("membre").setDescription(t("La personne", "The person")).setRequired(true)),
+      // tickets: automatic closing of inactive tickets
+      D(
+        P.ManageGuild,
+        cmd("tickets", t("Fermeture automatique des tickets inactifs", "Automatic closing of inactive tickets"))
+          .addSubcommand((s) =>
+            s
+              .setName("inactif")
+              .setDescription(t("Après combien d'heures sans message le bot relance, puis ferme", "After how many hours without a message the bot warns, then closes"))
+              .addIntegerOption((o) => o.setName("heures").setDescription(t("Heures sans message avant la relance (0 = jamais)", "Hours without a message before the warning (0 = never)")).setMinValue(0).setMaxValue(720).setRequired(true))
+              .addIntegerOption((o) => o.setName("fermeture").setDescription(t("Heures après la relance avant de fermer (défaut 24)", "Hours after the warning before closing (default 24)")).setMinValue(1).setMaxValue(168))
+          )
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir les réglages", "See the settings")))
+      ),
       // translation in the tickets
       D(
         P.ManageGuild,
@@ -4744,7 +4778,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6901,6 +6935,199 @@ const tools = (() => {
     );
   };
 
+  /* ---------- ticket transcripts: the whole conversation is saved in the logs before a ticket is deleted ---------- */
+  const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  async function fetchAll(channel, max = 1000) {
+    const all = [];
+    let before;
+    while (all.length < max) {
+      const batch = await Promise.resolve(channel.messages?.fetch?.({ limit: 100, ...(before ? { before } : {}) })).catch(() => null);
+      const list = [...(batch?.values?.() || [])];
+      if (!list.length) break;
+      all.push(...list);
+      before = list[list.length - 1].id;
+      if (list.length < 100) break;
+    }
+    return all.sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
+  }
+  function transcriptHtml(channel, messages, closedBy) {
+    const rows = messages.map((m) => {
+      const who = m.member?.displayName || m.author?.username || "?";
+      const when = new Date(m.createdTimestamp || 0).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
+      const embeds = (m.embeds || []).map((e) => {
+        const j = e.toJSON ? e.toJSON() : e.data || e;
+        const fields = (j.fields || []).map((f) => `<div class="f"><b>${esc(f.name)}</b><br>${esc(f.value)}</div>`).join("");
+        return `<div class="e">${j.title ? `<b>${esc(j.title)}</b><br>` : ""}${esc(j.description || "")}${fields}</div>`;
+      }).join("");
+      const files = [...(m.attachments?.values?.() || [])].map((a) => `<a href="${esc(a.url)}">📎 ${esc(a.name || "fichier")}</a>`).join(" ");
+      return `<div class="m"><img src="${esc(m.author?.displayAvatarURL?.() || "")}" alt=""><div><span class="n">${esc(who)}</span>${m.author?.bot ? '<span class="b">BOT</span>' : ""}<span class="t">${esc(when)}</span><div class="c">${esc(m.content || "").replace(/\n/g, "<br>")}</div>${embeds}${files ? `<div>${files}</div>` : ""}</div></div>`;
+    });
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(channel.name)}</title><style>body{background:#1e1f22;color:#dbdee1;font-family:system-ui,sans-serif;margin:0;padding:16px}h1{font-size:18px}.m{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #2b2d31}.m img{width:40px;height:40px;border-radius:50%;background:#2b2d31}.n{font-weight:600;color:#fff;margin-right:6px}.b{background:#5865f2;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-right:6px}.t{color:#949ba4;font-size:12px}.c{margin-top:2px;white-space:pre-wrap;word-break:break-word}.e{border-left:4px solid #5865f2;background:#2b2d31;padding:8px;margin-top:4px;border-radius:4px}.f{margin-top:4px}a{color:#00a8fc}</style></head><body><h1>#${esc(channel.name)}</h1><p>${esc(channel.topic || "")} · ${messages.length} messages · fermé par ${esc(closedBy?.username || closedBy?.id || "?")}</p>${rows.join("")}</body></html>`;
+  }
+  /* Saves the ticket in the logs channel. Returns true when it was sent. */
+  async function saveTranscript(channel, closedBy) {
+    const id = db.cfg.logs.channelId;
+    if (!ON || !id || !channel) return false;
+    const logs = await Promise.resolve((channel.guild?.channels || client?.channels)?.fetch?.(id)).catch(() => null);
+    if (!logs?.send) return false;
+    const messages = await fetchAll(channel);
+    const people = [...new Set(messages.filter((m) => !m.author?.bot).map((m) => m.author?.id).filter(Boolean))];
+    const file = new AttachmentBuilder(Buffer.from(transcriptHtml(channel, messages, closedBy), "utf8"), { name: `transcript-${String(channel.name || channel.id).replace(/[^\w-]/g, "")}.html` });
+    const e = embed(0x5865f2)
+      .setTitle(`📄  ${t("Transcript", "Transcript")} · #${channel.name || channel.id}`)
+      .addFields(
+        { name: t("Fermé par", "Closed by"), value: closedBy?.id ? `<@${closedBy.id}>` : t("le bot (inactif)", "the bot (inactive)"), inline: true },
+        { name: t("Messages", "Messages"), value: String(messages.length), inline: true },
+        { name: t("Participants", "Participants"), value: people.length ? people.map((u) => `<@${u}>`).join(" ").slice(0, 1024) : "—", inline: false }
+      )
+      .setFooter({ text: t("Ouvre le fichier pour lire toute la conversation.", "Open the file to read the whole conversation.") });
+    return Promise.resolve(logs.send({ embeds: [e], files: [file], allowedMentions: { parse: [] } })).then(() => true).catch(() => false);
+  }
+
+  /* ---------- scammers blacklist: warns everywhere a scammer shows up in a ticket ---------- */
+  const scamWarned = new Set(); // "channel:user" already warned
+  const scamEmbed = (id, s) =>
+    embed(0xed4245)
+      .setTitle(t("🚨  SCAMMER CONNU", "🚨  KNOWN SCAMMER"))
+      .setDescription(`<@${id}> (\`${id}\`)\n**${t("Raison", "Reason")} :** ${s.reason}${s.proof ? `\n**${t("Preuve", "Proof")} :** ${s.proof}` : ""}`)
+      .setFooter({ text: t(`Ajouté le ${new Date(s.at).toLocaleDateString("fr-FR")}`, `Added on ${new Date(s.at).toLocaleDateString("en-GB")}`) });
+  /* A ticket where a blacklisted person is present (owner, partner, added member): one warning per person and ticket. */
+  async function scamCheckChannel(channel) {
+    if (!ON || !isTicket(channel)) return 0;
+    const ids = new Set();
+    const owner = String(channel.topic || "").split(":")[1];
+    if (owner) ids.add(owner);
+    for (const [id, ow] of channel.permissionOverwrites?.cache || []) if (ow?.type === 1 || ow?.type === "member") ids.add(id);
+    let warned = 0;
+    for (const id of ids) {
+      const s = db.scams[id];
+      const key = `${channel.id}:${id}`;
+      if (!s || scamWarned.has(key)) continue;
+      scamWarned.add(key);
+      const staff = db.cfg.apps.staffRoleId;
+      await Promise.resolve(channel.send({ content: staff ? `<@&${staff}>` : undefined, embeds: [scamEmbed(id, s).setTitle(t("🚨  ATTENTION : SCAMMER DANS CE TICKET", "🚨  WARNING: SCAMMER IN THIS TICKET"))], allowedMentions: { roles: staff ? [staff] : [] } })).catch(() => {});
+      warned++;
+    }
+    return warned;
+  }
+  async function scamOnJoin(member) {
+    const s = db.scams[member.id];
+    const id = db.cfg.scam.channelId;
+    if (!s || !id) return;
+    const ch = await Promise.resolve(member.guild.channels.fetch(id)).catch(() => null);
+    await Promise.resolve(ch?.send?.({ content: t(`⚠️ Un scammer connu vient de rejoindre le serveur : <@${member.id}>`, `⚠️ A known scammer just joined the server: <@${member.id}>`), embeds: [scamEmbed(member.id, s)], allowedMentions: { parse: [] } })).catch(() => {});
+  }
+  H.scam = async (i) => {
+    if (need_perm(i, P.ModerateMembers)) return;
+    const sub = i.options.getSubcommand();
+    if (sub === "salon") {
+      if (need_perm(i, P.ManageGuild)) return;
+      db.cfg.scam.channelId = i.options.getChannel?.("salon")?.id || i.channelId;
+      save();
+      return reply(i, ok(t(`Les scammers seront affichés dans <#${db.cfg.scam.channelId}>.`, `Scammers will be shown in <#${db.cfg.scam.channelId}>.`)));
+    }
+    if (sub === "list") {
+      const list = Object.entries(db.scams);
+      const e = embed(0xed4245).setTitle(t(`🚨  Blacklist (${list.length})`, `🚨  Blacklist (${list.length})`)).setDescription(list.length ? list.slice(-25).reverse().map(([id, s]) => `<@${id}> · ${s.reason.slice(0, 80)}`).join("\n").slice(0, 4000) : t("Personne.", "Nobody."));
+      return i.reply({ embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    const user = i.options.getUser("membre");
+    if (sub === "remove") {
+      if (!db.scams[user.id]) return reply(i, no(t(`<@${user.id}> n'est pas dans la blacklist.`, `<@${user.id}> is not on the blacklist.`)));
+      delete db.scams[user.id];
+      save(true);
+      return reply(i, ok(t(`<@${user.id}> est retiré de la blacklist.`, `<@${user.id}> is removed from the blacklist.`)));
+    }
+    if (sub === "add") {
+      if (user.id === i.user.id || user.bot) return reply(i, no(t("Impossible.", "Not possible.")));
+      const s = { reason: String(i.options.getString("raison") || "").trim(), proof: String(i.options.getString("preuve") || "").trim(), by: i.user.id, at: Date.now() };
+      db.scams[user.id] = s;
+      save(true);
+      const ch = db.cfg.scam.channelId ? await Promise.resolve(i.guild.channels.fetch(db.cfg.scam.channelId)).catch(() => null) : null;
+      await Promise.resolve(ch?.send?.({ embeds: [scamEmbed(user.id, s)], allowedMentions: { parse: [] } })).catch(() => {});
+      // tickets already open with him are warned now
+      for (const c of i.guild.channels.cache?.values?.() || []) await scamCheckChannel(c);
+      return reply(i, ok(t(`<@${user.id}> est dans la blacklist.${ch ? ` Affiché dans <#${ch.id}>.` : " (Choisis un salon avec `/scam salon` pour l'afficher.)"}`, `<@${user.id}> is on the blacklist.`)));
+    }
+  };
+  H.scamcheck = async (i) => {
+    const user = i.options.getUser("membre");
+    const s = db.scams[user.id];
+    if (!s) return i.reply({ content: t(`✅ <@${user.id}> n'est **pas** dans la blacklist. Reste quand même prudent et passe par un middleman.`, `✅ <@${user.id}> is **not** on the blacklist. Stay careful anyway and use a middleman.`), flags: ephemeral, allowedMentions: { parse: [] } });
+    return i.reply({ embeds: [scamEmbed(user.id, s)], flags: ephemeral, allowedMentions: { parse: [] } });
+  };
+
+  /* ---------- inactive tickets: a warning, then the ticket is closed (with its transcript) ---------- */
+  const snowflakeTime = (id) => {
+    try {
+      return Number((BigInt(id) >> 22n) + 1420070400000n);
+    } catch {
+      return 0;
+    }
+  };
+  /* Closes any ticket of the multitools: transcript, log, clean data, delete. */
+  async function closeTicketChannel(channel, by, why = "") {
+    await saveTranscript(channel, by).catch(() => false);
+    const ct = db.crosstrades[channel.id];
+    if (ct) delete db.crosstrades[channel.id];
+    delete db.idle[channel.id];
+    save(true);
+    await log(channel.guild, `🔒 **#${channel.name}**  ·  ${by?.id ? `${t("fermé par", "closed by")} <@${by.id}>` : t("fermé automatiquement (inactif)", "closed automatically (inactive)")}${why ? `  ·  ${why}` : ""}`, 0x747f8d, "ticket");
+    await Promise.resolve(channel.delete(why || "ticket closed")).catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
+  }
+  /* A ticket that holds something (LTC deal, cross-trade items) is never closed by the bot. */
+  const idleCloseable = (channel) => {
+    const topic = String(channel?.topic || "");
+    if (!isTicket(channel) || topic.startsWith("mm-ticket:")) return false;
+    const c = db.crosstrades[channel.id];
+    return !(c && (c.recvA || c.recvB) && !["done", "cancelled"].includes(ctPhase(c)));
+  };
+  async function tickIdleTickets(now = Date.now()) {
+    const cfg = db.cfg.tickets;
+    if (!cfg.inactiveH) return;
+    for (const guild of client?.guilds?.cache?.values?.() || []) {
+      for (const channel of guild.channels?.cache?.values?.() || []) {
+        if (!idleCloseable(channel)) continue;
+        const idle = db.idle[channel.id];
+        const lastId = channel.lastMessageId;
+        if (idle && lastId && lastId !== idle.msgId) {
+          delete db.idle[channel.id]; // someone wrote after the warning: the ticket lives
+          save();
+          continue;
+        }
+        if (idle) {
+          if (now - idle.warnAt >= cfg.closeH * 3_600_000) await closeTicketChannel(channel, null, "inactive");
+          continue;
+        }
+        const last = lastId ? snowflakeTime(lastId) : channel.createdTimestamp || now;
+        if (now - last < cfg.inactiveH * 3_600_000) continue;
+        const owner = String(channel.topic || "").split(":")[1];
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:keep").setLabel(t("Garder le ticket ouvert", "Keep the ticket open")).setEmoji("✋").setStyle(ButtonStyle.Primary));
+        const msg = await Promise.resolve(channel.send({ content: `${owner ? `<@${owner}> ` : ""}${t(`⏰ Ce ticket est inactif depuis **${cfg.inactiveH} h**. Il sera **fermé dans ${cfg.closeH} h** si personne ne répond.`, `⏰ This ticket has been inactive for **${cfg.inactiveH} h**. It will be **closed in ${cfg.closeH} h** if nobody answers.`)}`, components: [row], allowedMentions: { users: owner ? [owner] : [] } })).catch(() => null);
+        if (msg) {
+          db.idle[channel.id] = { warnAt: now, msgId: msg.id };
+          save();
+        }
+      }
+    }
+  }
+  async function keepTicket(i) {
+    delete db.idle[i.channelId];
+    save();
+    return i.update({ content: t(`✋ <@${i.user.id}> garde le ticket ouvert.`, `✋ <@${i.user.id}> keeps the ticket open.`), components: [], allowedMentions: { parse: [] } });
+  }
+  H.tickets = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const cfg = db.cfg.tickets;
+    if (i.options.getSubcommand() === "inactif") {
+      cfg.inactiveH = i.options.getInteger("heures");
+      const close = i.options.getInteger("fermeture");
+      if (close) cfg.closeH = close;
+      save();
+    }
+    return reply(i, cfg.inactiveH ? t(`⏰ Un ticket sans message pendant **${cfg.inactiveH} h** reçoit une relance, puis est **fermé ${cfg.closeH} h** après (avec son transcript). Les deals LTC et les cross-trades avec des objets en cours ne sont jamais fermés.`, `⏰ A ticket without a message for **${cfg.inactiveH} h** gets a warning, then is **closed ${cfg.closeH} h** later (with its transcript).`) : t("⏰ Fermeture automatique **désactivée**.", "⏰ Automatic closing **off**."));
+  };
+
   /* ---------- message protection ---------- */
   const spam = new Map(); // user -> [{ at, text, message }]
   const INVITE = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/[\w-]+/i;
@@ -7415,6 +7642,8 @@ const tools = (() => {
     }
     await i.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
     await log(i.guild, `🔒 ${t("Ticket fermé", "Ticket closed")}  ·  <@${info.userId}>  ·  ${t("par", "by")} <@${i.user.id}>`, 0x747f8d, "ticket");
+    await saveTranscript(i.channel, i.user).catch(() => false);
+    delete db.idle[i.channel.id];
     await i.channel.delete("application ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
@@ -7586,6 +7815,8 @@ const tools = (() => {
     if (i.user.id !== info.userId && !ixCanHandle(i.member, info.index)) return reply(i, no(t("Seule la personne ou le staff peut fermer ce ticket.", "Only the person or staff can close this ticket.")));
     await i.deferUpdate().catch(() => {});
     await log(i.guild, `🔒 **Index ${info.index?.label || ""}**  ·  <@${info.userId}>  ·  ${t("fermé par", "closed by")} <@${i.user.id}>`, 0x747f8d, "ticket");
+    await saveTranscript(i.channel, i.user).catch(() => false);
+    delete db.idle[i.channel.id];
     await i.channel.delete("index ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
@@ -8014,6 +8245,8 @@ const tools = (() => {
     delete db.crosstrades[i.channel.id];
     save(true);
     await log(i.guild, `🔒 **Cross-trade #${c.n}**  ·  ${t("ticket fermé par", "ticket closed by")} <@${i.user.id}>`, 0x747f8d, "ticket");
+    await saveTranscript(i.channel, i.user).catch(() => false);
+    delete db.idle[i.channel.id];
     await i.channel.delete("cross-trade closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
   }
 
@@ -8082,6 +8315,7 @@ const tools = (() => {
         else if (kind === "gwlist") await giveawayList(i);
         else if (kind === "vr") await roomButton(i, arg);
         else if (kind === "rules") await rulesAccept(i);
+        else if (kind === "keep") await keepTicket(i);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
@@ -8124,6 +8358,9 @@ const tools = (() => {
     });
     client.on(Events.GuildMemberAdd, (m) => onJoin(m).catch((e) => console.error("⚠️ Tools join error:", e?.message || e)));
     client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
+    client.on(Events.GuildMemberAdd, (m) => scamOnJoin(m).catch(() => {}));
+    client.on(Events.ChannelCreate, (c) => scamCheckChannel(c).catch(() => {}));
+    client.on(Events.ChannelUpdate, (_, c) => scamCheckChannel(c).catch(() => {}));
     client.on(Events.VoiceStateUpdate, (a, b) => onVoice(a, b).catch((e) => console.error("⚠️ Tools voice error:", e?.message || e)));
     client.on(Events.GuildBanAdd, (b) => log(b.guild, `🔨 **Ban** ${b.user.username} (${b.user.id})`, 0xed4245));
     if (tickTimer) clearInterval(tickTimer);
@@ -8133,6 +8370,7 @@ const tools = (() => {
       tickVoc().catch((e) => console.error("⚠️ voc:", e?.message || e));
       tickVoiceXp().catch((e) => console.error("⚠️ voice xp:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
+      tickIdleTickets().catch((e) => console.error("⚠️ idle tickets:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
     // the vouch ranking is checked every second and redrawn quietly when it changed
@@ -8147,7 +8385,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
@@ -8541,6 +8779,7 @@ async function closeTicket(interaction) {
   }
   middleman.forget(channel.id);
   await interaction.deferUpdate().catch(() => {}); // acknowledged with no message: the channel is gone right away
+  await tools.transcript(channel, interaction.user).catch(() => false);
   await channel.delete("middleman ticket closed").catch((error) => console.error("⚠️ Could not delete the ticket:", error?.message || error));
 }
 
