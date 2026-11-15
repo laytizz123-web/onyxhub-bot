@@ -3979,7 +3979,7 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
-      rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [] },
+      rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [], text: null }, // text: { title, body, end, button, color } chosen with /reglement modifier
       index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
@@ -4676,6 +4676,9 @@ const tools = (() => {
               .setDescription(t("Poster le règlement ici et cacher le reste du serveur aux non-vérifiés", "Post the rules here and hide the rest of the server from unverified people"))
               .addBooleanOption((o) => o.setName("membres_actuels").setDescription(t("Donner l'accès aux membres déjà présents (oui par défaut)", "Give access to the members already here (yes by default)")))
           )
+          .addSubcommand((s) => s.setName("modifier").setDescription(t("Changer le titre, les règles, le message de fin, le bouton et la couleur", "Change the title, the rules, the closing message, the button and the colour")))
+          .addSubcommand((s) => s.setName("apercu").setDescription(t("Voir le règlement tel qu'il sera affiché (juste pour toi)", "See the rules as they will look (only for you)")))
+          .addSubcommand((s) => s.setName("defaut").setDescription(t("Remettre le texte du règlement d'origine", "Put the original rules text back")))
           .addSubcommand((s) => s.setName("off").setDescription(t("Désactiver : tout le monde revoit le serveur", "Turn off: everyone sees the server again")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état du règlement", "See the state of the rules")))
       ),
@@ -6716,13 +6719,59 @@ const tools = (() => {
     ["Confidentialité", "Le partage d’informations personnelles sans autorisation est interdit."],
     ["Sanctions", "Tout non-respect du règlement peut entraîner un avertissement, un mute, un kick ou un bannissement."],
   ];
+  const RULES_DEFAULT = () => ({
+    title: "📜・RÈGLEMENT — KAZUKI COMMUNITY",
+    body: RULES.map(([title, text], k) => `**${k + 1}.・${title}**\n${text}`).join("\n\n"),
+    end: "💜 En rejoignant **Kazuki Community**, vous acceptez automatiquement ce règlement.\n\nBon séjour parmi nous !",
+    button: "J'accepte le règlement",
+    color: "#9b59b6",
+  });
+  const rulesText = () => ({ ...RULES_DEFAULT(), ...(db.cfg.rules.text || {}) });
   function rulesPanel() {
-    const e = embed(0x9b59b6)
-      .setTitle("📜・RÈGLEMENT — KAZUKI COMMUNITY")
-      .setDescription(`${RULES.map(([title, text], k) => `**${k + 1}.・${title}**\n${text}`).join("\n\n")}\n\n━━━━━━━━━━━━━━━━━━━━\n\n💜 En rejoignant **Kazuki Community**, vous acceptez automatiquement ce règlement.\n\nBon séjour parmi nous !`)
+    const x = rulesText();
+    const color = /^#?[0-9a-f]{6}$/i.test(x.color) ? parseInt(x.color.replace("#", ""), 16) : 0x9b59b6;
+    const description = [x.body, x.end ? `━━━━━━━━━━━━━━━━━━━━\n\n${x.end}` : ""].filter(Boolean).join("\n\n");
+    const e = embed(color)
+      .setDescription(description.slice(0, 4096))
       .setFooter({ text: t("Appuie sur le bouton pour accéder au serveur.", "Press the button to access the server.") });
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:rules").setLabel(t("J'accepte le règlement", "I accept the rules")).setEmoji("✅").setStyle(ButtonStyle.Success));
+    if (x.title) e.setTitle(x.title.slice(0, 256));
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:rules").setLabel((x.button || t("J'accepte le règlement", "I accept the rules")).slice(0, 80)).setEmoji("✅").setStyle(ButtonStyle.Success));
     return { embeds: [e], components: [row] };
+  }
+  /* The posted panel shows the new text at once. */
+  async function refreshRulesPanel(guild) {
+    const r = db.cfg.rules;
+    if (!r.channelId || !r.msgId) return false;
+    const ch = await Promise.resolve(guild.channels.fetch(r.channelId)).catch(() => null);
+    const msg = await Promise.resolve(ch?.messages?.fetch?.(r.msgId)).catch(() => null);
+    if (!msg) return false;
+    return Promise.resolve(msg.edit(rulesPanel())).then(() => true).catch(() => false);
+  }
+  function rulesModal() {
+    const x = rulesText();
+    const input = (id, label, style, value, max, required) => new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(required).setMaxLength(max).setValue(String(value || "").slice(0, max)));
+    return new ModalBuilder()
+      .setCustomId("tl:rulesm")
+      .setTitle(t("Modifier le règlement", "Edit the rules"))
+      .addComponents(
+        input("title", t("Titre (vide = sans titre)", "Title (empty = no title)"), TextInputStyle.Short, x.title, 256, false),
+        input("body", t("Les règles (texte libre, **gras** possible)", "The rules (free text, **bold** works)"), TextInputStyle.Paragraph, x.body, 3500, true),
+        input("end", t("Message de fin (vide = aucun)", "Closing message (empty = none)"), TextInputStyle.Paragraph, x.end, 500, false),
+        input("button", t("Texte du bouton", "Button text"), TextInputStyle.Short, x.button, 80, true),
+        input("color", t("Couleur (ex : #9b59b6)", "Colour (e.g. #9b59b6)"), TextInputStyle.Short, x.color, 7, false)
+      );
+  }
+  async function rulesModalSubmit(i) {
+    if (!i.memberPermissions?.has?.(P.Administrator)) return reply(i, no(t("Réservé aux administrateurs.", "Administrators only.")));
+    const get = (k) => String(i.fields.getTextInputValue(k) || "").trim();
+    const color = get("color");
+    if (color && !/^#?[0-9a-f]{6}$/i.test(color)) return reply(i, no(t("Couleur invalide : écris par exemple `#9b59b6`. Rien n'a été changé.", "Invalid colour: write for example `#9b59b6`. Nothing was changed.")));
+    const body = get("body");
+    if (!body) return reply(i, no(t("Le texte des règles ne peut pas être vide.", "The rules text cannot be empty.")));
+    db.cfg.rules.text = { title: get("title"), body, end: get("end"), button: get("button") || RULES_DEFAULT().button, color: color ? `#${color.replace("#", "").toLowerCase()}` : RULES_DEFAULT().color };
+    save(true);
+    const updated = await refreshRulesPanel(i.guild);
+    return i.reply({ content: ok(updated ? t("Règlement modifié : le panel est déjà à jour.", "Rules changed: the panel is already up to date.") : t("Règlement modifié. Il sera affiché au prochain `/reglement setup`.", "Rules changed. It will be shown on the next `/reglement setup`.")), ...rulesPanel(), components: [], flags: ephemeral });
   }
   async function rulesAccept(i) {
     const r = db.cfg.rules;
@@ -6743,6 +6792,14 @@ const tools = (() => {
     const r = db.cfg.rules;
     const guild = i.guild;
     const everyone = guild.roles.everyone;
+    if (sub === "modifier") return i.showModal(rulesModal());
+    if (sub === "apercu") return i.reply({ content: t("👀 Aperçu (le bouton ne fait rien ici) :", "👀 Preview (the button does nothing here):"), ...rulesPanel(), components: [], flags: ephemeral });
+    if (sub === "defaut") {
+      r.text = null;
+      save(true);
+      const updated = await refreshRulesPanel(guild);
+      return reply(i, ok(t(`Texte d'origine remis.${updated ? " Le panel est à jour." : ""}`, `Original text back.${updated ? " The panel is up to date." : ""}`)));
+    }
     if (sub === "status") {
       return reply(i, r.on ? t(`📜 Règlement **actif** dans <#${r.channelId}> · rôle donné : <@&${r.roleId}>`, `📜 Rules **on** in <#${r.channelId}> · role given: <@&${r.roleId}>`) : t("📜 Règlement **désactivé**. `/reglement setup` dans le salon du règlement.", "📜 Rules **off**. `/reglement setup` in the rules channel."));
     }
@@ -7998,6 +8055,10 @@ const tools = (() => {
       }
       if (i.isModalSubmit?.() && typeof i.customId === "string" && i.customId.startsWith("tl:vrm:")) {
         await roomModal(i, i.customId.split(":")[2]);
+        return true;
+      }
+      if (i.isModalSubmit?.() && i.customId === "tl:rulesm") {
+        await rulesModalSubmit(i);
         return true;
       }
       if (i.isButton?.() && typeof i.customId === "string" && i.customId.startsWith("tl:")) {
