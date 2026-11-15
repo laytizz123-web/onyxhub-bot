@@ -4673,7 +4673,9 @@ const tools = (() => {
           .addSubcommand((s) =>
             s
               .setName("setup")
-              .setDescription(t("Poster le règlement ici et cacher le reste du serveur aux non-vérifiés", "Post the rules here and hide the rest of the server from unverified people"))
+              .setDescription(t("Poster le règlement et cacher le reste du serveur aux non-vérifiés", "Post the rules and hide the rest of the server from unverified people"))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon du règlement (vide = celui-ci)", "The rules channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle donné en acceptant (vide = le bot crée « ✅ Vérifié »)", "The role given on accept (empty = the bot makes \"✅ Vérifié\")")))
               .addBooleanOption((o) => o.setName("membres_actuels").setDescription(t("Donner l'accès aux membres déjà présents (oui par défaut)", "Give access to the members already here (yes by default)")))
           )
           .addSubcommand((s) => s.setName("modifier").setDescription(t("Changer le titre, les règles, le message de fin, le bouton et la couleur", "Change the title, the rules, the closing message, the button and the colour")))
@@ -6821,16 +6823,26 @@ const tools = (() => {
     }
     // setup
     await i.deferReply({ flags: ephemeral });
-    const channel = i.channel;
-    let role = r.roleId ? await Promise.resolve(guild.roles.fetch?.(r.roleId)).catch(() => null) : null;
+    const picked = i.options.getChannel?.("salon");
+    const channel = picked ? (await Promise.resolve(guild.channels.fetch(picked.id)).catch(() => null)) || picked : i.channel;
+    if (!channel?.send || !channel.permissionOverwrites) return i.editReply(no(t("Choisis un salon textuel pour le règlement.", "Pick a text channel for the rules.")));
+    const chosen = i.options.getRole?.("role");
+    if (chosen && (chosen.id === everyone.id || chosen.managed)) return i.editReply(no(t("Ce rôle ne peut pas être donné (choisis un rôle normal, pas @everyone ni le rôle d'un bot).", "This role cannot be given (pick a normal role, not @everyone nor a bot role).")));
+    const oldRoleId = r.roleId;
+    let role = chosen ? (await Promise.resolve(guild.roles.fetch?.(chosen.id)).catch(() => null)) || chosen : r.roleId ? await Promise.resolve(guild.roles.fetch?.(r.roleId)).catch(() => null) : null;
     try {
       if (!role) role = await guild.roles.create({ name: "✅ Vérifié", permissions: [P.ViewChannel], hoist: false, mentionable: false, reason: "rules" });
-      else if (!role.permissions?.has?.(P.ViewChannel)) await role.setPermissions?.(role.permissions.add(P.ViewChannel)).catch(() => {});
+      else if (!role.permissions?.has?.(P.ViewChannel)) await role.setPermissions(role.permissions.add(P.ViewChannel), "rules: this role sees the server");
     } catch (error) {
       console.error("⚠️ Rules role:", error?.message || error);
-      return i.editReply(no(t("Je n'ai pas pu créer le rôle vérifié (il me faut « Gérer les rôles »).", "I could not create the verified role (I need Manage Roles).")));
+      return i.editReply(no(chosen ? t(`Je n'ai pas pu régler <@&${chosen.id}> : mon rôle doit être **au-dessus** de lui et j'ai besoin de « Gérer les rôles ».`, `I could not set <@&${chosen.id}>: my role must be **above** it and I need Manage Roles.`) : t("Je n'ai pas pu créer le rôle vérifié (il me faut « Gérer les rôles »).", "I could not create the verified role (I need Manage Roles).")));
     }
     r.roleId = role.id;
+    // channels opened before to the old role: opened to the new one too
+    if (oldRoleId && oldRoleId !== role.id) for (const id of r.opened) {
+      const ch = await Promise.resolve(guild.channels.fetch(id)).catch(() => null);
+      await ch?.permissionOverwrites?.edit?.(role.id, { ViewChannel: true }).catch(() => {});
+    }
     // 1) the rules channel: everyone reads it, nobody writes
     try {
       await channel.permissionOverwrites.edit(everyone.id, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, AddReactions: false }, { reason: "rules" });
