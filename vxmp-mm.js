@@ -4726,12 +4726,6 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("boutique-ajouter").setDescription(t("Mettre un rôle en vente", "Put a role on sale")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)).addIntegerOption((o) => o.setName("prix").setDescription(t("Le prix en pièces", "The price in coins")).setMinValue(1).setMaxValue(10_000_000).setRequired(true)))
           .addSubcommand((s) => s.setName("boutique-retirer").setDescription(t("Retirer un rôle de la boutique", "Remove a role from the shop")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro dans la boutique", "Number in the shop")).setMinValue(1).setMaxValue(25).setRequired(true)))
       ),
-      // games with coins
-      cmd("blackjack", t("Blackjack contre le bot (mise en pièces)", "Blackjack against the bot (bet in coins)")).addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true)),
-      cmd("roulette", t("Roulette : rouge, noir ou vert", "Roulette: red, black or green"))
-        .addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true))
-        .addStringOption((o) => o.setName("couleur").setDescription(t("Ton choix", "Your pick")).setRequired(true).addChoices({ name: t("🔴 Rouge (x2)", "🔴 Red (x2)"), value: "red" }, { name: t("⚫ Noir (x2)", "⚫ Black (x2)"), value: "black" }, { name: t("🟢 Vert (x14)", "🟢 Green (x14)"), value: "green" })),
-      cmd("slots", t("Machine à sous (mise en pièces)", "Slot machine (bet in coins)")).addIntegerOption((o) => o.setName("mise").setDescription(t("Ta mise", "Your bet")).setMinValue(10).setMaxValue(1_000_000).setRequired(true)),
       cmd("morpion", t("Morpion contre un membre", "Tic-tac-toe against a member")).addUserOption((o) => o.setName("adversaire").setDescription(t("Ton adversaire", "Your opponent")).setRequired(true)),
       cmd("puissance4", t("Puissance 4 contre un membre", "Connect 4 against a member")).addUserOption((o) => o.setName("adversaire").setDescription(t("Ton adversaire", "Your opponent")).setRequired(true)),
       D(P.ManageGuild, cmd("comptage", t("Salon de comptage 1, 2, 3… (refaire = enlever)", "Counting channel 1, 2, 3… (again = remove)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText))),
@@ -4849,7 +4843,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "blackjack", "roulette", "slots", "morpion", "puissance4", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6503,7 +6497,7 @@ const tools = (() => {
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
-      [t("🎮 Jeux", "🎮 Games"), "`/blackjack` `/roulette` `/slots` `/morpion` `/puissance4` `/invites`"],
+      [t("🎮 Jeux", "🎮 Games"), "`/morpion` `/puissance4` `/invites`"],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
       [t("🔊 Ton vocal", "🔊 Your voice channel"), t("Rejoins « ➕ Créer ton vocal » : les boutons pour le gérer sont dans le chat du vocal", "Join \"➕ Create your voice\": the buttons to manage it are in the room's chat")],
       [t("🔨 Bannir", "🔨 Ban"), "`/ban` `/unban`", P.BanMembers],
@@ -7035,15 +7029,6 @@ const tools = (() => {
     return db.coins[id];
   };
   const fmtCoins = (n) => `${Number(n).toLocaleString("fr-FR")} 🪙`;
-  /* takes the bet, or answers why not. Returns true when the bet was taken. */
-  const takeBet = async (i, bet) => {
-    if (coinsOf(i.user.id) < bet) {
-      await reply(i, no(t(`Tu n'as que ${fmtCoins(coinsOf(i.user.id))}. Gagne des pièces en parlant et avec \`/coins daily\`.`, `You only have ${fmtCoins(coinsOf(i.user.id))}. Earn coins by talking and with \`/coins daily\`.`)));
-      return false;
-    }
-    addCoins(i.user.id, -bet);
-    return true;
-  };
   H.coins = async (i) => {
     const sub = i.options.getSubcommand();
     const eco = db.cfg.eco;
@@ -7121,96 +7106,6 @@ const tools = (() => {
       save();
       return reply(i, ok(t(`<@&${x.roleId}> n'est plus en vente.`, `<@&${x.roleId}> is no longer on sale.`)));
     }
-  };
-
-  /* ---------- casino ---------- */
-  const SUITS = ["♠️", "♥️", "♦️", "♣️"];
-  const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-  const draw1 = () => ({ r: RANKS[Math.floor(Math.random() * 13)], s: SUITS[Math.floor(Math.random() * 4)] });
-  const handValue = (hand) => {
-    let v = 0;
-    let aces = 0;
-    for (const c of hand) {
-      if (c.r === "A") {
-        aces++;
-        v += 11;
-      } else v += ["J", "Q", "K"].includes(c.r) ? 10 : Number(c.r);
-    }
-    while (v > 21 && aces--) v -= 10;
-    return v;
-  };
-  const showHand = (hand) => hand.map((c) => `\`${c.r}${c.s}\``).join(" ");
-  const blackjacks = new Map(); // user id -> game
-  function bjView(g, end) {
-    const pv = handValue(g.player);
-    const dv = handValue(g.dealer);
-    const e = embed(end ? (end.win > 0 ? 0x57f287 : end.win === 0 ? 0x95a5a6 : 0xed4245) : 0x2c2f33)
-      .setTitle(t(`🃏  Blackjack · mise ${fmtCoins(g.bet)}`, `🃏  Blackjack · bet ${fmtCoins(g.bet)}`))
-      .addFields({ name: t(`Toi (${pv})`, `You (${pv})`), value: showHand(g.player), inline: true }, { name: t(`Croupier (${end ? dv : "?"})`, `Dealer (${end ? dv : "?"})`), value: end ? showHand(g.dealer) : `${showHand([g.dealer[0]])} \`??\``, inline: true });
-    if (end) e.setDescription(`**${end.text}**\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(g.user))}`);
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:bj:hit").setLabel(t("Carte", "Hit")).setEmoji("➕").setStyle(ButtonStyle.Primary).setDisabled(Boolean(end)), new ButtonBuilder().setCustomId("tl:bj:stand").setLabel(t("Rester", "Stand")).setEmoji("✋").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(end)));
-    return { embeds: [e], components: [row] };
-  }
-  function bjFinish(g) {
-    blackjacks.delete(g.user);
-    const pv = handValue(g.player);
-    if (pv > 21) return { win: -1, text: t("Perdu, tu as dépassé 21 💥", "Bust, you went over 21 💥") };
-    while (handValue(g.dealer) < 17) g.dealer.push(draw1());
-    const dv = handValue(g.dealer);
-    const natural = pv === 21 && g.player.length === 2;
-    if (dv > 21 || pv > dv) {
-      const prize = Math.floor(g.bet * (natural ? 2.5 : 2));
-      addCoins(g.user, prize);
-      return { win: 1, text: t(`${natural ? "Blackjack ! " : ""}Gagné : +${fmtCoins(prize - g.bet)} 🎉`, `${natural ? "Blackjack! " : ""}You win: +${fmtCoins(prize - g.bet)} 🎉`) };
-    }
-    if (pv === dv) {
-      addCoins(g.user, g.bet);
-      return { win: 0, text: t("Égalité : mise rendue.", "Push: bet returned.") };
-    }
-    return { win: -1, text: t("Le croupier gagne 😢", "The dealer wins 😢") };
-  }
-  H.blackjack = async (i) => {
-    if (blackjacks.has(i.user.id)) return reply(i, no(t("Tu as déjà une partie en cours.", "You already have a game running.")));
-    const bet = i.options.getInteger("mise");
-    if (!(await takeBet(i, bet))) return;
-    const g = { user: i.user.id, bet, player: [draw1(), draw1()], dealer: [draw1(), draw1()] };
-    blackjacks.set(i.user.id, g);
-    if (handValue(g.player) === 21) return i.reply(bjView(g, bjFinish(g)));
-    return i.reply(bjView(g));
-  };
-  async function bjButton(i, action) {
-    const g = blackjacks.get(i.user.id);
-    if (!g || i.message?.interaction?.user?.id && i.message.interaction.user.id !== i.user.id) return reply(i, no(t("Ce n'est pas ta partie (lance `/blackjack`).", "This is not your game (use `/blackjack`).")));
-    if (action === "hit") {
-      g.player.push(draw1());
-      if (handValue(g.player) >= 21) return i.update(bjView(g, bjFinish(g)));
-      return i.update(bjView(g));
-    }
-    return i.update(bjView(g, bjFinish(g)));
-  }
-  const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-  H.roulette = async (i) => {
-    const bet = i.options.getInteger("mise");
-    const pick = i.options.getString("couleur");
-    if (!(await takeBet(i, bet))) return;
-    const n = Math.floor(Math.random() * 37);
-    const color = n === 0 ? "green" : RED.has(n) ? "red" : "black";
-    const icon = { red: "🔴", black: "⚫", green: "🟢" }[color];
-    const win = pick === color ? bet * (color === "green" ? 14 : 2) : 0;
-    if (win) addCoins(i.user.id, win);
-    return i.reply({ embeds: [embed(win ? 0x57f287 : 0xed4245).setTitle(t("🎡  Roulette", "🎡  Roulette")).setDescription(`${t("La bille tombe sur", "The ball lands on")} **${icon} ${n}**\n\n${win ? t(`Gagné : +${fmtCoins(win - bet)} 🎉`, `You win: +${fmtCoins(win - bet)} 🎉`) : t(`Perdu : -${fmtCoins(bet)}`, `You lose: -${fmtCoins(bet)}`)}\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(i.user.id))}`)] });
-  };
-  const REELS = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"];
-  H.slots = async (i) => {
-    const bet = i.options.getInteger("mise");
-    if (!(await takeBet(i, bet))) return;
-    const r = [0, 1, 2].map(() => REELS[Math.floor(Math.random() * REELS.length)]);
-    const same = r[0] === r[1] && r[1] === r[2];
-    const two = !same && (r[0] === r[1] || r[1] === r[2] || r[0] === r[2]);
-    const mult = same ? (r[0] === "7️⃣" ? 10 : r[0] === "💎" ? 7 : 5) : two ? 2 : 0;
-    const win = bet * mult;
-    if (win) addCoins(i.user.id, win);
-    return i.reply({ embeds: [embed(win ? 0x57f287 : 0xed4245).setTitle(t("🎰  Machine à sous", "🎰  Slot machine")).setDescription(`**[ ${r.join(" | ")} ]**\n\n${win ? t(`Gagné : x${mult} → +${fmtCoins(win - bet)} 🎉`, `You win: x${mult} → +${fmtCoins(win - bet)} 🎉`) : t(`Perdu : -${fmtCoins(bet)}`, `You lose: -${fmtCoins(bet)}`)}\n${t("Solde", "Balance")} : ${fmtCoins(coinsOf(i.user.id))}`)] });
   };
 
   /* ---------- 2 player games: tic-tac-toe and connect 4 ---------- */
@@ -8989,7 +8884,6 @@ const tools = (() => {
         else if (kind === "vr") await roomButton(i, arg);
         else if (kind === "rules") await rulesAccept(i);
         else if (kind === "keep") await keepTicket(i);
-        else if (kind === "bj") await bjButton(i, arg);
         else if (kind === "ttt") await tttPlay(i, arg, i.customId.split(":")[3]);
         else if (kind === "c4") await c4Play(i, arg, i.customId.split(":")[3]);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
@@ -9071,7 +8965,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { addCoins, coinsOf, blackjacks, duels, handValue, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
