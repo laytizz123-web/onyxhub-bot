@@ -3979,6 +3979,7 @@ const tools = (() => {
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
+      rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [] },
       index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
@@ -4018,6 +4019,7 @@ const tools = (() => {
     // missing, or written by the version where a category was one role: back to the five values
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
     for (const k of ["roles", "auto", "prices", "cautions", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
+    if (!Array.isArray(next.cfg.rules.opened)) next.cfg.rules.opened = [];
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
@@ -4664,6 +4666,19 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
+      // rules: nobody sees the server before accepting them
+      D(
+        P.Administrator,
+        cmd("reglement", t("Règlement à accepter pour voir le serveur", "Rules to accept before seeing the server"))
+          .addSubcommand((s) =>
+            s
+              .setName("setup")
+              .setDescription(t("Poster le règlement ici et cacher le reste du serveur aux non-vérifiés", "Post the rules here and hide the rest of the server from unverified people"))
+              .addBooleanOption((o) => o.setName("membres_actuels").setDescription(t("Donner l'accès aux membres déjà présents (oui par défaut)", "Give access to the members already here (yes by default)")))
+          )
+          .addSubcommand((s) => s.setName("off").setDescription(t("Désactiver : tout le monde revoit le serveur", "Turn off: everyone sees the server again")))
+          .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état du règlement", "See the state of the rules")))
+      ),
       // translation in the tickets
       D(
         P.ManageGuild,
@@ -4724,7 +4739,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6366,9 +6381,9 @@ const tools = (() => {
       [t("🧹 Messages", "🧹 Messages"), "`/clear`", P.ManageMessages],
       [t("🔒 Salons", "🔒 Channels"), "`/lock` `/unlock` `/vocadmin create` `/vocadmin hub`", P.ManageChannels],
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
-      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade`", P.ManageGuild],
+      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade` `/traduction`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
-      [t("👑 Admin", "👑 Admin"), "`/setup` `/panel` `/access` `/tiers`", P.Administrator],
+      [t("👑 Admin", "👑 Admin"), "`/setup` `/reglement` `/panel` `/access` `/tiers`", P.Administrator],
     ];
     return i.reply({
       flags: ephemeral,
@@ -6686,6 +6701,134 @@ const tools = (() => {
     db.cfg.translate.on = i.options.getBoolean("actif");
     save();
     return reply(i, ok(db.cfg.translate.on ? t("🌐 Traduction FR ⇄ EN activée dans les tickets.", "🌐 FR ⇄ EN translation turned on in tickets.") : t("🌐 Traduction coupée.", "🌐 Translation turned off.")));
+  };
+
+  /* ---------- rules: the server is hidden until the person presses "I accept" ---------- */
+  const RULES = [
+    ["Respect", "Respectez tous les membres. Les insultes, provocations et discriminations sont interdites."],
+    ["Spam & Flood", "Le spam, le flood, les mentions abusives et les messages répétitifs sont interdits."],
+    ["Publicité", "Toute publicité sans autorisation du staff est interdite."],
+    ["Arnaques", "Les arnaques, fausses preuves et tentatives de vol sont strictement interdites."],
+    ["Middleman", "Utilisez les salons prévus pour les transactions et vérifiez toujours l’identité du Middleman."],
+    ["Trading", "Les échanges doivent être effectués dans les salons appropriés. Toute tentative de scam sera sanctionnée."],
+    ["Giveaways", "Toute tentative de triche ou de manipulation des concours est interdite."],
+    ["Staff", "Respectez les décisions du staff. En cas de problème, ouvrez un ticket."],
+    ["Confidentialité", "Le partage d’informations personnelles sans autorisation est interdit."],
+    ["Sanctions", "Tout non-respect du règlement peut entraîner un avertissement, un mute, un kick ou un bannissement."],
+  ];
+  function rulesPanel() {
+    const e = embed(0x9b59b6)
+      .setTitle("📜・RÈGLEMENT — KAZUKI COMMUNITY")
+      .setDescription(`${RULES.map(([title, text], k) => `**${k + 1}.・${title}**\n${text}`).join("\n\n")}\n\n━━━━━━━━━━━━━━━━━━━━\n\n💜 En rejoignant **Kazuki Community**, vous acceptez automatiquement ce règlement.\n\nBon séjour parmi nous !`)
+      .setFooter({ text: t("Appuie sur le bouton pour accéder au serveur.", "Press the button to access the server.") });
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("tl:rules").setLabel(t("J'accepte le règlement", "I accept the rules")).setEmoji("✅").setStyle(ButtonStyle.Success));
+    return { embeds: [e], components: [row] };
+  }
+  async function rulesAccept(i) {
+    const r = db.cfg.rules;
+    const role = r.roleId ? await Promise.resolve(i.guild.roles.fetch?.(r.roleId)).catch(() => null) : null;
+    if (!r.on || !role) return reply(i, no(t("Le règlement n'est pas configuré. Préviens le staff.", "The rules are not set up. Tell the staff.")));
+    if (i.member?.roles?.cache?.has?.(role.id)) return reply(i, ok(t("Tu as déjà accepté le règlement 👍", "You already accepted the rules 👍")));
+    try {
+      await i.member.roles.add(role.id, "rules accepted");
+    } catch (error) {
+      console.error("⚠️ Rules role:", error?.message || error);
+      return reply(i, no(t("Je n'ai pas pu te donner l'accès. Préviens le staff (mon rôle doit être au-dessus du rôle vérifié).", "I could not give you access. Tell the staff (my role must be above the verified role).")));
+    }
+    return reply(i, ok(t("Merci ! Tu as accepté le règlement : bienvenue sur **Kazuki Community** 💜", "Thanks! You accepted the rules: welcome to **Kazuki Community** 💜")));
+  }
+  H.reglement = async (i) => {
+    if (need_perm(i, P.Administrator)) return;
+    const sub = i.options.getSubcommand();
+    const r = db.cfg.rules;
+    const guild = i.guild;
+    const everyone = guild.roles.everyone;
+    if (sub === "status") {
+      return reply(i, r.on ? t(`📜 Règlement **actif** dans <#${r.channelId}> · rôle donné : <@&${r.roleId}>`, `📜 Rules **on** in <#${r.channelId}> · role given: <@&${r.roleId}>`) : t("📜 Règlement **désactivé**. `/reglement setup` dans le salon du règlement.", "📜 Rules **off**. `/reglement setup` in the rules channel."));
+    }
+    if (sub === "off") {
+      if (!r.on) return reply(i, no(t("Le règlement n'est pas actif.", "The rules are not on.")));
+      await i.deferReply({ flags: ephemeral });
+      if (r.everyoneSaw) await everyone.setPermissions?.(everyone.permissions.add(P.ViewChannel), "rules off").catch(() => {});
+      // the channels opened to the verified role are given back to everyone
+      for (const id of r.opened) {
+        const ch = await Promise.resolve(guild.channels.fetch(id)).catch(() => null);
+        if (!ch) continue;
+        await ch.permissionOverwrites.edit(everyone.id, { ViewChannel: true }).catch(() => {});
+        await ch.permissionOverwrites.delete?.(r.roleId).catch(() => {});
+      }
+      r.on = false;
+      r.opened = [];
+      save(true);
+      return i.editReply(ok(t("Règlement désactivé : tout le monde revoit le serveur. (Le rôle vérifié est gardé.)", "Rules off: everyone sees the server again. (The verified role is kept.)")));
+    }
+    // setup
+    await i.deferReply({ flags: ephemeral });
+    const channel = i.channel;
+    let role = r.roleId ? await Promise.resolve(guild.roles.fetch?.(r.roleId)).catch(() => null) : null;
+    try {
+      if (!role) role = await guild.roles.create({ name: "✅ Vérifié", permissions: [P.ViewChannel], hoist: false, mentionable: false, reason: "rules" });
+      else if (!role.permissions?.has?.(P.ViewChannel)) await role.setPermissions?.(role.permissions.add(P.ViewChannel)).catch(() => {});
+    } catch (error) {
+      console.error("⚠️ Rules role:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu créer le rôle vérifié (il me faut « Gérer les rôles »).", "I could not create the verified role (I need Manage Roles).")));
+    }
+    r.roleId = role.id;
+    // 1) the rules channel: everyone reads it, nobody writes
+    try {
+      await channel.permissionOverwrites.edit(everyone.id, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, AddReactions: false }, { reason: "rules" });
+    } catch (error) {
+      console.error("⚠️ Rules channel:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu régler ce salon (il me faut « Gérer les salons » et « Gérer les rôles »).", "I could not set this channel (I need Manage Channels and Manage Roles).")));
+    }
+    // the bot keeps seeing everything
+    await Promise.resolve(guild.members.me?.roles?.add?.(role.id, "rules: the bot")).catch(() => {});
+    // 2) the members already here keep their access
+    let given = 0;
+    if (i.options.getBoolean("membres_actuels") !== false) {
+      const all = await Promise.resolve(guild.members.fetch()).catch(() => null);
+      for (const m of all?.values?.() || []) {
+        if (m.user?.bot || m.roles?.cache?.has?.(role.id)) continue;
+        if (await Promise.resolve(m.roles.add(role.id, "rules: already a member")).then(() => true).catch(() => false)) given++;
+      }
+    }
+    // 3) channels open to everyone by their own setting are opened to the verified role instead
+    const opened = [];
+    for (const ch of guild.channels.cache?.values?.() || []) {
+      if (ch.id === channel.id) continue;
+      const ow = ch.permissionOverwrites?.cache?.get?.(everyone.id);
+      if (!ow?.allow?.has?.(P.ViewChannel)) continue;
+      const done = await Promise.resolve(ch.permissionOverwrites.edit(everyone.id, { ViewChannel: null }))
+        .then(() => ch.permissionOverwrites.edit(role.id, { ViewChannel: true }))
+        .then(() => true)
+        .catch(() => false);
+      if (done) opened.push(ch.id);
+    }
+    // 4) @everyone stops seeing the server; the verified role sees it
+    r.everyoneSaw = r.on ? r.everyoneSaw : Boolean(everyone.permissions?.has?.(P.ViewChannel));
+    try {
+      if (everyone.permissions?.has?.(P.ViewChannel)) await everyone.setPermissions(everyone.permissions.remove(P.ViewChannel), "rules");
+    } catch (error) {
+      console.error("⚠️ Rules everyone:", error?.message || error);
+      return i.editReply(no(t("Je n'ai pas pu modifier @everyone (il me faut « Gérer les rôles »).", "I could not change @everyone (I need Manage Roles).")));
+    }
+    // 5) the panel (an old one is removed)
+    if (r.channelId && r.msgId) {
+      const old = await Promise.resolve(guild.channels.fetch(r.channelId)).catch(() => null);
+      const msg = await Promise.resolve(old?.messages?.fetch?.(r.msgId)).catch(() => null);
+      await msg?.delete?.().catch(() => {});
+    }
+    const message = await channel.send(rulesPanel());
+    Object.assign(r, { on: true, channelId: channel.id, msgId: message?.id || "", opened: [...new Set([...r.opened, ...opened])] });
+    save(true);
+    return i.editReply(
+      ok(
+        t(
+          `Règlement en place dans <#${channel.id}>.\n• Les nouveaux ne voient que ce salon tant qu'ils n'ont pas appuyé sur le bouton.\n• Rôle donné en acceptant : <@&${role.id}>\n• ${given} membre(s) déjà présent(s) ont reçu l'accès.${opened.length ? `\n• ${opened.length} salon(s) ouverts à tous ont été ouverts au rôle vérifié à la place.` : ""}`,
+          `Rules set in <#${channel.id}>.\n• Newcomers only see this channel until they press the button.\n• Role given on accept: <@&${role.id}>\n• ${given} member(s) already here got access.${opened.length ? `\n• ${opened.length} channel(s) open to everyone were opened to the verified role instead.` : ""}`
+        )
+      )
+    );
   };
 
   /* ---------- message protection ---------- */
@@ -7864,6 +8007,7 @@ const tools = (() => {
         else if (kind === "gw") await giveawayJoin(i);
         else if (kind === "gwlist") await giveawayList(i);
         else if (kind === "vr") await roomButton(i, arg);
+        else if (kind === "rules") await rulesAccept(i);
         else if (kind === "setup") await (arg === "vyes" || arg === "vno" ? setupVocDeleteButton(i, arg === "vyes" ? "yes" : "no") : setupDeleteButton(i, arg));
         return true;
       }
