@@ -1,9 +1,9 @@
--- Construit l'arene, le lobby et l'eclairage entierement par script.
+-- Construit la ferme : terrain, place centrale, boutique, stand de vente, 8 parcelles.
 -- Aucun asset externe : tout est fait avec des Parts.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 
@@ -22,48 +22,35 @@ local function makePart(props)
 	return p
 end
 
-local function flatCylinder(name, radius, thickness, position, color, material, transparency)
-	return makePart({
-		Name = name,
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(thickness, radius * 2, radius * 2),
-		CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90)),
-		Color = color,
-		Material = material or Enum.Material.SmoothPlastic,
-		Transparency = transparency or 0,
-	})
-end
-
-local function addLabel(parent, text, face, size)
+local function addLabel(parent, text, face, color, font)
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = face or Enum.NormalId.Front
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 20
+	gui.PixelsPerStud = 24
 	gui.LightInfluence = 0
-	gui.AlwaysOnTop = false
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.Text = text
-	label.TextColor3 = Config.Colors.Accent
-	label.Font = Enum.Font.GothamBlack
+	label.TextColor3 = color or Color3.new(1, 1, 1)
+	label.Font = font or Enum.Font.FredokaOne
 	label.TextScaled = true
-	label.TextStrokeTransparency = 0.5
-	label.TextStrokeColor3 = Config.Colors.Accent2
+	label.TextStrokeTransparency = 0.6
 	label.Parent = gui
 	gui.Parent = parent
-	return gui
+	return label
 end
 
 local function buildLighting()
-	Lighting.ClockTime = 0
-	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(45, 45, 70)
-	Lighting.OutdoorAmbient = Color3.fromRGB(60, 60, 95)
-	Lighting.FogColor = Color3.fromRGB(10, 10, 20)
-	Lighting.FogStart = 200
-	Lighting.FogEnd = 900
+	Lighting.ClockTime = 13.5
+	Lighting.Brightness = 2.5
+	Lighting.Ambient = Color3.fromRGB(120, 130, 120)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 140)
+	Lighting.FogColor = Color3.fromRGB(200, 225, 255)
+	Lighting.FogStart = 300
+	Lighting.FogEnd = 1200
 	Lighting.GlobalShadows = true
+	Lighting.ExposureCompensation = 0.1
 
 	for _, child in ipairs(Lighting:GetChildren()) do
 		if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") then
@@ -72,230 +59,168 @@ local function buildLighting()
 	end
 
 	local bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 0.8
-	bloom.Size = 32
-	bloom.Threshold = 1.1
+	bloom.Intensity = 0.4
+	bloom.Size = 24
+	bloom.Threshold = 1.5
 	bloom.Parent = Lighting
 
 	local cc = Instance.new("ColorCorrectionEffect")
-	cc.Name = "ArenaColor"
-	cc.Contrast = 0.12
-	cc.Saturation = 0.15
-	cc.TintColor = Color3.fromRGB(255, 255, 255)
+	cc.Name = "FarmColor"
+	cc.Contrast = 0.08
+	cc.Saturation = 0.25
 	cc.Parent = Lighting
 
 	local atmosphere = Instance.new("Atmosphere")
-	atmosphere.Density = 0.3
-	atmosphere.Offset = 0.2
-	atmosphere.Color = Color3.fromRGB(120, 90, 200)
-	atmosphere.Decay = Color3.fromRGB(40, 20, 80)
-	atmosphere.Glare = 0.3
-	atmosphere.Haze = 2
+	atmosphere.Density = 0.25
+	atmosphere.Offset = 0.1
+	atmosphere.Color = Color3.fromRGB(199, 220, 255)
+	atmosphere.Decay = Color3.fromRGB(120, 160, 220)
+	atmosphere.Glare = 0.4
+	atmosphere.Haze = 1.2
 	atmosphere.Parent = Lighting
 
 	local sky = Instance.new("Sky")
-	sky.StarCount = 4000
-	sky.CelestialBodiesShown = false
+	sky.SunAngularSize = 14
 	sky.Parent = Lighting
 end
 
-local function buildArena(root)
-	local arena = Config.Arena
-	local center = arena.Center
-	local R = arena.Radius
-
-	-- Sol principal
-	local floor = flatCylinder("ArenaFloor", R, 4, center - Vector3.new(0, 2, 0), Config.Colors.Floor, Enum.Material.Slate)
-	floor.Parent = root
-
-	-- Anneau neon sous le sol
-	local ring = flatCylinder("ArenaRing", R + 2.5, 2.5, center - Vector3.new(0, 4.5, 0), Config.Colors.Accent, Enum.Material.Neon)
-	ring.Parent = root
-
-	-- Cercles decoratifs au sol (neon + disque sombre par dessus = anneau)
-	for _, radius in ipairs({ 44, 22 }) do
-		local glow = flatCylinder("FloorGlow", radius, 0.2, center + Vector3.new(0, 0.05, 0), Config.Colors.Accent2, Enum.Material.Neon, 0.2)
-		glow.CanCollide = false
-		glow.Parent = root
-		local cover = flatCylinder("FloorCover", radius - 1.2, 0.2, center + Vector3.new(0, 0.12, 0), Config.Colors.Floor, Enum.Material.Slate)
-		cover.CanCollide = false
-		cover.Parent = root
-	end
-	local core = flatCylinder("ArenaCore", 6, 0.3, center + Vector3.new(0, 0.2, 0), Config.Colors.Accent, Enum.Material.Neon)
-	core.CanCollide = false
-	core.Parent = root
-
-	-- Murs en verre tout autour
-	local segments = arena.WallSegments
-	local wallRadius = R + 1
-	local segWidth = (2 * math.pi * wallRadius) / segments + 0.8
-	for i = 1, segments do
-		local angle = (i / segments) * math.pi * 2
-		local wall = makePart({
-			Name = "ArenaWall",
-			Size = Vector3.new(segWidth, arena.WallHeight, 1.5),
-			CFrame = CFrame.new(center) * CFrame.Angles(0, angle, 0) * CFrame.new(0, arena.WallHeight / 2, -wallRadius),
-			Material = Enum.Material.Glass,
-			Color = Config.Colors.Accent,
-			Transparency = 0.75,
-		})
-		wall.Parent = root
-		if i % 3 == 0 then
-			local bar = makePart({
-				Name = "WallBar",
-				Size = Vector3.new(0.6, arena.WallHeight, 0.6),
-				CFrame = wall.CFrame * CFrame.new(segWidth / 2, 0, 0),
-				Material = Enum.Material.Neon,
-				Color = Config.Colors.Accent2,
-				CanCollide = false,
-			})
-			bar.Parent = root
-		end
-	end
-	-- Anneau superieur
-	local topRing = flatCylinder("ArenaTopRing", R + 3, 1, center + Vector3.new(0, arena.WallHeight + 0.5, 0), Config.Colors.Accent2, Enum.Material.Neon, 0.3)
-	topRing.CanCollide = false
-	topRing.Parent = root
-	local topCover = flatCylinder("ArenaTopCover", R - 1, 1.2, center + Vector3.new(0, arena.WallHeight + 0.5, 0), Config.Colors.Dark, Enum.Material.SmoothPlastic, 1)
-	topCover.CanCollide = false
-	topCover.Parent = root
-
-	-- Piliers mobiles (montent et descendent en continu)
-	for i = 1, arena.PillarCount do
-		local angle = (i / arena.PillarCount) * math.pi * 2
-		local x = math.cos(angle) * arena.PillarRadius
-		local z = math.sin(angle) * arena.PillarRadius
-		local h = 16
-		local downCF = CFrame.new(center + Vector3.new(x, -h / 2 + 0.8, z))
-		local upCF = CFrame.new(center + Vector3.new(x, h / 2, z))
-		local pillar = makePart({
-			Name = "Pillar",
-			Size = Vector3.new(7, h, 7),
-			CFrame = downCF,
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(50, 50, 70),
-		})
-		pillar.Parent = root
-		local cap = makePart({
-			Name = "PillarCap",
-			Size = Vector3.new(7.4, 0.5, 7.4),
-			CFrame = downCF * CFrame.new(0, h / 2 + 0.25, 0),
-			Material = Enum.Material.Neon,
-			Color = Config.Colors.Accent,
-		})
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = pillar
-		weld.Part1 = cap
-		weld.Parent = cap
-		cap.Anchored = false
-		cap.Parent = root
-
-		local duration = 3 + (i % 4) * 0.9
-		local info = TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, (i % 3) * 1.1)
-		TweenService:Create(pillar, info, { CFrame = upCF }):Play()
-	end
-
-	-- Jump pads (geres cote client via le tag "JumpPad")
-	for i = 1, arena.JumpPadCount do
-		local angle = (i / arena.JumpPadCount) * math.pi * 2 + math.pi / arena.JumpPadCount
-		local x = math.cos(angle) * arena.JumpPadRadius
-		local z = math.sin(angle) * arena.JumpPadRadius
-		local pad = flatCylinder("JumpPad", 3.5, 0.6, center + Vector3.new(x, 0.3, z), Config.Colors.Gold, Enum.Material.Neon)
-		pad:SetAttribute("Power", arena.JumpPadPower)
-		CollectionService:AddTag(pad, "JumpPad")
-		pad.Parent = root
-		local light = Instance.new("PointLight")
-		light.Color = Config.Colors.Gold
-		light.Range = 12
-		light.Brightness = 2
-		light.Parent = pad
-	end
-
-	-- Cubes flottants decoratifs en rotation
-	for i = 1, 14 do
-		local angle = (i / 14) * math.pi * 2
-		local radius = R - 6
-		local y = 10 + (i % 4) * 4
-		local cube = makePart({
-			Name = "FloatingCube",
-			Size = Vector3.new(2, 2, 2),
-			CFrame = CFrame.new(center + Vector3.new(math.cos(angle) * radius, y, math.sin(angle) * radius)),
-			Material = Enum.Material.Neon,
-			Color = (i % 2 == 0) and Config.Colors.Accent or Config.Colors.Accent2,
+local function buildTree(root, position, scale)
+	scale = scale or 1
+	local trunk = makePart({
+		Name = "Tree",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(7 * scale, 1.6 * scale, 1.6 * scale),
+		CFrame = CFrame.new(position + Vector3.new(0, 3.5 * scale, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Wood,
+		Color = Color3.fromRGB(110, 75, 45),
+	})
+	trunk.Parent = root
+	for i = 1, 3 do
+		local r = (5.5 - i * 0.9) * scale
+		local leaves = makePart({
+			Name = "Leaves",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(r * 2, r * 2, r * 2),
+			CFrame = CFrame.new(position + Vector3.new(0, (6 + i * 2.2) * scale, 0)),
+			Material = Enum.Material.Grass,
+			Color = Color3.fromRGB(60 + i * 15, 150 + i * 15, 60),
 			CanCollide = false,
 		})
-		cube.Parent = root
-		local info = TweenInfo.new(4 + (i % 3), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-		TweenService:Create(cube, info, {
-			CFrame = cube.CFrame * CFrame.new(0, 3, 0) * CFrame.Angles(math.rad(90), math.rad(90), 0),
-		}):Play()
+		leaves.Parent = root
 	end
 end
 
-local function buildLobby(root)
-	local lobby = Config.Lobby
-	local center = lobby.Center
-	local size = lobby.Size
-
-	local floor = makePart({
-		Name = "LobbyFloor",
-		Size = size,
-		CFrame = CFrame.new(center),
-		Material = Enum.Material.Slate,
-		Color = Config.Colors.Floor,
+local function buildStand(root, position, lookAt, title, color, promptText, tag)
+	local base = makePart({
+		Name = tag,
+		Size = Vector3.new(12, 4, 5),
+		CFrame = CFrame.lookAt(position + Vector3.new(0, 2, 0), Vector3.new(lookAt.X, position.Y + 2, lookAt.Z)),
+		Material = Enum.Material.WoodPlanks,
+		Color = Config.Colors.Wood,
 	})
-	floor.Parent = root
-
-	local trim = makePart({
-		Name = "LobbyTrim",
-		Size = Vector3.new(size.X + 2, 1, size.Z + 2),
-		CFrame = CFrame.new(center - Vector3.new(0, 1.2, 0)),
-		Material = Enum.Material.Neon,
-		Color = Config.Colors.Accent,
+	base.Parent = root
+	local roof = makePart({
+		Name = "Roof",
+		Size = Vector3.new(14, 0.6, 8),
+		CFrame = base.CFrame * CFrame.new(0, 6, 0),
+		Material = Enum.Material.Fabric,
+		Color = color,
 	})
-	trim.Parent = root
-
-	-- Murs invisibles
-	local h = 30
-	local walls = {
-		{ Vector3.new(size.X + 2, h, 1), Vector3.new(0, h / 2, size.Z / 2 + 0.5) },
-		{ Vector3.new(size.X + 2, h, 1), Vector3.new(0, h / 2, -size.Z / 2 - 0.5) },
-		{ Vector3.new(1, h, size.Z + 2), Vector3.new(size.X / 2 + 0.5, h / 2, 0) },
-		{ Vector3.new(1, h, size.Z + 2), Vector3.new(-size.X / 2 - 0.5, h / 2, 0) },
-	}
-	for _, w in ipairs(walls) do
-		local wall = makePart({
-			Name = "LobbyWall",
-			Size = w[1],
-			CFrame = CFrame.new(center + w[2]),
-			Transparency = 1,
+	roof.Parent = root
+	for _, x in ipairs({ -6, 6 }) do
+		local pole = makePart({
+			Name = "Pole",
+			Size = Vector3.new(0.6, 8, 0.6),
+			CFrame = base.CFrame * CFrame.new(x, 2.5, 2.5),
+			Material = Enum.Material.Wood,
+			Color = Config.Colors.Wood,
 		})
-		wall.Parent = root
+		pole.Parent = root
 	end
-
-	-- Panneau titre
 	local sign = makePart({
-		Name = "LobbySign",
-		Size = Vector3.new(40, 10, 1),
-		CFrame = CFrame.new(center + Vector3.new(0, 14, -size.Z / 2 + 2)),
+		Name = "Sign",
+		Size = Vector3.new(12, 2.4, 0.4),
+		CFrame = base.CFrame * CFrame.new(0, 4.6, -3.2),
 		Material = Enum.Material.SmoothPlastic,
 		Color = Config.Colors.Dark,
 	})
 	sign.Parent = root
-	addLabel(sign, Config.GameName, Enum.NormalId.Front)
-	addLabel(sign, Config.GameName, Enum.NormalId.Back)
+	addLabel(sign, title, Enum.NormalId.Front, color)
 
-	local hint = makePart({
-		Name = "LobbyHint",
-		Size = Vector3.new(40, 3, 1),
-		CFrame = CFrame.new(center + Vector3.new(0, 7.5, -size.Z / 2 + 2)),
-		Material = Enum.Material.SmoothPlastic,
-		Color = Config.Colors.Dark,
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = promptText
+	prompt.ObjectText = title
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = base
+	CollectionService:AddTag(base, tag)
+	return base
+end
+
+local function buildHub(root)
+	local ground = makePart({
+		Name = "Ground",
+		Size = Vector3.new(520, 4, 520),
+		CFrame = CFrame.new(0, -2, 0),
+		Material = Enum.Material.Grass,
+		Color = Config.Colors.Grass,
 	})
-	hint.Parent = root
-	local hintGui = addLabel(hint, "F / Clic : RENVOYER   |   Q : DASH   |   E : PULSE   |   Double saut", Enum.NormalId.Front)
-	hintGui.TextLabel.TextColor3 = Color3.new(1, 1, 1)
-	hintGui.TextLabel.Font = Enum.Font.GothamBold
+	ground.Parent = root
+
+	local plaza = makePart({
+		Name = "Plaza",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, 70, 70),
+		CFrame = CFrame.new(0, 0.2, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Cobblestone,
+		Color = Color3.fromRGB(190, 180, 160),
+	})
+	plaza.Parent = root
+
+	-- Fontaine centrale
+	local fountain = makePart({
+		Name = "Fountain",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(2, 14, 14),
+		CFrame = CFrame.new(0, 1.2, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Marble,
+		Color = Color3.fromRGB(230, 230, 235),
+	})
+	fountain.Parent = root
+	local water = makePart({
+		Name = "Water",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.6, 12, 12),
+		CFrame = CFrame.new(0, 2.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(80, 170, 255),
+		Transparency = 0.3,
+		CanCollide = false,
+	})
+	water.Parent = root
+	local jet = makePart({
+		Name = "Jet",
+		Size = Vector3.new(1, 1, 1),
+		CFrame = CFrame.new(0, 3, 0),
+		Transparency = 1,
+		CanCollide = false,
+	})
+	jet.Parent = root
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Rate = 40
+	emitter.Lifetime = NumberRange.new(1, 1.4)
+	emitter.Speed = NumberRange.new(18, 24)
+	emitter.SpreadAngle = Vector2.new(8, 8)
+	emitter.Acceleration = Vector3.new(0, -40, 0)
+	emitter.Size = NumberSequence.new(0.6)
+	emitter.Transparency = NumberSequence.new(0.3, 1)
+	emitter.Color = ColorSequence.new(Color3.fromRGB(170, 220, 255))
+	emitter.Parent = jet
+
+	-- Boutique et stand de vente
+	buildStand(root, Vector3.new(-22, 0.4, -14), Vector3.new(0, 0, 0), "GRAINES", Config.Colors.Accent, "Ouvrir", "ShopStand")
+	buildStand(root, Vector3.new(22, 0.4, -14), Vector3.new(0, 0, 0), "VENTE", Config.Colors.Gold, "Tout vendre", "SellStand")
 
 	-- Spawn
 	local existingSpawn = workspace:FindFirstChildOfClass("SpawnLocation")
@@ -303,20 +228,141 @@ local function buildLobby(root)
 		existingSpawn:Destroy()
 	end
 	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "LobbySpawn"
-	spawn.Size = Vector3.new(14, 1, 14)
-	spawn.CFrame = CFrame.new(center + Vector3.new(0, 1.5, 0))
+	spawn.Name = "HubSpawn"
+	spawn.Size = Vector3.new(10, 0.4, 10)
+	spawn.CFrame = CFrame.new(0, 0.5, 16)
 	spawn.Anchored = true
-	spawn.Material = Enum.Material.Neon
-	spawn.Color = Config.Colors.Accent2
+	spawn.Material = Enum.Material.Cobblestone
+	spawn.Color = Color3.fromRGB(210, 200, 180)
 	spawn.Neutral = true
 	spawn.Duration = 0
-	spawn.TopSurface = Enum.SurfaceType.Smooth
 	spawn.Parent = root
+
+	-- Decor
+	for i = 1, 26 do
+		local angle = (i / 26) * math.pi * 2 + 0.3
+		local radius = 150 + (i % 3) * 25
+		buildTree(root, Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius), 0.9 + (i % 4) * 0.25)
+	end
+	for i = 1, 40 do
+		local angle = math.random() * math.pi * 2
+		local radius = 40 + math.random() * 200
+		local flower = makePart({
+			Name = "Flower",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(0.8, 0.8, 0.8),
+			CFrame = CFrame.new(math.cos(angle) * radius, 0.4, math.sin(angle) * radius),
+			Material = Enum.Material.Neon,
+			Color = ({ Color3.fromRGB(255, 120, 180), Color3.fromRGB(255, 230, 80), Color3.fromRGB(150, 150, 255) })[(i % 3) + 1],
+			CanCollide = false,
+		})
+		flower.Parent = root
+	end
+end
+
+-- Parcelles --------------------------------------------------------------
+
+local plotFolders = {}
+local plotSpawns = {}
+
+local function plotOrigin(plotId)
+	local angle = ((plotId - 1) / Config.Plot.Count) * math.pi * 2
+	return Vector3.new(math.cos(angle) * Config.Plot.Distance, 0, math.sin(angle) * Config.Plot.Distance), angle
+end
+
+local function buildPlot(root, plotId)
+	local plot = Config.Plot
+	local origin, angle = plotOrigin(plotId)
+	local pitch = plot.TileSize + plot.TileGap
+	local span = plot.Grid * pitch
+
+	local folder = Instance.new("Folder")
+	folder.Name = "Plot" .. plotId
+	folder:SetAttribute("PlotId", plotId)
+	folder:SetAttribute("OwnerId", 0)
+	folder:SetAttribute("OwnerName", "")
+	folder:SetAttribute("ExpandLevel", 0)
+
+	local rotation = CFrame.new(origin) * CFrame.Angles(0, -angle + math.pi / 2, 0)
+
+	local base = makePart({
+		Name = "PlotBase",
+		Size = Vector3.new(span + 8, 0.6, span + 8),
+		CFrame = rotation * CFrame.new(0, 0.3, 0),
+		Material = Enum.Material.Grass,
+		Color = Color3.fromRGB(120, 190, 85),
+	})
+	base.Parent = folder
+
+	-- Cloture
+	local half = (span + 8) / 2
+	local fenceLen = span + 8
+	for _, side in ipairs({ { 0, half }, { 0, -half }, { half, 0 }, { -half, 0 } }) do
+		local horizontal = side[2] ~= 0
+		local fence = makePart({
+			Name = "Fence",
+			Size = horizontal and Vector3.new(fenceLen, 2.2, 0.4) or Vector3.new(0.4, 2.2, fenceLen),
+			CFrame = rotation * CFrame.new(side[1], 1.5, side[2]),
+			Material = Enum.Material.WoodPlanks,
+			Color = Color3.fromRGB(220, 200, 160),
+			CanCollide = false,
+		})
+		fence.Parent = folder
+	end
+
+	-- Panneau du proprietaire
+	local sign = makePart({
+		Name = "Sign",
+		Size = Vector3.new(14, 3, 0.5),
+		CFrame = rotation * CFrame.new(0, 4.5, -half - 1),
+		Material = Enum.Material.WoodPlanks,
+		Color = Config.Colors.Wood,
+	})
+	sign.Parent = folder
+	local label = addLabel(sign, "Parcelle libre", Enum.NormalId.Front, Color3.new(1, 1, 1))
+	label.Name = "OwnerLabel"
+	addLabel(sign, "Parcelle libre", Enum.NormalId.Back, Color3.new(1, 1, 1)).Name = "OwnerLabelBack"
+
+	-- Point d'apparition du joueur devant sa parcelle (cote centre)
+	local spawnPoint = rotation * CFrame.new(0, 3, -half - 5)
+	plotSpawns[plotId] = spawnPoint
+
+	-- Cases
+	local tiles = Instance.new("Folder")
+	tiles.Name = "Tiles"
+	tiles.Parent = folder
+	local center = (plot.Grid + 1) / 2
+	for row = 1, plot.Grid do
+		for col = 1, plot.Grid do
+			local index = (row - 1) * plot.Grid + col
+			local ring = math.max(math.abs(row - center), math.abs(col - center)) -- 0 = centre, 1, 2
+			local tile = makePart({
+				Name = "Tile" .. index,
+				Size = Vector3.new(plot.TileSize, 0.5, plot.TileSize),
+				CFrame = rotation * CFrame.new((col - center) * pitch, 0.75, (row - center) * pitch),
+				Material = Enum.Material.Ground,
+				Color = Config.Colors.Soil,
+			})
+			tile:SetAttribute("PlotId", plotId)
+			tile:SetAttribute("Index", index)
+			tile:SetAttribute("Ring", ring)
+			tile:SetAttribute("Plant", "")
+			tile:SetAttribute("Progress", 0)
+			tile:SetAttribute("Ripe", false)
+			tile:SetAttribute("Mutations", "")
+			tile:SetAttribute("Locked", ring >= 1)
+			CollectionService:AddTag(tile, "Tile")
+			tile.Parent = tiles
+		end
+	end
+
+	folder.Parent = root
+	plotFolders[plotId] = folder
+	return folder
 end
 
 function MapBuilder.Build()
-	local old = workspace:FindFirstChild("OnyxArena")
+	local old = workspace:FindFirstChild("OnyxFarm")
 	if old then
 		old:Destroy()
 	end
@@ -326,35 +372,47 @@ function MapBuilder.Build()
 	end
 
 	local root = Instance.new("Folder")
-	root.Name = "OnyxArena"
+	root.Name = "OnyxFarm"
 	root.Parent = workspace
 
 	buildLighting()
-	buildArena(root)
-	buildLobby(root)
+	buildHub(root)
+	for plotId = 1, Config.Plot.Count do
+		buildPlot(root, plotId)
+	end
 
-	Players.RespawnTime = 3
+	Players.RespawnTime = 2
 	return root
 end
 
--- Positions de depart reparties en cercle autour de l'arene.
-function MapBuilder.GetSpawnPoints(count)
-	local points = {}
-	local offset = math.random() * math.pi * 2
-	for i = 1, count do
-		local angle = offset + (i / count) * math.pi * 2
-		local pos = Config.Arena.Center + Vector3.new(
-			math.cos(angle) * Config.Arena.SpawnRadius,
-			4,
-			math.sin(angle) * Config.Arena.SpawnRadius
-		)
-		table.insert(points, pos)
-	end
-	return points
+function MapBuilder.GetPlotFolder(plotId)
+	return plotFolders[plotId]
 end
 
-function MapBuilder.GetLobbySpawn()
-	return Config.Lobby.Center + Vector3.new(0, 5, 0)
+function MapBuilder.GetTile(plotId, index)
+	local folder = plotFolders[plotId]
+	return folder and folder.Tiles:FindFirstChild("Tile" .. index)
+end
+
+function MapBuilder.SetPlotOwner(plotId, player)
+	local folder = plotFolders[plotId]
+	if not folder then
+		return
+	end
+	folder:SetAttribute("OwnerId", player and player.UserId or 0)
+	folder:SetAttribute("OwnerName", player and player.DisplayName or "")
+	local text = player and ("Ferme de " .. player.DisplayName) or "Parcelle libre"
+	for _, gui in ipairs(folder.Sign:GetChildren()) do
+		local label = gui:IsA("SurfaceGui") and gui:FindFirstChildOfClass("TextLabel")
+		if label then
+			label.Text = text
+			label.TextColor3 = player and Config.Colors.Accent or Color3.new(1, 1, 1)
+		end
+	end
+end
+
+function MapBuilder.GetPlotSpawn(plotId)
+	return plotSpawns[plotId]
 end
 
 return MapBuilder

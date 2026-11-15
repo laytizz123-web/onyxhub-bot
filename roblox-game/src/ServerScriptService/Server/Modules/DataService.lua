@@ -1,13 +1,14 @@
--- Sauvegarde des pieces / victoires (DataStore) + leaderstats.
+-- Sauvegarde DataStore (pieces, graines, fruits, parcelle) + leaderstats.
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
 
 local DataService = {}
 
-local STORE_NAME = "OnyxArena_v1"
-local DEFAULT = { Coins = 0, Wins = 0, Deflects = 0, BestStreak = 0 }
+local STORE_NAME = "OnyxFarm_v1"
 
 local store = nil
 pcall(function()
@@ -15,95 +16,81 @@ pcall(function()
 end)
 
 local cache = {}
-local values = {}
+local stats = {}
+
+DataService.BeforeSave = nil -- function(player, data) rempli par PlotService
+
+local function defaultData()
+	return {
+		Coins = Config.StartCoins,
+		Seeds = { Carotte = 3 },
+		Fruits = {},
+		Tiles = {},
+		ExpandLevel = 0,
+		Harvests = 0,
+		Earned = 0,
+		SavedAt = os.time(),
+	}
+end
 
 local function key(player)
 	return "p_" .. player.UserId
 end
 
-local function syncValues(player)
-	local data = cache[player]
-	local v = values[player]
-	if not data or not v then
-		return
-	end
-	v.Coins.Value = data.Coins
-	v.Wins.Value = data.Wins
-	v.Deflects.Value = data.Deflects
-end
-
-function DataService.Setup(player)
-	local data = table.clone(DEFAULT)
+function DataService.Load(player)
+	local data = defaultData()
 	if store then
 		local ok, result = pcall(function()
 			return store:GetAsync(key(player))
 		end)
 		if ok and type(result) == "table" then
-			for k, v in pairs(DEFAULT) do
-				if type(result[k]) == "number" then
-					data[k] = result[k]
-				end
+			for k, v in pairs(result) do
+				data[k] = v
 			end
 		elseif not ok then
-			warn("[OnyxArena] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
+			warn("[OnyxFarm] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
 		end
 	end
 	cache[player] = data
 
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
-
-	local wins = Instance.new("IntValue")
-	wins.Name = "Wins"
-	wins.Parent = leaderstats
 	local coins = Instance.new("IntValue")
-	coins.Name = "Coins"
+	coins.Name = "Pieces"
+	coins.Value = data.Coins
 	coins.Parent = leaderstats
-	local streak = Instance.new("IntValue")
-	streak.Name = "Streak"
-	streak.Parent = leaderstats
-	local deflects = Instance.new("IntValue")
-	deflects.Name = "Deflects"
-	deflects.Parent = player -- hors leaderstats (visible dans le HUD seulement)
-
-	values[player] = { Coins = coins, Wins = wins, Streak = streak, Deflects = deflects }
+	local harvests = Instance.new("IntValue")
+	harvests.Name = "Recoltes"
+	harvests.Value = data.Harvests
+	harvests.Parent = leaderstats
 	leaderstats.Parent = player
-	syncValues(player)
+	stats[player] = { Coins = coins, Harvests = harvests }
+	return data
 end
 
-function DataService.Get(player, field)
+function DataService.Get(player)
+	return cache[player]
+end
+
+function DataService.Sync(player)
 	local data = cache[player]
-	return data and data[field] or 0
-end
-
-function DataService.Add(player, field, amount)
-	local data = cache[player]
-	if not data or DEFAULT[field] == nil then
-		return
+	local s = stats[player]
+	if data and s then
+		s.Coins.Value = math.floor(data.Coins)
+		s.Harvests.Value = data.Harvests
 	end
-	data[field] = math.max(0, data[field] + amount)
-	syncValues(player)
-end
-
-function DataService.SetStreak(player, streak)
-	local v = values[player]
-	local data = cache[player]
-	if v then
-		v.Streak.Value = streak
-	end
-	if data and streak > data.BestStreak then
-		data.BestStreak = streak
-	end
-end
-
-function DataService.GetStreak(player)
-	local v = values[player]
-	return v and v.Streak.Value or 0
 end
 
 function DataService.Save(player)
 	local data = cache[player]
-	if not data or not store then
+	if not data then
+		return
+	end
+	if DataService.BeforeSave then
+		DataService.BeforeSave(player, data)
+	end
+	data.SavedAt = os.time()
+	if not store then
 		return
 	end
 	local ok, err = pcall(function()
@@ -112,34 +99,24 @@ function DataService.Save(player)
 		end)
 	end)
 	if not ok then
-		warn("[OnyxArena] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
+		warn("[OnyxFarm] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
 	end
 end
 
+function DataService.Release(player)
+	cache[player] = nil
+	stats[player] = nil
+end
+
 function DataService.Init()
-	Players.PlayerAdded:Connect(DataService.Setup)
-	for _, p in ipairs(Players:GetPlayers()) do
-		if not cache[p] then
-			DataService.Setup(p)
-		end
-	end
-	Players.PlayerRemoving:Connect(function(player)
-		DataService.Save(player)
-		cache[player] = nil
-		values[player] = nil
-	end)
 	game:BindToClose(function()
-		if RunService:IsStudio() and not store then
-			return
-		end
 		for _, p in ipairs(Players:GetPlayers()) do
 			DataService.Save(p)
 		end
 	end)
-	-- Sauvegarde automatique
 	task.spawn(function()
 		while true do
-			task.wait(120)
+			task.wait(90)
 			for _, p in ipairs(Players:GetPlayers()) do
 				DataService.Save(p)
 			end

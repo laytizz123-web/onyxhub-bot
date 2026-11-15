@@ -2,28 +2,16 @@
 
 local State = {}
 
-State.round = { phase = "Waiting", message = "", timer = 0, aliveCount = 0, totalCount = 0, practice = false, winnerUserId = 0 }
-State.cooldowns = {} -- [name] = os.clock() de fin
-State.targetUserId = 0
-State.overdrive = false
+State.inventory = { coins = 0, seeds = {}, fruits = {}, fruitValue = 0, plotId = 0, expandLevel = 0, expandPrice = nil, harvests = 0 }
+State.shop = { stock = {}, nextRestock = 0 }
+State.weather = { id = "Clair", label = "", endsAt = 0 }
+State.selectedSeed = nil
+State.waterReadyAt = 0
 
 State.Changed = Instance.new("BindableEvent") -- (what, data)
 
-function State.setCooldown(name, duration)
-	State.cooldowns[name] = os.clock() + duration
-	State.Changed:Fire("cooldown", name)
-end
-
-function State.cooldownLeft(name)
-	local untilTime = State.cooldowns[name]
-	if not untilTime then
-		return 0
-	end
-	return math.max(0, untilTime - os.clock())
-end
-
-function State.getBall()
-	return workspace:FindFirstChild("ArenaBall")
+function State.fire(what, data)
+	State.Changed:Fire(what, data)
 end
 
 return State

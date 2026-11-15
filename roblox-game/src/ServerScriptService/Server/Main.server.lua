@@ -1,4 +1,4 @@
--- Point d'entree serveur d'ONYX ARENA.
+-- Point d'entree serveur d'ONYX FARM.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7,12 +7,14 @@ require(ReplicatedStorage.Shared.Remotes) -- cree les RemoteEvents avant tout
 local Modules = script.Parent.Modules
 local MapBuilder = require(Modules.MapBuilder)
 local DataService = require(Modules.DataService)
-local RoundManager = require(Modules.RoundManager)
-local AbilityService = require(Modules.AbilityService)
+local PlotService = require(Modules.PlotService)
+local WeatherService = require(Modules.WeatherService)
+local ShopService = require(Modules.ShopService)
 
 MapBuilder.Build()
 DataService.Init()
-AbilityService.Init(RoundManager)
-RoundManager.Start()
+PlotService.Init(WeatherService)
+WeatherService.Init(PlotService)
+ShopService.Init(PlotService)
 
-print("[OnyxArena] Serveur pret.")
+print("[OnyxFarm] Serveur pret.")

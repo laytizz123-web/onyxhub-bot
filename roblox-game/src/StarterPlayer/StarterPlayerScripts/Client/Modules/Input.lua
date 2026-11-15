@@ -1,11 +1,11 @@
--- Controles : renvoi, dash, double saut, pulse, jump pads, boutons tactiles.
+-- Clic / tap sur les cases, survol avec info-bulle, raccourcis clavier.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
-local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -16,192 +16,187 @@ local Input = {}
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local character, humanoid, rootPart
-local canDoubleJump = false
-local lastJumpTime = 0
-local lastSwing = 0
+local hoverBox = Instance.new("SelectionBox")
+hoverBox.LineThickness = 0.06
+hoverBox.Color3 = Config.Colors.Accent
+hoverBox.SurfaceTransparency = 0.85
+hoverBox.SurfaceColor3 = Config.Colors.Accent
+hoverBox.Parent = workspace
 
-local sounds = {}
-local function playSound(id, volume, pitch)
-	local s = sounds[id]
-	if not s then
-		s = Instance.new("Sound")
-		s.SoundId = id
-		s.Parent = workspace
-		sounds[id] = s
-	end
-	s.Volume = volume or 0.5
-	s.PlaybackSpeed = pitch or 1
-	s:Play()
-end
+local billboard = Instance.new("BillboardGui")
+billboard.Name = "TileInfo"
+billboard.Size = UDim2.fromOffset(200, 64)
+billboard.StudsOffset = Vector3.new(0, 4.5, 0)
+billboard.AlwaysOnTop = true
+billboard.Enabled = false
+billboard.Parent = player:WaitForChild("PlayerGui")
+local infoTitle = Instance.new("TextLabel")
+infoTitle.Size = UDim2.new(1, 0, 0.5, 0)
+infoTitle.BackgroundTransparency = 1
+infoTitle.Font = Enum.Font.FredokaOne
+infoTitle.TextScaled = true
+infoTitle.TextColor3 = Color3.new(1, 1, 1)
+infoTitle.TextStrokeTransparency = 0.3
+infoTitle.Parent = billboard
+local infoSub = Instance.new("TextLabel")
+infoSub.Size = UDim2.new(1, 0, 0.5, 0)
+infoSub.Position = UDim2.new(0, 0, 0.5, 0)
+infoSub.BackgroundTransparency = 1
+infoSub.Font = Enum.Font.GothamBold
+infoSub.TextScaled = true
+infoSub.TextColor3 = Config.Colors.Accent
+infoSub.TextStrokeTransparency = 0.3
+infoSub.Parent = billboard
 
-local function fovPunch(amount, duration)
-	local base = 70
-	camera.FieldOfView = base + amount
-	TweenService:Create(camera, TweenInfo.new(duration or 0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = base }):Play()
-end
-
--- Onde locale instantanee (feedback avant la reponse serveur)
-local function localSwingRing()
-	if not rootPart then
-		return
-	end
-	local ring = Instance.new("Part")
-	ring.Shape = Enum.PartType.Ball
-	ring.Size = Vector3.new(3, 3, 3)
-	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.new(1, 1, 1)
-	ring.Transparency = 0.4
-	ring.Anchored = true
-	ring.CanCollide = false
-	ring.CanQuery = false
-	ring.CFrame = rootPart.CFrame
-	ring.Parent = workspace
-	TweenService:Create(ring, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.new(Config.Ball.DeflectRange * 1.6, 1, Config.Ball.DeflectRange * 1.6),
-		Transparency = 1,
-	}):Play()
-	task.delay(0.3, function()
-		ring:Destroy()
-	end)
-end
-
-function Input.deflect()
-	local now = os.clock()
-	if now - lastSwing < Config.Ball.DeflectCooldown then
-		return
-	end
-	lastSwing = now
-	State.setCooldown("Deflect", Config.Ball.DeflectCooldown)
-	localSwingRing()
-	playSound("rbxasset://sounds/swoosh.wav", 0.6, 1.2)
-	Remotes.Deflect:FireServer()
-end
-
-function Input.dash()
-	if not rootPart or not humanoid or humanoid.Health <= 0 then
-		return
-	end
-	if State.cooldownLeft("Dash") > 0 then
-		return
-	end
-	State.setCooldown("Dash", Config.Abilities.Dash.Cooldown)
-
-	local dir = humanoid.MoveDirection
-	if dir.Magnitude < 0.1 then
-		dir = camera.CFrame.LookVector * Vector3.new(1, 0, 1)
-	end
-	if dir.Magnitude < 0.01 then
-		dir = rootPart.CFrame.LookVector
-	end
-	dir = dir.Unit
-	rootPart.AssemblyLinearVelocity = dir * Config.Abilities.Dash.Speed + Vector3.new(0, Config.Abilities.Dash.Lift, 0)
-
-	fovPunch(14, 0.4)
-	playSound("rbxasset://sounds/swoosh.wav", 0.8, 0.8)
-	Remotes.Ability:FireServer("Dash")
-	State.Changed:Fire("dash")
-end
-
-function Input.pulse()
-	if not rootPart or State.cooldownLeft("Pulse") > 0 then
-		return
-	end
-	if State.round.phase ~= "Playing" then
-		return
-	end
-	State.setCooldown("Pulse", Config.Abilities.Pulse.Cooldown)
-	Remotes.Ability:FireServer("Pulse")
-	fovPunch(-8, 0.5)
-end
-
-local function tryDoubleJump()
-	if not humanoid or not rootPart or humanoid.Health <= 0 then
-		return
-	end
-	local stateName = humanoid:GetState()
-	if stateName ~= Enum.HumanoidStateType.Freefall then
-		return
-	end
-	if not canDoubleJump or os.clock() - lastJumpTime < 0.2 then
-		return
-	end
-	canDoubleJump = false
-	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	local v = rootPart.AssemblyLinearVelocity
-	rootPart.AssemblyLinearVelocity = Vector3.new(v.X, Config.Abilities.DoubleJump.Power, v.Z)
-	playSound("rbxasset://sounds/action_jump.mp3", 0.5, 1.3)
-	State.Changed:Fire("doublejump")
-end
-
-local function onCharacter(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	rootPart = char:WaitForChild("HumanoidRootPart")
-	canDoubleJump = false
-
-	humanoid.StateChanged:Connect(function(_, new)
-		if new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
-			canDoubleJump = true
-		elseif new == Enum.HumanoidStateType.Jumping then
-			lastJumpTime = os.clock()
+local function findTile(instance)
+	local current = instance
+	while current and current ~= workspace do
+		if current:GetAttribute("PlotId") and current:GetAttribute("Index") then
+			return current
 		end
-	end)
+		current = current.Parent
+	end
+	return nil
 end
 
--- Jump pads
-local padDebounce = 0
-local function hookPad(pad)
-	pad.Touched:Connect(function(hit)
-		if not character or hit.Parent ~= character or not rootPart then
+local mouse = player:GetMouse()
+local params = RaycastParams.new()
+params.FilterType = Enum.RaycastFilterType.Exclude
+
+-- screenPos = nil : utilise la souris ; sinon position d'un tap (coordonnees ecran)
+local function tileAt(screenPos)
+	if not screenPos then
+		return findTile(mouse.Target)
+	end
+	local char = player.Character
+	params.FilterDescendantsInstances = char and { char } or {}
+	local ray = camera:ScreenPointToRay(screenPos.X, screenPos.Y)
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 300, params)
+	if not result then
+		return nil
+	end
+	return findTile(result.Instance)
+end
+
+local function describeTile(tile)
+	local plantId = tile:GetAttribute("Plant") or ""
+	local locked = tile:GetAttribute("Locked")
+	if locked then
+		return "Case verrouillee", State.inventory.expandPrice and ("Agrandir : " .. State.inventory.expandPrice .. " pieces") or ""
+	end
+	if plantId == "" then
+		if State.selectedSeed then
+			return "Planter : " .. State.selectedSeed, "Clique pour planter"
+		end
+		return "Case vide", "Choisis une graine (1-9)"
+	end
+	local progress = tile:GetAttribute("Progress") or 0
+	local ripe = tile:GetAttribute("Ripe")
+	local mutations = tile:GetAttribute("Mutations") or ""
+	local title = plantId
+	if mutations ~= "" then
+		title = mutations:gsub(",", " ") .. " " .. plantId
+	end
+	if ripe then
+		return title, "MUR ! Clique pour recolter"
+	end
+	local waterLeft = math.max(0, State.waterReadyAt - os.clock())
+	local sub = math.floor(progress * 100) .. " %  |  " .. (waterLeft > 0 and string.format("arrosoir %.0fs", waterLeft) or "clique pour arroser")
+	return title, sub
+end
+
+local function updateHover()
+	local tile = tileAt(nil)
+	if tile and tile:GetAttribute("PlotId") == State.inventory.plotId then
+		hoverBox.Adornee = tile
+		billboard.Adornee = tile
+		billboard.Enabled = true
+		local title, sub = describeTile(tile)
+		infoTitle.Text = title
+		infoSub.Text = sub
+		local ripe = tile:GetAttribute("Ripe")
+		local locked = tile:GetAttribute("Locked")
+		local color = locked and Color3.fromRGB(160, 160, 160) or (ripe and Config.Colors.Gold or Config.Colors.Accent)
+		hoverBox.Color3 = color
+		hoverBox.SurfaceColor3 = color
+		infoSub.TextColor3 = color
+	else
+		hoverBox.Adornee = nil
+		billboard.Enabled = false
+	end
+end
+
+local function act(screenPos)
+	local tile = tileAt(screenPos)
+	if not tile then
+		return
+	end
+	if tile:GetAttribute("PlotId") ~= State.inventory.plotId then
+		State.fire("notify", { text = "Ce n'est pas ta parcelle !", kind = "danger" })
+		return
+	end
+	local plantId = tile:GetAttribute("Plant") or ""
+	if plantId == "" and not State.selectedSeed and not tile:GetAttribute("Locked") then
+		State.fire("notify", { text = "Selectionne une graine dans ta barre (touches 1-9).", kind = "info" })
+		return
+	end
+	if plantId ~= "" and not tile:GetAttribute("Ripe") and not tile:GetAttribute("Locked") then
+		if State.waterReadyAt > os.clock() then
 			return
 		end
-		if os.clock() - padDebounce < 0.6 then
-			return
-		end
-		padDebounce = os.clock()
-		local power = pad:GetAttribute("Power") or Config.Arena.JumpPadPower
-		local v = rootPart.AssemblyLinearVelocity
-		rootPart.AssemblyLinearVelocity = Vector3.new(v.X * 0.6, power, v.Z * 0.6)
-		canDoubleJump = true
-		playSound("rbxasset://sounds/action_jump.mp3", 0.7, 0.7)
-		fovPunch(10, 0.5)
-	end)
+		State.waterReadyAt = os.clock() + Config.Water.Cooldown
+	end
+	Remotes.Action:FireServer(tile:GetAttribute("PlotId"), tile:GetAttribute("Index"), State.selectedSeed)
+	State.fire("tileAction", tile)
 end
+
+local touchStart = nil -- { pos = Vector2, time = number }
 
 function Input.Init()
-	if player.Character then
-		onCharacter(player.Character)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			act(nil)
+		elseif input.UserInputType == Enum.UserInputType.Touch then
+			touchStart = { pos = Vector2.new(input.Position.X, input.Position.Y), time = os.clock() }
+		elseif input.UserInputType == Enum.UserInputType.Keyboard then
+			local code = input.KeyCode
+			if code.Value >= Enum.KeyCode.One.Value and code.Value <= Enum.KeyCode.Nine.Value then
+				State.fire("hotbar", code.Value - Enum.KeyCode.One.Value + 1)
+			elseif code == Enum.KeyCode.B then
+				State.fire("toggle", "backpack")
+			elseif code == Enum.KeyCode.Escape then
+				State.fire("toggle", "close")
+			end
+		end
+	end)
+
+	-- Tap court sur mobile (pas un glissement de camera)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.Touch or not touchStart then
+			return
+		end
+		local pos = Vector2.new(input.Position.X, input.Position.Y)
+		local moved = (pos - touchStart.pos).Magnitude
+		local held = os.clock() - touchStart.time
+		touchStart = nil
+		if moved < 12 and held < 0.35 then
+			act(pos)
+		end
+	end)
+
+	if UserInputService.MouseEnabled then
+		RunService.RenderStepped:Connect(updateHover)
 	end
-	player.CharacterAdded:Connect(onCharacter)
 
-	for _, pad in ipairs(CollectionService:GetTagged("JumpPad")) do
-		hookPad(pad)
-	end
-	CollectionService:GetInstanceAddedSignal("JumpPad"):Connect(hookPad)
-
-	UserInputService.JumpRequest:Connect(tryDoubleJump)
-
-	ContextActionService:BindAction("OnyxDeflect", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin then
-			Input.deflect()
+	ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		local stand = prompt.Parent
+		if stand and CollectionService:HasTag(stand, "ShopStand") then
+			State.fire("toggle", "shop")
 		end
-		return Enum.ContextActionResult.Pass
-	end, false, Enum.KeyCode.F, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
-
-	ContextActionService:BindAction("OnyxDash", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin then
-			Input.dash()
-		end
-		return Enum.ContextActionResult.Pass
-	end, false, Enum.KeyCode.Q, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL2)
-
-	ContextActionService:BindAction("OnyxPulse", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin then
-			Input.pulse()
-		end
-		return Enum.ContextActionResult.Pass
-	end, false, Enum.KeyCode.E, Enum.KeyCode.ButtonY)
+	end)
 end
 
 return Input

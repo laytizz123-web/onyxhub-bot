@@ -1,37 +1,38 @@
-# ONYX ARENA – jeu Roblox
+# ONYX FARM – jeu Roblox
 
-Jeu d'arène ultra dynamique inspiré des hits du moment (type *deflect / dodge*) :
-un ballon d'énergie fonce sur une cible, elle doit le **renvoyer au bon moment**,
-le ballon accélère à chaque renvoi, et le **dernier survivant gagne**.
+Jeu de ferme dans le style des gros succès actuels (type *Grow a Garden*) :
+chaque joueur reçoit sa **parcelle**, achète des **graines**, plante, arrose, récolte des
+fruits au poids aléatoire avec des **mutations** rares, puis vend pour agrandir sa ferme.
+La **météo dynamique** (pluie, orage avec éclairs, vague de froid) accélère la pousse et
+mute les plantes en direct.
 
 ## Gameplay
 
-| Action | PC | Manette | Mobile |
-| --- | --- | --- | --- |
-| Renvoyer le ballon | `F` ou clic gauche | `R2` | bouton RENVOI |
-| Dash | `Q` ou `Maj gauche` | `L2` | bouton DASH |
-| Pulse (ralentit le ballon) | `E` | `Y` | bouton PULSE |
-| Double saut | `Espace` en l'air | `A` en l'air | bouton saut en l'air |
+| Action | Comment |
+| --- | --- |
+| Planter | Choisis une graine dans la barre (clic ou touches `1-9`), puis clique une case de ta parcelle |
+| Arroser | Clique une plante en croissance : +20 % de pousse (arrosoir : 6 s de recharge) |
+| Récolter | Clique une plante mûre (brillante, étiquette « MÛR ») |
+| Vendre | Va au stand **VENTE** (touche `E` ou bouton VENDRE) : tout le sac est vendu |
+| Acheter | Va au stand **GRAINES** (touche `E` ou bouton BOUTIQUE) |
+| Sac | Bouton SAC ou touche `B` : liste des fruits, poids, valeur |
+| Agrandir | Bouton AGRANDIR : 9 → 25 → 49 cases |
 
-- **Ballon à guidage** : il vise toujours un joueur (surligné en rouge + étiquette CIBLE).
-  Si tu es la cible, une bannière et une vignette rouge te préviennent. Quand le ballon est
-  à portée la bannière passe en bleu : c'est le moment de renvoyer.
-- **Vitesse croissante** : chaque renvoi accélère le ballon (couleur blanc → or → rouge).
-- **Overdrive** : après 2 min 30 la vitesse de base est multipliée par 1,8 pour finir la manche.
-- **Arène vivante** : piliers qui montent et descendent, 6 jump pads dorés, cubes néon,
-  murs de verre, lobby flottant au-dessus de l'arène.
-- **Mode entraînement automatique** tant qu'il n'y a qu'un seul joueur (le ballon ne
-  t'élimine pas, il repart du centre). Parfait pour tester seul dans Studio.
-- **Progression** : pièces (renvois, survie, victoire), victoires et série de victoires,
-  sauvegardées en DataStore et affichées dans le leaderboard.
+- **10 plantes** de la carotte (10 pièces) à la fleur de lune (250 000), certaines repoussent après récolte.
+- **Boutique à stock limité** qui se réapprovisionne toutes les 5 minutes (compte à rebours à l'écran).
+- **Poids aléatoire** : la plupart des fruits sont normaux, parfois un GÉANT vaut plusieurs fois le prix.
+- **Mutations** : Doré (x20) et Arc-en-ciel (x50) à la maturation, Mouillé (x2) sous la pluie, Gelé (x10) par temps froid, Choc (x100) quand la foudre frappe une plante pendant l'orage. Les multiplicateurs se cumulent.
+- **Croissance hors ligne** : les plantes continuent de pousser jusqu'à 2 h après ta déconnexion.
+- **Sauvegarde DataStore** : pièces, graines, fruits, parcelle, agrandissements, récoltes.
+- Fonctionne sur PC, mobile (tap) et jusqu'à 8 joueurs par serveur (8 parcelles).
 
 ## Installation (2 façons)
 
 ### 1. Le plus simple : ouvrir le fichier de place
 
-1. Télécharge `OnyxArena.rbxlx`.
-2. Dans Roblox Studio : **Fichier → Ouvrir depuis un fichier** et choisis `OnyxArena.rbxlx`.
-3. Clique sur **Jouer**. Tout (arène, lobby, éclairage, interface) est généré par script.
+1. Télécharge `OnyxFarm.rbxlx`.
+2. Dans Roblox Studio : **Fichier → Ouvrir depuis un fichier** et choisis `OnyxFarm.rbxlx`.
+3. Clique sur **Jouer**. Tout (terrain, stands, parcelles, interface) est généré par script.
 
 Pour tester à plusieurs : onglet **Test → Clients et serveurs**, choisis 2 joueurs ou plus.
 
@@ -52,30 +53,32 @@ node build-place.js
 ## Publication
 
 Après **Fichier → Publier sur Roblox**, active dans *Paramètres du jeu → Sécurité*
-l'option **Activer l'accès aux services API par Studio** pour que la sauvegarde des pièces
-fonctionne aussi en test Studio.
+l'option **Activer l'accès aux services API par Studio** pour que la sauvegarde fonctionne
+aussi en test Studio.
 
 ## Structure
 
 ```
 src/
   ReplicatedStorage/Shared/
-    Config.lua          Tous les réglages (vitesses, cooldowns, récompenses, tailles)
+    Config.lua          Plantes, mutations, météo, prix, parcelles (tout l'équilibrage)
+    Economy.lua         Valeur d'un fruit, poids aléatoire, libellés
     Remotes.lua         RemoteEvents client <-> serveur
   ServerScriptService/Server/
     Main.server.lua     Point d'entrée serveur
     Modules/
-      MapBuilder.lua    Génère l'arène, le lobby et l'éclairage
-      BallController.lua Ballon : guidage, renvois, vitesse, overdrive
-      RoundManager.lua  Boucle de manche, éliminations, récompenses
+      MapBuilder.lua    Génère le terrain, la place, les stands, les 8 parcelles
+      PlantVisuals.lua  Modèles de plantes (4 stades, 5 formes, effets de mutation)
+      PlotService.lua   Attribution, plantation, croissance, arrosage, récolte, expansion
+      ShopService.lua   Stock, réassort, achat, vente, agrandissement
+      WeatherService.lua Météo, mutations météo, éclairs
       DataService.lua   DataStore + leaderstats
-      AbilityService.lua Validation des capacités (Pulse) et relais d'effets
   StarterPlayer/StarterPlayerScripts/Client/
     Main.client.lua     Point d'entrée client
     Modules/
-      Input.lua         Contrôles, dash, double saut, jump pads
+      Input.lua         Clic/tap sur les cases, survol avec info-bulle, raccourcis
       HUD.lua           Interface complète (générée par script)
-      Effects.lua       Ondes de choc, particules, sons, tremblement caméra
+      Effects.lua       Particules, textes flottants, éclairs, pluie, neige, sons
       State.lua         État partagé côté client
 ```
 
@@ -83,8 +86,8 @@ src/
 
 Tout se règle dans `Config.lua` :
 
-- `Ball.SpeedPerDeflect` / `Ball.MaxSpeed` : difficulté de la montée en vitesse.
-- `Ball.DeflectRange` : fenêtre de renvoi (plus grand = plus facile).
-- `Round.Duration` : délai avant l'Overdrive.
-- `Abilities.*.Cooldown` : fréquence des capacités.
-- `Rewards.*` : économie du jeu.
+- `Plants` : prix, temps de pousse, valeur, poids, repousse, stock de chaque plante.
+- `Mutations` : multiplicateurs et couleurs.
+- `Weather` : fréquence, durée et effets des événements.
+- `Plot.ExpandPrices` : prix des agrandissements.
+- `Water.Boost` / `Water.Cooldown` : puissance de l'arrosoir.
