@@ -5344,7 +5344,8 @@ const tools = (() => {
       }
       if (raidUntil && now < raidUntil) await member.timeout(600_000, "anti-raid").catch(() => {});
     }
-    if (w.autorole) await member.roles.add(w.autorole, "auto role").catch(() => {});
+    // the role of the rules is earned with the button, never given on join (it would skip the rules)
+    if (w.autorole && !(db.cfg.rules.on && w.autorole === db.cfg.rules.roleId)) await member.roles.add(w.autorole, "auto role").catch(() => {});
     if (w.channelId && w.message) {
       const channel = await member.guild.channels.fetch(w.channelId).catch(() => null);
       if (channel?.isTextBased?.()) {
