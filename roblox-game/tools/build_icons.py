@@ -343,4 +343,4 @@ if __name__ == "__main__":
     cut_sheet()
     build_drawn()
     write_lua()
-    write_pets_lua()
+    # Les pets sont maintenant de vrais modeles 3D (tools/build_pets3d.py) : plus d'images integrees.

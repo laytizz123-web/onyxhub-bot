@@ -1,4 +1,8 @@
--- Construit le modele 3D d'un pet (parts uniquement) selon sa forme, sa couleur et son evolution.
+-- Modeles 3D des pets.
+-- Source : ReplicatedStorage.Pets.<Nom> (19 modeles generes par tools/build_pets3d.py, modifiables dans Studio).
+-- Chaque Part s'appelle "<Groupe>.<role>" : le groupe sert aux animations (voir PetAnimator),
+-- le role aux evolutions (base et accent sont recolores, eye / detail / glow sont conserves).
+-- Si un modele manque, un modele simplifie est construit par code (secours).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -112,7 +116,7 @@ shapes.blob = function(m, cf, color, mat)
 end
 
 -- Retourne un Model anchore centre sur cf. evoIndex : 1 Normal, 2 Golden, 3 Rainbow, 4 Cosmic
-function PetModel.Build(petId, evoIndex, cf)
+local function buildProcedural(petId, evoIndex, cf)
 	local def = Config.PetById[petId] or Config.Pets[1]
 	local evo = Config.Evolutions[evoIndex or 1] or Config.Evolutions[1]
 	local model = Instance.new("Model")
@@ -159,6 +163,152 @@ function PetModel.Build(petId, evoIndex, cf)
 		e.Parent = att
 	end
 	model.PrimaryPart = model:FindFirstChild("Body") or model:FindFirstChildWhichIsA("BasePart")
+	return model
+end
+
+-- Modeles 3D de ReplicatedStorage.Pets -----------------------------------------------------
+
+local RARITY_FX = {
+	Legendary = { light = 1.2, rate = 6, size = 0.35, speed = 1.5 },
+	Mythical = { light = 2, rate = 16, size = 0.45, speed = 3, swirl = true },
+	Secret = { light = 3, rate = 24, size = 0.55, speed = 2, aura = true },
+}
+
+local function roleOf(part)
+	return string.match(part.Name, "%.(%w+)$") or "base"
+end
+
+local function addRarityFx(model, rarity, root, height)
+	local fx = RARITY_FX[rarity.id]
+	if not fx or not root then
+		return
+	end
+	local att = Instance.new("Attachment")
+	att.Name = "RarityFx"
+	att.Position = Vector3.new(0, 0, 0)
+	att.Parent = root
+	local light = Instance.new("PointLight")
+	light.Color = rarity.color
+	light.Range = 10
+	light.Brightness = fx.light
+	light.Shadows = false
+	light.Parent = att
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Name = "RaritySparkles"
+	sparkles.Rate = fx.rate
+	sparkles.Lifetime = NumberRange.new(0.8, 1.4)
+	sparkles.Speed = NumberRange.new(fx.speed * 0.5, fx.speed)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, fx.size), NumberSequenceKeypoint.new(1, 0) })
+	sparkles.Transparency = NumberSequence.new(0.1, 1)
+	sparkles.LightEmission = 1
+	sparkles.Color = ColorSequence.new(Color3.new(1, 1, 1), rarity.color)
+	if fx.swirl then
+		sparkles.RotSpeed = NumberRange.new(-180, 180)
+		sparkles.Acceleration = Vector3.new(0, 2, 0)
+		sparkles.Shape = Enum.ParticleEmitterShape.Sphere
+		sparkles.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+		sparkles.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 255)),
+			ColorSequenceKeypoint.new(0.5, rarity.color),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 120, 255)),
+		})
+	end
+	sparkles.Parent = att
+	if fx.aura then
+		-- aura doree : anneau de lumiere au sol + rayons
+		local aura = Instance.new("ParticleEmitter")
+		aura.Name = "SecretAura"
+		aura.Rate = 10
+		aura.Lifetime = NumberRange.new(1.2, 1.8)
+		aura.Speed = NumberRange.new(0.5, 1)
+		aura.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.5, 2.2), NumberSequenceKeypoint.new(1, 0) })
+		aura.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.6), NumberSequenceKeypoint.new(1, 1) })
+		aura.LightEmission = 1
+		aura.Color = ColorSequence.new(Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 160, 40))
+		aura.EmissionDirection = Enum.NormalId.Top
+		aura.Acceleration = Vector3.new(0, 3, 0)
+		aura.Parent = att
+	end
+end
+
+local EVO_COLORS = {
+	Golden = { base = Color3.fromRGB(255, 200, 55), accent = Color3.fromRGB(255, 232, 140), reflect = 0.2 },
+	Rainbow = { base = Color3.fromRGB(255, 120, 220), accent = Color3.fromRGB(255, 220, 245), reflect = 0.05 },
+	Cosmic = { base = Color3.fromRGB(70, 40, 170), accent = Color3.fromRGB(150, 110, 255), reflect = 0.1 },
+}
+
+local function applyEvolution(model, evo, root)
+	local colors = EVO_COLORS[evo.id]
+	if not colors then
+		return
+	end
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			local role = roleOf(part)
+			if role == "base" then
+				part.Color = colors.base
+				part.Reflectance = colors.reflect
+				part:SetAttribute("Rainbow", evo.id == "Rainbow")
+			elseif role == "accent" then
+				part.Color = colors.accent
+				part.Reflectance = colors.reflect
+			end
+		end
+	end
+	if root then
+		local att = Instance.new("Attachment")
+		att.Name = "EvolutionFx"
+		att.Parent = root
+		local e = Instance.new("ParticleEmitter")
+		e.Rate = evo.id == "Cosmic" and 14 or 6
+		e.Lifetime = NumberRange.new(0.7, 1.2)
+		e.Speed = NumberRange.new(1, 2.5)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
+		e.LightEmission = 1
+		e.Color = ColorSequence.new(evo.color or Color3.new(1, 1, 1))
+		e.Parent = att
+	end
+end
+
+function PetModel.Build(petId, evoIndex, cf)
+	cf = cf or CFrame.new()
+	local folder = ReplicatedStorage:FindFirstChild("Pets")
+	local template = folder and folder:FindFirstChild(petId)
+	if not template then
+		return buildProcedural(petId, evoIndex, cf)
+	end
+	local def = Config.PetById[petId] or Config.Pets[1]
+	local evo = Config.Evolutions[evoIndex or 1] or Config.Evolutions[1]
+	local rarity = Config.RarityById[def.rarity]
+	local model = template:Clone()
+	local root
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.Massless = true
+			if not root and part.Name == "Body.base" then
+				root = part
+			end
+		end
+	end
+	root = root or model:FindFirstChildWhichIsA("BasePart", true)
+	model.PrimaryPart = root
+	model.WorldPivot = CFrame.new() -- les modeles sont construits avec le sol a Y = 0 sous le pet
+	local scale = 0.92 + (rarity.index - 1) * 0.05
+	if math.abs(scale - 1) > 0.01 then
+		model:ScaleTo(scale)
+	end
+	applyEvolution(model, evo, root)
+	addRarityFx(model, rarity, root)
+	model:SetAttribute("PetId", def.id)
+	model:SetAttribute("Evo", evo.id)
+	model:SetAttribute("PetScale", scale)
+	model:PivotTo(cf)
 	return model
 end
 

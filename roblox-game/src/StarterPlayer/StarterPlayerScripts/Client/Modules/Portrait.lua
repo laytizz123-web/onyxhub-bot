@@ -1,4 +1,4 @@
--- Portrait d'un pet dans l'interface : image du pet si disponible, sinon modele 3D (ViewportFrame).
+-- Portrait 3D d'un pet dans l'interface (ViewportFrame avec le vrai modele de ReplicatedStorage.Pets).
 -- opts : silhouette (bool), spin (number : vitesse d'animation), zoom (number)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -76,8 +76,8 @@ local function modelPortrait(parent, petId, evo, props, opts)
 	local radius = math.max(size.X, size.Y, size.Z)
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
-	local distance = radius * 2.3 / (opts.zoom or 1)
-	camera.CFrame = CFrame.lookAt(cf.Position + Vector3.new(distance * 0.45, distance * 0.3, -distance), cf.Position)
+	local distance = radius * 1.9 / (opts.zoom or 1)
+	camera.CFrame = CFrame.lookAt(cf.Position + Vector3.new(distance * 0.42, distance * 0.28, -distance), cf.Position)
 	camera.Parent = vp
 	vp.CurrentCamera = camera
 	if opts.spin then
@@ -91,7 +91,7 @@ end
 
 function Portrait.new(parent, petId, evo, props, opts)
 	opts = opts or {}
-	return imagePortrait(parent, petId, evo, props, opts) or modelPortrait(parent, petId, evo, props, opts)
+	return modelPortrait(parent, petId, evo, props, opts)
 end
 
 RunService.RenderStepped:Connect(function(dt)

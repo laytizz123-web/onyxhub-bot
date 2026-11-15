@@ -141,7 +141,7 @@ function RaceService.Start()
 		r.rank = nil
 		r.lane = (i - 2.5) * 2.2
 		local pos = pointAt(points, 0)
-		r.model = PetModel.Build(r.petId, r.evo, CFrame.new(pos + Vector3.new(0, 1.5, r.lane)))
+		r.model = PetModel.Build(r.petId, r.evo, CFrame.new(pos + Vector3.new(0, -0.9, r.lane)))
 		r.model.Parent = runnersFolder
 		local tag = Instance.new("BillboardGui")
 		tag.Size = UDim2.fromOffset(140, 30)
@@ -156,7 +156,8 @@ function RaceService.Start()
 		l.TextColor3 = r.player and Config.Colors.Gold or Color3.new(1, 1, 1)
 		l.TextStrokeTransparency = 0.3
 		l.Parent = tag
-		tag.Parent = r.model.PrimaryPart
+		tag.StudsOffset = Vector3.new(0, 4.5, 0)
+		tag.Parent = r.model.PrimaryPart or r.model:FindFirstChildWhichIsA("BasePart", true)
 	end
 	broadcast()
 	task.wait(Config.Race.Countdown)
@@ -194,7 +195,7 @@ function RaceService.Start()
 				local pos, nextPoint = pointAt(points, r.progress)
 				local look = CFrame.lookAt(pos, Vector3.new(nextPoint.X, pos.Y, nextPoint.Z))
 				local bob = math.abs(math.sin(os.clock() * 12 + r.lane)) * 0.6
-				r.model:PivotTo(look * CFrame.new(r.lane, 1.2 + bob, 0))
+				r.model:PivotTo(look * CFrame.new(r.lane, -0.9 + bob * 0.3, 0))
 			end
 		end
 		if os.clock() - lastSync > 0.5 then

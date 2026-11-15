@@ -50,6 +50,12 @@ function buildDir(dir, name, isTop) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       xml += buildDir(full, entry.name, false);
+    } else if (entry.name.endsWith(".rbxmx")) {
+      // modele Roblox : on insere ses Items tels quels
+      const raw = fs.readFileSync(full, "utf8");
+      const start = raw.indexOf("<Item");
+      const end = raw.lastIndexOf("</roblox>");
+      if (start >= 0 && end > start) xml += raw.slice(start, end);
     } else if (entry.name.endsWith(".lua") || entry.name.endsWith(".luau")) {
       const source = fs.readFileSync(full, "utf8");
       const base = entry.name.replace(/\.luau?$/, "");
