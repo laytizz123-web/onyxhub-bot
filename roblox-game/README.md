@@ -44,8 +44,8 @@ Pet gratuit 🐱 → ramasser des 🪙 avec ses pets → ouvrir des 🥚 → dé
   `python3 tools/build_icons.py` et `node build-place.js`.
 - **Portraits 3D** : chaque pet est affiché en 3D (ViewportFrame) dans les menus, l'index,
   les œufs, la barre d'équipement et l'éclosion.
-- **Décor en Terrain Roblox** : herbe, collines et montagnes autour des zones, étangs,
-  oasis, dunes, nuages volumétriques. Props cartoon : maisons à toit pointu, arbres ronds,
+- **Décor en îles flottantes cartoon** : dessus d'herbe festonné, falaises de terre en escalier, cascades, ponts en bois entre les zones, mer et nuages en contrebas, étangs avec nénuphars,
+  rendu lisse et coloré partout. Props cartoon : maisons à toit pointu, arbres ronds,
   sapins, palmiers, champignons, pyramides à degrés, fontaine, lampadaires, stands à auvent
   rayé, arches de pierre avec barrière magique, piste de course avec damier et tribunes.
 

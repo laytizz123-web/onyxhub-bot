@@ -5,16 +5,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 require(ReplicatedStorage.Shared.Remotes) -- cree les RemoteEvents avant tout
 
 local Modules = script.Parent.Modules
-local MapBuilder = require(Modules.MapBuilder)
-local DataService = require(Modules.DataService)
-local PetService = require(Modules.PetService)
-local CoinService = require(Modules.CoinService)
-local RaceService = require(Modules.RaceService)
 
-MapBuilder.Build()
-DataService.Init()
-PetService.Init()
-CoinService.Init()
-RaceService.Init()
+local function start(name, method)
+	local ok, err = pcall(function()
+		require(Modules[name])[method or "Init"]()
+	end)
+	if not ok then
+		warn("[PetRush] Erreur au demarrage de " .. name .. " : " .. tostring(err))
+	end
+end
+
+start("MapBuilder", "Build")
+start("DataService")
+start("PetService")
+start("CoinService")
+start("RaceService")
 
 print("[PetRush] Serveur pret.")

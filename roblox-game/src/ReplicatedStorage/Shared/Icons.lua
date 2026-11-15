@@ -494,9 +494,14 @@ function Icons.Apply(target, name, color)
 	end
 	local content = buildEditable(name)
 	if content then
-		target.Image = ""
-		target.ImageContent = content
-		return target
+		local ok = pcall(function()
+			target.Image = ""
+			target.ImageContent = content
+		end)
+		if ok then
+			return target
+		end
+		editableSupported = false
 	end
 	target.Image = ""
 	local holder = el("Frame", { Name = "VectorIcon", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = target.ZIndex }, target)

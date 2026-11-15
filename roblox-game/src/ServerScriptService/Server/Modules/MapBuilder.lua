@@ -1,4 +1,4 @@
--- Map de PET RUSH : Terrain Roblox (herbe, collines, eau, sable) + props cartoon.
+-- Map de PET RUSH : iles flottantes cartoon (plastique lisse), ponts, cascades, nuages, props.
 -- 3 zones (Village, Foret, Desert), arches de passage, stands, piste de course, classement.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +18,8 @@ local function R(a, b)
 	return rng:NextNumber(a, b)
 end
 
+local KEEP_MATERIAL = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+
 local function part(props, parent)
 	local p = Instance.new("Part")
 	p.Anchored = true
@@ -26,6 +28,9 @@ local function part(props, parent)
 	p.Material = Enum.Material.SmoothPlastic
 	for k, v in pairs(props) do
 		p[k] = v
+	end
+	if not KEEP_MATERIAL[p.Material] then
+		p.Material = Enum.Material.SmoothPlastic
 	end
 	p.Parent = parent
 	return p
@@ -40,6 +45,7 @@ local function wedge(props, parent)
 	for k, v in pairs(props) do
 		w[k] = v
 	end
+	w.Material = Enum.Material.SmoothPlastic
 	w.Parent = parent
 	return w
 end
@@ -82,13 +88,14 @@ end
 -- Eclairage ------------------------------------------------------------------------------
 
 local function buildLighting()
-	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 3
-	Lighting.Ambient = Color3.fromRGB(110, 115, 135)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 155, 170)
-	Lighting.EnvironmentDiffuseScale = 1
-	Lighting.EnvironmentSpecularScale = 1
-	Lighting.ShadowSoftness = 0.3
+	Lighting.ClockTime = 14
+	Lighting.GeographicLatitude = 30
+	Lighting.Brightness = 2.4
+	Lighting.Ambient = Color3.fromRGB(140, 140, 160)
+	Lighting.OutdoorAmbient = Color3.fromRGB(165, 165, 185)
+	Lighting.EnvironmentDiffuseScale = 0.6
+	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.ShadowSoftness = 0.5
 	Lighting.GlobalShadows = true
 	Lighting.FogEnd = 100000
 	for _, child in ipairs(Lighting:GetChildren()) do
@@ -97,146 +104,202 @@ local function buildLighting()
 		end
 	end
 	local atmosphere = Instance.new("Atmosphere")
-	atmosphere.Density = 0.28
-	atmosphere.Offset = 0.15
-	atmosphere.Color = Color3.fromRGB(200, 225, 255)
-	atmosphere.Decay = Color3.fromRGB(110, 160, 230)
-	atmosphere.Glare = 0.5
-	atmosphere.Haze = 1.4
+	atmosphere.Density = 0.18
+	atmosphere.Offset = 0
+	atmosphere.Color = Color3.fromRGB(170, 215, 255)
+	atmosphere.Decay = Color3.fromRGB(120, 180, 255)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 0
 	atmosphere.Parent = Lighting
 	local sky = Instance.new("Sky")
-	sky.SunAngularSize = 14
-	sky.MoonAngularSize = 8
+	sky.SunAngularSize = 12
 	sky.Parent = Lighting
 	local bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 0.35
-	bloom.Size = 20
-	bloom.Threshold = 1.6
+	bloom.Intensity = 0.25
+	bloom.Size = 18
+	bloom.Threshold = 1.8
 	bloom.Parent = Lighting
-	local sunRays = Instance.new("SunRaysEffect")
-	sunRays.Intensity = 0.06
-	sunRays.Spread = 0.6
-	sunRays.Parent = Lighting
 	local cc = Instance.new("ColorCorrectionEffect")
 	cc.Name = "PetColor"
-	cc.Saturation = 0.18
-	cc.Contrast = 0.06
-	cc.Brightness = 0.02
+	cc.Saturation = 0.22
+	cc.Contrast = 0.05
+	cc.Brightness = 0.03
 	cc.Parent = Lighting
-
 	local clouds = Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
-	clouds.Cover = 0.55
-	clouds.Density = 0.6
+	clouds.Cover = 0.45
+	clouds.Density = 0.5
 	clouds.Color = Color3.new(1, 1, 1)
 	clouds.Parent = Terrain
-
-	Terrain.WaterColor = Color3.fromRGB(50, 170, 255)
-	Terrain.WaterTransparency = 0.55
-	Terrain.WaterReflectance = 0.5
-	Terrain.WaterWaveSize = 0.12
-	Terrain.WaterWaveSpeed = 8
-	Terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(105, 195, 75))
-	Terrain:SetMaterialColor(Enum.Material.LeafyGrass, Color3.fromRGB(70, 150, 65))
-	Terrain:SetMaterialColor(Enum.Material.Sand, Color3.fromRGB(240, 210, 140))
-	Terrain:SetMaterialColor(Enum.Material.Sandstone, Color3.fromRGB(215, 160, 100))
-	Terrain:SetMaterialColor(Enum.Material.Rock, Color3.fromRGB(130, 130, 145))
-	Terrain:SetMaterialColor(Enum.Material.Cobblestone, Color3.fromRGB(190, 180, 165))
-	Terrain:SetMaterialColor(Enum.Material.Ground, Color3.fromRGB(140, 100, 70))
 end
 
--- Terrain -------------------------------------------------------------------------------
+-- Iles flottantes ----------------------------------------------------------------------
 
-local ZONE_MATERIAL = { Village = Enum.Material.Grass, Foret = Enum.Material.LeafyGrass, Desert = Enum.Material.Sand }
 local avoid = {} -- zones ou les coins ne doivent pas apparaitre { pos, radius }
 
 local function avoidCircle(pos, radius)
 	table.insert(avoid, { pos = pos, radius = radius })
 end
 
-local function pond(center, radius, rimMaterial)
-	Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, -1, 0)), 2, radius + 4, rimMaterial or Enum.Material.Sand)
-	Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, -4, 0)), 8, radius, Enum.Material.Air)
-	Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, -4.5, 0)), 7, radius, Enum.Material.Water)
+local PALETTES = {
+	Village = { top = Color3.fromRGB(125, 215, 85), drip = Color3.fromRGB(105, 195, 70), dirt = Color3.fromRGB(165, 110, 65), dirt2 = Color3.fromRGB(135, 88, 52), path = Color3.fromRGB(245, 225, 175) },
+	Foret = { top = Color3.fromRGB(85, 180, 80), drip = Color3.fromRGB(65, 155, 65), dirt = Color3.fromRGB(130, 92, 62), dirt2 = Color3.fromRGB(105, 74, 50), path = Color3.fromRGB(205, 165, 110) },
+	Desert = { top = Color3.fromRGB(252, 222, 150), drip = Color3.fromRGB(240, 200, 120), dirt = Color3.fromRGB(225, 155, 90), dirt2 = Color3.fromRGB(195, 128, 75), path = Color3.fromRGB(235, 185, 115) },
+}
+
+local WATER = Color3.fromRGB(80, 190, 255)
+
+local function pond(parent, center, radius, rimColor)
+	local rim = cylinder(CFrame.new(center + Vector3.new(0, 0.05, 0)), 0.3, radius + 3, rimColor, parent)
+	rim.CanCollide = false
+	local water = cylinder(CFrame.new(center + Vector3.new(0, 0.12, 0)), 0.3, radius, WATER, parent, Enum.Material.Glass)
+	water.Transparency = 0.1
+	water.Reflectance = 0.15
+	water.CanCollide = false
+	for k = 1, 4 do
+		local a = k * 1.7
+		local pad = cylinder(CFrame.new(center + Vector3.new(math.cos(a) * radius * 0.55, 0.3, math.sin(a) * radius * 0.55)), 0.2, R(1.4, 2.2), Color3.fromRGB(90, 190, 80), parent)
+		pad.CanCollide = false
+		if k % 2 == 0 then
+			ballPart(pad.CFrame * CFrame.new(0, 0.4, 0), 0.8, Color3.fromRGB(255, 140, 190), parent)
+		end
+	end
 	avoidCircle(center, radius + 6)
 end
 
-local function hill(center, radius, material)
-	Terrain:FillBall(center, radius, material)
+local function waterfall(parent, edgePoint)
+	-- ruisseau qui coule vers le bord puis cascade dans le vide
+	local stream = part({ Size = Vector3.new(26, 0.3, 9), CFrame = CFrame.new(edgePoint + Vector3.new(-13, 0.14, 0)), Color = WATER, Material = Enum.Material.Glass, Transparency = 0.1, CanCollide = false }, parent)
+	stream.Reflectance = 0.15
+	local fall = part({ Size = Vector3.new(1.5, 90, 9), CFrame = CFrame.new(edgePoint + Vector3.new(1, -45, 0)), Color = Color3.fromRGB(150, 215, 255), Material = Enum.Material.Glass, Transparency = 0.15, CanCollide = false }, parent)
+	local foam = part({ Size = Vector3.new(2, 2, 9), CFrame = CFrame.new(edgePoint + Vector3.new(1, 0, 0)), Transparency = 1, CanCollide = false }, parent)
+	local spray = Instance.new("ParticleEmitter")
+	spray.Rate = 40
+	spray.Lifetime = NumberRange.new(0.6, 1)
+	spray.Speed = NumberRange.new(4, 8)
+	spray.SpreadAngle = Vector2.new(60, 60)
+	spray.Acceleration = Vector3.new(0, -20, 0)
+	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1.4) })
+	spray.Transparency = NumberSequence.new(0.2, 1)
+	spray.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	spray.Parent = foam
+	avoidCircle(edgePoint + Vector3.new(-13, 0, 0), 10)
 end
 
-local function buildTerrain()
+local function cloudPuff(parent, pos, scale)
+	local puffs = {}
+	for k = 1, 5 do
+		local b = ballPart(CFrame.new(pos + Vector3.new((k - 3) * 6 * scale, R(-1, 3) * scale, R(-3, 3) * scale)), R(8, 13) * scale, Color3.fromRGB(255, 255, 255), parent)
+		b.CastShadow = false
+		b.CanQuery = false
+		table.insert(puffs, b)
+	end
+	local offset = Vector3.new(R(30, 60), 0, 0)
+	for _, b in ipairs(puffs) do
+		TweenService:Create(b, TweenInfo.new(R(30, 50), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = b.CFrame + offset }):Play()
+	end
+end
+
+-- Ile : dessus d'herbe, bord festonne, falaises de terre en escalier, rochers suspendus
+local function island(parent, zone)
+	local pal = PALETTES[zone.id]
+	local c = zone.center
+	local s = zone.size
+	part({ Name = "Ground", Size = Vector3.new(s, 4, s), CFrame = CFrame.new(c + Vector3.new(0, -2, 0)), Color = pal.top }, parent)
+	-- bord d'herbe arrondi qui deborde
+	local half = s / 2
+	for t = -half, half, 9 do
+		for _, edge in ipairs({ Vector3.new(t, -2.6, half), Vector3.new(t, -2.6, -half), Vector3.new(half, -2.6, t), Vector3.new(-half, -2.6, t) }) do
+			local drip = ballPart(CFrame.new(c + edge), R(5.5, 7.5), pal.drip, parent)
+			drip.CanCollide = false
+		end
+	end
+	-- falaises
+	local y = -4
+	local layers = { { s - 2, 9, pal.dirt }, { s - 18, 11, pal.dirt2 }, { s - 46, 13, pal.dirt }, { s - 90, 14, pal.dirt2 }, { s - 140, 12, pal.dirt } }
+	for _, L in ipairs(layers) do
+		part({ Name = "Cliff", Size = Vector3.new(L[1], L[2], L[1]), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] / 2, 0)), Color = L[3] }, parent)
+		-- bandes de couleur sur les falaises
+		part({ Name = "CliffBand", Size = Vector3.new(L[1] + 0.4, 1.2, L[1] + 0.4), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] * 0.35, 0)), Color = L[3]:Lerp(Color3.new(1, 1, 1), 0.15), CanCollide = false }, parent)
+		y -= L[2]
+	end
+	-- rochers suspendus sous l'ile
+	for k = 1, 10 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = R(20, s / 2 - 50)
+		ballPart(CFrame.new(c + Vector3.new(math.cos(a) * r, y - R(0, 8), math.sin(a) * r)), R(8, 16), pal.dirt2, parent)
+	end
+	-- petites collines decoratives
+	for k = 1, 6 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = R(55, half - 18)
+		local pos = c + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		if math.abs(pos.X) > 24 then
+			local mound = ballPart(CFrame.new(pos), R(16, 26), pal.top:Lerp(Color3.new(0, 0, 0), 0.05), parent)
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Scale = Vector3.new(1, 0.35, 1)
+			mesh.Parent = mound
+			avoidCircle(pos, mound.Size.X / 2 + 2)
+		end
+	end
+	-- allee centrale
+	part({ Name = "Path", Size = Vector3.new(14, 0.2, s), CFrame = CFrame.new(c + Vector3.new(0, 0.1, 0)), Color = pal.path, CanCollide = false }, parent)
+	for z = -half + 6, half - 6, 7 do
+		part({ Name = "PathStone", Size = Vector3.new(R(2.5, 4), 0.25, R(2, 3)), CFrame = CFrame.new(c + Vector3.new(R(-5, 5), 0.18, z)) * CFrame.Angles(0, R(0, 3), 0), Color = pal.path:Lerp(Color3.new(1, 1, 1), 0.35), CanCollide = false }, parent)
+	end
+end
+
+-- Pont en bois entre deux iles
+local function bridge(parent, z0, z1)
+	local len = math.abs(z0 - z1)
+	local count = math.floor(len / 2.2)
+	for k = 0, count do
+		local z = z1 + 1.1 + k * (len / (count + 1))
+		part({ Name = "Plank", Size = Vector3.new(15, 0.8, 2), CFrame = CFrame.new(0, -0.4, z) * CFrame.Angles(0, math.rad(R(-1.5, 1.5)), 0), Color = (k % 2 == 0) and Color3.fromRGB(205, 145, 85) or Color3.fromRGB(185, 125, 70) }, parent)
+	end
+	for _, x in ipairs({ -6, 6 }) do
+		part({ Name = "Beam", Size = Vector3.new(1, 1, len), CFrame = CFrame.new(x, -1.2, (z0 + z1) / 2), Color = Color3.fromRGB(140, 90, 55) }, parent)
+	end
+	for _, x in ipairs({ -7.8, 7.8 }) do
+		for z = z1, z0, 10 do
+			part({ Name = "Post", Size = Vector3.new(0.9, 4.5, 0.9), CFrame = CFrame.new(x, 1.8, z), Color = Color3.fromRGB(150, 100, 60) }, parent)
+			ballPart(CFrame.new(x, 4.3, z), 1.2, Color3.fromRGB(255, 205, 70), parent)
+		end
+		part({ Name = "Rope", Size = Vector3.new(0.35, 0.35, len), CFrame = CFrame.new(x, 3.6, (z0 + z1) / 2), Color = Color3.fromRGB(240, 220, 180), CanCollide = false }, parent)
+	end
+end
+
+local function buildWorld(root)
 	Terrain:Clear()
-	local first = Config.Zones[1]
-	local last = Config.Zones[#Config.Zones]
-	local zMax = first.center.Z + first.size / 2 + 60
-	local zMin = last.center.Z - last.size / 2 - 60
-	local length = zMax - zMin
-	-- Sous-sol
-	Terrain:FillBlock(CFrame.new(0, -14, (zMax + zMin) / 2), Vector3.new(420, 20, length + 80), Enum.Material.Ground)
-	-- Sol de chaque zone + couloirs
+	local world = Instance.new("Folder")
+	world.Name = "World"
+	world.Parent = root
 	for i, zone in ipairs(Config.Zones) do
-		local half = zone.size / 2
-		Terrain:FillBlock(CFrame.new(zone.center + Vector3.new(0, -3, 0)), Vector3.new(zone.size + 120, 6, zone.size + (i == #Config.Zones and 120 or 80)), ZONE_MATERIAL[zone.id])
+		island(world, zone)
 		local nextZone = Config.Zones[i + 1]
 		if nextZone then
-			local z0 = zone.center.Z - half
-			local z1 = nextZone.center.Z + nextZone.size / 2
-			Terrain:FillBlock(CFrame.new(0, -3, (z0 + z1) / 2), Vector3.new(160, 6, math.abs(z0 - z1) + 2), ZONE_MATERIAL[zone.id])
-			-- chemin pave
-			Terrain:FillBlock(CFrame.new(0, -1, (z0 + z1) / 2), Vector3.new(16, 2, math.abs(z0 - z1) + 24), Enum.Material.Cobblestone)
-			-- collines qui bordent le couloir
-			for z = z1 + 6, z0 - 6, 14 do
-				hill(Vector3.new(-38 - R(0, 8), -6, z), R(16, 22), Enum.Material.Rock)
-				hill(Vector3.new(38 + R(0, 8), -6, z), R(16, 22), Enum.Material.Rock)
-			end
+			bridge(world, zone.center.Z - zone.size / 2, nextZone.center.Z + nextZone.size / 2)
 		end
-		-- Collines / montagnes autour de la zone
-		local mat = zone.id == "Desert" and Enum.Material.Sandstone or (zone.id == "Foret" and Enum.Material.Rock or Enum.Material.Grass)
-		local edge = half + 16
-		for t = -half, half, 22 do
-			for _, side in ipairs({ -1, 1 }) do
-				hill(zone.center + Vector3.new(side * (edge + R(-4, 8)), -10 + R(0, 8), t), R(22, 34), mat)
-			end
-			if math.abs(t) > 24 then
-				if i == 1 then
-					hill(zone.center + Vector3.new(t, -10 + R(0, 8), edge + R(-4, 8)), R(22, 34), mat)
-				end
-				hill(zone.center + Vector3.new(t, -10 + R(0, 8), -(edge + R(-4, 8))), R(22, 34), mat)
-				if i > 1 then
-					hill(zone.center + Vector3.new(t, -10 + R(0, 8), edge + R(-4, 8)), R(22, 34), mat)
-				end
-			end
-		end
-		if i == #Config.Zones then
-			hill(zone.center + Vector3.new(0, -8, -(edge + 6)), 34, mat)
-		end
-		-- Sommets enneiges/roches plus loin pour l'horizon
-		for k = 1, 8 do
-			local a = (k / 8) * math.pi * 2
-			hill(zone.center + Vector3.new(math.cos(a) * (half + 80), -20, math.sin(a) * (half + 80)), R(45, 65), zone.id == "Desert" and Enum.Material.Sandstone or Enum.Material.Rock)
-		end
+		waterfall(world, zone.center + Vector3.new(zone.size / 2, 0, R(-40, 40)))
 	end
-	-- Pas de colline sur l'entree du village (le spawn regarde vers le sud)
-	-- Eaux et reliefs propres a chaque zone
-	local village = Config.ZoneById.Village
-	pond(village.center + Vector3.new(-62, 0, -55), 20, Enum.Material.Sand)
-	local foret = Config.ZoneById.Foret
-	pond(foret.center + Vector3.new(55, 0, 40), 18, Enum.Material.Ground)
-	for k = 1, 6 do
-		hill(foret.center + Vector3.new(R(-80, 80), -9, R(-80, 80)), R(10, 13), Enum.Material.LeafyGrass)
+	pond(world, Config.ZoneById.Village.center + Vector3.new(-62, 0, -55), 18, Color3.fromRGB(250, 230, 170))
+	pond(world, Config.ZoneById.Foret.center + Vector3.new(55, 0, 40), 16, Color3.fromRGB(150, 110, 75))
+	pond(world, Config.ZoneById.Desert.center + Vector3.new(-50, 0, -40), 16, Color3.fromRGB(120, 210, 90))
+	-- mer tres loin en dessous + nuages autour des iles
+	part({ Name = "Sea", Size = Vector3.new(2000, 2, 2000), CFrame = CFrame.new(0, -160, -300), Color = Color3.fromRGB(70, 170, 245), Reflectance = 0.1, CanCollide = false, CanQuery = false }, world)
+	for k = 1, 26 do
+		local z = R(-800, 200)
+		local x = (k % 2 == 0 and 1 or -1) * R(150, 420)
+		cloudPuff(world, Vector3.new(x, R(-70, 40), z), R(0.8, 1.6))
 	end
-	local desert = Config.ZoneById.Desert
-	pond(desert.center + Vector3.new(-50, 0, -40), 16, Enum.Material.Grass)
-	for k = 1, 14 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = R(86, 104)
-		hill(desert.center + Vector3.new(math.cos(a) * r, -12, math.sin(a) * r), R(14, 20), Enum.Material.Sand)
+	for k = 1, 12 do
+		cloudPuff(world, Vector3.new(R(-400, 400), R(70, 120), R(-800, 250)), R(1.2, 2))
 	end
 end
 
 -- Props ---------------------------------------------------------------------------------
 
-local LEAF_COLORS = { Color3.fromRGB(90, 190, 70), Color3.fromRGB(110, 210, 80), Color3.fromRGB(70, 170, 70) }
+local LEAF_COLORS = { Color3.fromRGB(95, 200, 75), Color3.fromRGB(120, 220, 85), Color3.fromRGB(75, 180, 70) }
 
 local function roundTree(parent, pos, scale)
 	scale = scale or 1
@@ -521,8 +584,10 @@ end
 local function buildVillage(folder, zone)
 	local c = zone.center
 	-- Place centrale avec fontaine
-	Terrain:FillCylinder(CFrame.new(c + Vector3.new(0, -1, 20)), 2, 22, Enum.Material.Cobblestone)
-	Terrain:FillBlock(CFrame.new(c + Vector3.new(0, -1, 0)), Vector3.new(14, 2, zone.size), Enum.Material.Cobblestone)
+	local plaza = cylinder(CFrame.new(c + Vector3.new(0, 0.15, 20)), 0.3, 22, Color3.fromRGB(245, 225, 175), folder)
+	plaza.CanCollide = false
+	local plazaRing = cylinder(CFrame.new(c + Vector3.new(0, 0.12, 20)), 0.3, 23.5, Color3.fromRGB(215, 190, 140), folder)
+	plazaRing.CanCollide = false
 	avoidCircle(c + Vector3.new(0, 0, 20), 14)
 	local fc = c + Vector3.new(0, 0, 20)
 	cylinder(CFrame.new(fc + Vector3.new(0, 1, 0)), 2, 9, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
@@ -578,7 +643,6 @@ end
 
 local function buildForest(folder, zone)
 	local c = zone.center
-	Terrain:FillBlock(CFrame.new(c + Vector3.new(0, -1, 0)), Vector3.new(12, 2, zone.size), Enum.Material.Ground)
 	scatter(zone, 70, 15, 104, function(pos)
 		if rng:NextNumber() < 0.75 then
 			pineTree(folder, pos, R(0.9, 1.6))
@@ -618,7 +682,6 @@ end
 
 local function buildDesert(folder, zone)
 	local c = zone.center
-	Terrain:FillBlock(CFrame.new(c + Vector3.new(0, -1, 0)), Vector3.new(12, 2, zone.size), Enum.Material.Sandstone)
 	-- Pyramides a degres
 	for k, def in ipairs({ { Vector3.new(70, 0, -60), 28 }, { Vector3.new(-80, 0, 70), 20 }, { Vector3.new(80, 0, 60), 16 } }) do
 		local pos = c + def[1]
@@ -735,7 +798,6 @@ local function buildRaceTrack(root, center)
 		local a = (i / n) * math.pi * 2
 		table.insert(raceWaypoints, center + Vector3.new(math.cos(a) * rx, 1.2, math.sin(a) * rz))
 	end
-	Terrain:FillBlock(CFrame.new(center + Vector3.new(0, -1, 0)), Vector3.new(rx * 2 + 20, 2, rz * 2 + 20), Enum.Material.Grass)
 	for i = 1, n do
 		local p1 = raceWaypoints[i] - Vector3.new(0, 1.2, 0)
 		local p2 = raceWaypoints[(i % n) + 1] - Vector3.new(0, 1.2, 0)
@@ -780,7 +842,6 @@ function MapBuilder._reserveVillage(folder, zone)
 	if existing then
 		existing:Destroy()
 	end
-	Terrain:FillCylinder(CFrame.new(spawnPos.X, -1, spawnPos.Z), 2, 12, Enum.Material.Cobblestone)
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "MainSpawn"
 	spawn.Shape = Enum.PartType.Cylinder
@@ -858,7 +919,7 @@ function MapBuilder.Build()
 	root.Name = "PetRush"
 	root.Parent = workspace
 	buildLighting()
-	buildTerrain()
+	buildWorld(root)
 	for i, zone in ipairs(Config.Zones) do
 		buildZone(root, zone, i)
 	end

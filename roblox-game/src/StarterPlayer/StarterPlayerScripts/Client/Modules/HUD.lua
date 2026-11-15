@@ -165,7 +165,9 @@ end
 local function scrolling(parent, props, layout)
 	local s = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 8, ScrollBarImageColor3 = WHITE, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 11 }, parent)
 	for k, v in pairs(props) do
-		s[k] = v
+		if k ~= "CellSize" then
+			s[k] = v
+		end
 	end
 	new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, s)
 	if layout == "grid" then
