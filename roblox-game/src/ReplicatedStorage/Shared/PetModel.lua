@@ -317,9 +317,28 @@ function PetModel.Build(petId, evoIndex, cf)
 		end
 	end
 	if simple then
-		-- modele importe : pivot au centre du dessous, taille ramenee a environ 4,2 studs
+		-- modele importe : remis debout, pivot au centre du dessous, taille d'environ 4,2 studs
+		model.PrimaryPart = nil
+		model.WorldPivot = CFrame.new(model:GetBoundingBox().Position)
+		local _, rawSize = model:GetBoundingBox() -- boite alignee sur le monde
+		local fix = Config.ImportedPetRotation or {}
+		local rotation = CFrame.new()
+		if rawSize.Y < rawSize.X and rawSize.Y < rawSize.Z then
+			-- couche : l'epaisseur (la plus petite dimension) doit etre en profondeur, pas en hauteur
+			rotation = CFrame.Angles(math.rad(fix.LyingFix or -90), 0, 0)
+		elseif rawSize.X < rawSize.Y and rawSize.X < rawSize.Z then
+			-- de profil : on le tourne face a l'avant
+			rotation = CFrame.Angles(0, math.rad(90), 0)
+		end
+		local extra = fix.Extra or Vector3.zero
+		rotation = rotation * CFrame.Angles(math.rad(extra.X), math.rad(extra.Y), math.rad(extra.Z))
+		model:PivotTo(CFrame.new(model.WorldPivot.Position) * rotation)
+		model.WorldPivot = CFrame.new(model:GetBoundingBox().Position)
+		model.PrimaryPart = root
+		model.PrimaryPart = nil
 		local boxCF, boxSize = model:GetBoundingBox()
 		model.WorldPivot = CFrame.new(boxCF.Position - Vector3.new(0, boxSize.Y / 2, 0))
+		model.PrimaryPart = root
 		if boxSize.Y > 7 or boxSize.Y < 2 then
 			model:ScaleTo(model:GetScale() * (4.2 / boxSize.Y))
 		end
