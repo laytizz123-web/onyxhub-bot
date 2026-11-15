@@ -61,6 +61,16 @@ function PetAnimator.new(model, petId)
 		end
 	end
 	self.cframes = table.create(#self.parts)
+	-- modele d'une seule piece (importe) : animation par sauts et ecrasement
+	self.simple = model:GetAttribute("SimplePet") == true
+	if self.simple then
+		self.sizes = {}
+		for i, part in ipairs(self.parts) do
+			self.sizes[i] = part.Size
+		end
+		self.glow = model:FindFirstChild("EvolutionGlow")
+	end
+	self.hopPhase = 0
 	self.blink = 0
 	self.nextBlink = os.clock() + math.random(2, 5)
 	return self
@@ -73,8 +83,66 @@ local function around(pivot, rotation)
 	return CFrame.new(pivot) * rotation * CFrame.new(-pivot)
 end
 
+-- Animation "sautillante" pour les modeles d'une seule piece
+function PetAnimator:updateSimple(rootCF, state, now, dt)
+	local t = now + self.phase
+	local s = self.scale
+	local airborne = self.kind == "fly" or self.kind == "float"
+	local moving = state == "walk" or state == "run"
+	local y, pitch, roll, yawWobble = 0, 0, 0, 0
+	local sx, sy = 1, 1
+	if airborne then
+		y = sin(t * 2.2) * 0.35 * s
+		pitch = moving and -12 or sin(t * 1.3) * 4
+		roll = sin(t * 1.6) * 6
+		sy = 1 + sin(t * 4.4) * 0.03
+	elseif moving or state == "jump" then
+		-- bonds successifs : arc de saut + ecrasement a l'atterrissage
+		local rate = state == "run" and 9 or 6.5
+		self.hopPhase = (self.hopPhase + dt * rate) % (math.pi)
+		local h = sin(self.hopPhase)
+		local height = (state == "run" and 1.3 or 0.9) * s
+		if state == "jump" then
+			height = 1.8 * s
+		end
+		y = h * height
+		local landing = math.max(0, 1 - self.hopPhase / 0.6) + math.max(0, (self.hopPhase - (math.pi - 0.45)) / 0.45)
+		sy = 1 - 0.18 * landing + 0.08 * h
+		sx = 1 + 0.12 * landing - 0.04 * h
+		pitch = -h * 10
+		roll = sin(t * rate * 0.5) * 6
+	else
+		-- repos : respiration, petit balancement, regarde autour
+		sy = 1 + sin(t * 2.6) * 0.035
+		sx = 1 - sin(t * 2.6) * 0.02
+		roll = sin(t * 0.9) * 4
+		yawWobble = sin(t * 0.55) * 14
+		self.hopPhase = 0
+	end
+	local base = rootCF * CFrame.new(0, y, 0) * CFrame.Angles(0, rad(yawWobble), 0) * CFrame.Angles(rad(pitch), 0, rad(roll))
+	local cframes = self.cframes
+	for i, part in ipairs(self.parts) do
+		local off = self.offsets[i]
+		local p = off.Position
+		cframes[i] = base * CFrame.new(p.X * sx, p.Y * sy, p.Z * sx) * off.Rotation
+		local size = self.sizes[i]
+		part.Size = Vector3.new(size.X * sx, size.Y * sy, size.Z * sx)
+	end
+	workspace:BulkMoveTo(self.parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+	if self.glow and self.glow:GetAttribute("Rainbow") then
+		local c = Color3.fromHSV((now * 0.3) % 1, 0.7, 1)
+		self.glow.OutlineColor = c
+		self.glow.FillColor = c
+	end
+end
+
 -- state : "idle" | "walk" | "run" | "jump" ; speed : vitesse du proprietaire (studs/s)
 function PetAnimator:update(rootCF, state, now)
+	local dt = now - (self.lastUpdate or now)
+	self.lastUpdate = now
+	if self.simple then
+		return self:updateSimple(rootCF, state, now, math.clamp(dt, 0, 0.1))
+	end
 	local t = now + self.phase
 	local s = self.scale
 	local kind = self.kind

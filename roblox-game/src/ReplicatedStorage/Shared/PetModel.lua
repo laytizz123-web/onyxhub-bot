@@ -283,6 +283,16 @@ function PetModel.Build(petId, evoIndex, cf)
 	local evo = Config.Evolutions[evoIndex or 1] or Config.Evolutions[1]
 	local rarity = Config.RarityById[def.rarity]
 	local model = template:Clone()
+	if model:IsA("BasePart") then
+		-- piece importee posee seule dans le dossier : on l'emballe dans un Model
+		local wrapper = Instance.new("Model")
+		wrapper.Name = petId
+		model.Parent = wrapper
+		model = wrapper
+	elseif not model:IsA("Model") then
+		model:Destroy()
+		return buildProcedural(petId, evoIndex, cf)
+	end
 	local root
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -298,10 +308,42 @@ function PetModel.Build(petId, evoIndex, cf)
 	end
 	root = root or model:FindFirstChildWhichIsA("BasePart", true)
 	model.PrimaryPart = root
-	model.WorldPivot = CFrame.new() -- les modeles sont construits avec le sol a Y = 0 sous le pet
+	local simple = true
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") and string.find(part.Name, ".", 1, true) then
+			simple = false
+			break
+		end
+	end
+	if simple then
+		-- modele importe : pivot au centre du dessous, taille ramenee a environ 4,2 studs
+		local boxCF, boxSize = model:GetBoundingBox()
+		model.WorldPivot = CFrame.new(boxCF.Position - Vector3.new(0, boxSize.Y / 2, 0))
+		if boxSize.Y > 7 or boxSize.Y < 2 then
+			model:ScaleTo(model:GetScale() * (4.2 / boxSize.Y))
+		end
+	else
+		model.WorldPivot = CFrame.new() -- modeles generes : sol a Y = 0 sous le pet
+	end
 	local scale = 0.92 + (rarity.index - 1) * 0.05
 	if math.abs(scale - 1) > 0.01 then
-		model:ScaleTo(scale)
+		model:ScaleTo(model:GetScale() * scale)
+	end
+	if simple then
+		-- modele texture d'une seule piece : l'evolution se voit par un contour lumineux
+		local colors = { Golden = Color3.fromRGB(255, 205, 50), Rainbow = Color3.fromRGB(255, 120, 230), Cosmic = Color3.fromRGB(140, 90, 255) }
+		if colors[evo.id] then
+			local h = Instance.new("Highlight")
+			h.Name = "EvolutionGlow"
+			h.FillColor = colors[evo.id]
+			h.FillTransparency = 0.75
+			h.OutlineColor = colors[evo.id]
+			h.OutlineTransparency = 0
+			h.DepthMode = Enum.HighlightDepthMode.Occluded
+			h:SetAttribute("Rainbow", evo.id == "Rainbow")
+			h.Parent = model
+		end
+		model:SetAttribute("SimplePet", true)
 	end
 	applyEvolution(model, evo, root)
 	addRarityFx(model, rarity, root)
