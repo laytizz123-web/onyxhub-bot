@@ -4665,7 +4665,12 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
       // translation in the tickets
-      D(P.ManageGuild, cmd("traduction", t("Traduction automatique FR ⇄ EN dans les tickets", "Automatic FR ⇄ EN translation in tickets")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true))),
+      D(
+        P.ManageGuild,
+        cmd("traduction", t("Traduction automatique FR ⇄ EN dans les tickets", "Automatic FR ⇄ EN translation in tickets"))
+          .addSubcommand((s) => s.setName("actif").setDescription(t("Activer ou couper la traduction", "Turn translation on or off")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) => s.setName("test").setDescription(t("Tester chaque service de traduction depuis l'hébergeur", "Test each translation service from the host")))
+      ),
       // anti-links and anti-spam: everything can be tuned
       D(
         P.ManageGuild,
@@ -6527,24 +6532,72 @@ const tools = (() => {
   /* Google's free endpoint: detects the language and translates. Returns { lang, text } or null. */
   let translateWarnAt = 0;
   const pause = (ms) => new Promise((r) => setTimeout(r, ms).unref?.());
-  /* Google's free endpoint: detects the language and translates. Retries when Google says "too many requests". Returns { lang, text } or null. */
+  const getJson = async (url) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout?.(5000), headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
+    if (!res) return { status: "network" };
+    if (!res.ok) return { status: res.status };
+    return { status: res.status, data: await res.json().catch(() => null) };
+  };
+  /* Several free services: when one is blocked or slow (Google limits hosting IPs), the next one is used. Each returns { lang, text } or null. */
+  const TRANSLATORS = [
+    {
+      name: "Google",
+      run: async (q, tl, sl) => {
+        const r = await getJson(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(q)}`);
+        const out = (r.data?.[0] || []).map((p) => p?.[0] || "").join("");
+        return { status: r.status, result: out ? { lang: String(r.data?.[2] || sl), text: out } : null };
+      },
+    },
+    {
+      name: "Google (2)",
+      run: async (q, tl, sl) => {
+        const r = await getJson(`https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${sl}&tl=${tl}&q=${encodeURIComponent(q)}`);
+        const first = Array.isArray(r.data) ? r.data[0] : null;
+        const text = Array.isArray(first) && typeof first[0] === "string" ? first[0] : typeof first === "string" ? first : "";
+        const lang = Array.isArray(first) ? first[1] : sl;
+        return { status: r.status, result: text ? { lang: String(lang || sl), text } : null };
+      },
+    },
+    {
+      name: "Lingva",
+      run: async (q, tl, sl) => {
+        const r = await getJson(`https://lingva.ml/api/v1/${sl}/${tl}/${encodeURIComponent(q)}`);
+        return { status: r.status, result: r.data?.translation ? { lang: String(r.data?.info?.detectedSource || sl), text: r.data.translation } : null };
+      },
+    },
+    {
+      name: "MyMemory",
+      run: async (q, tl, sl) => {
+        const from = sl === "auto" ? (looksFrench(q) ? "fr" : "en") : sl; // MyMemory cannot detect: a simple guess
+        if (from === tl) return { status: 200, result: { lang: from, text: q } };
+        const r = await getJson(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${from}|${tl}`);
+        const text = r.data?.responseData?.translatedText;
+        return { status: r.status, result: text && r.data?.responseStatus === 200 ? { lang: from, text } : null };
+      },
+    },
+  ];
+  const FR_HINTS = /[éèêàùçâîôûœ]|\b(je|tu|il|elle|nous|vous|est|suis|pas|les|des|une|pour|avec|merci|oui|non|quoi|veux|faire|stp|slt|cv|tkt|jsp)\b/i;
+  const looksFrench = (q) => FR_HINTS.test(q);
+  const translatorDown = new Map(); // name -> until (a blocked service is skipped for a while)
+  let translatorFirst = 0; // the last service that worked is tried first
+  /* Returns { lang, text } or null. */
   async function googleTranslate(text, target, source = "auto") {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${source}&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
-    let status = "network";
-    for (const wait of [0, 400, 1200]) {
-      if (wait) await pause(wait);
-      const res = await fetch(url, { signal: AbortSignal.timeout?.(5000) }).catch(() => null);
-      if (res?.ok) {
-        const data = await res.json().catch(() => null);
-        const out = (data?.[0] || []).map((part) => part?.[0] || "").join("");
-        return out ? { lang: String(data?.[2] || ""), text: out } : null;
+    const order = TRANSLATORS.map((_, k) => (translatorFirst + k) % TRANSLATORS.length);
+    const failures = [];
+    for (const k of order) {
+      const tr = TRANSLATORS[k];
+      if ((translatorDown.get(tr.name) || 0) > Date.now()) continue;
+      const r = await tr.run(text, target, source).catch(() => ({ status: "error" }));
+      if (r.result) {
+        translatorFirst = k;
+        return r.result;
       }
-      status = res ? res.status : "network";
-      if (res && res.status < 500 && res.status !== 429) break; // a real refusal: retrying will not help
+      failures.push(`${tr.name}: ${r.status}`);
+      if (r.status === 429 || r.status === 403 || r.status === "network" || r.status >= 500) translatorDown.set(tr.name, Date.now() + 30_000);
     }
     if (Date.now() - translateWarnAt > 60_000) {
       translateWarnAt = Date.now();
-      console.error(`⚠️ Translation: Google did not answer (${status}).`);
+      console.error(`⚠️ Translation: no service answered (${failures.join(", ") || "all paused"}).`);
     }
     return null;
   }
@@ -6619,6 +6672,17 @@ const tools = (() => {
   }
   H.traduction = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
+    if (i.options.getSubcommand?.() === "test") {
+      await i.deferReply({ flags: ephemeral });
+      const lines = [];
+      for (const tr of TRANSLATORS) {
+        const t0 = Date.now();
+        const r = await tr.run("je veux faire l'index", "en", "auto").catch(() => ({ status: "error" }));
+        lines.push(`${r.result ? "✅" : "❌"} **${tr.name}** · ${r.result ? `« ${r.result.text} »` : t(`ne répond pas (${r.status})`, `no answer (${r.status})`)} · ${Date.now() - t0} ms`);
+      }
+      translatorDown.clear();
+      return i.editReply(`🌐 ${t("Test de traduction depuis l'hébergeur", "Translation test from the host")}\n${lines.join("\n")}\n-# ${t("Le bot utilise le premier service qui marche.", "The bot uses the first service that works.")}`);
+    }
     db.cfg.translate.on = i.options.getBoolean("actif");
     save();
     return reply(i, ok(db.cfg.translate.on ? t("🌐 Traduction FR ⇄ EN activée dans les tickets.", "🌐 FR ⇄ EN translation turned on in tickets.") : t("🌐 Traduction coupée.", "🌐 Translation turned off.")));
@@ -7865,7 +7929,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
