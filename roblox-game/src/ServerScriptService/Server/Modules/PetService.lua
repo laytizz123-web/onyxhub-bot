@@ -204,6 +204,23 @@ local function equip(player, uid)
 	PetService.Sync(player)
 end
 
+local function equipBest(player)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	local sorted = table.clone(data.Pets)
+	table.sort(sorted, function(a, b)
+		return PetModel.Stats(a.id, a.evo).power > PetModel.Stats(b.id, b.evo).power
+	end)
+	data.Equipped = {}
+	for i = 1, math.min(Config.MaxEquipped, #sorted) do
+		table.insert(data.Equipped, sorted[i].uid)
+	end
+	notify(player, "Meilleurs pets equipes !", "good")
+	PetService.Sync(player)
+end
+
 local function evolve(player, uid)
 	local data = DataService.Get(player)
 	if not data then
@@ -347,6 +364,31 @@ local function daily(player)
 	PetService.Sync(player)
 end
 
+-- Codes cadeaux -------------------------------------------------------------------------
+
+local function redeem(player, code)
+	local data = DataService.Get(player)
+	if not data or type(code) ~= "string" then
+		return
+	end
+	code = string.upper(string.gsub(code, "%s", ""))
+	local reward = Config.Codes[code]
+	data.Codes = data.Codes or {}
+	if not reward then
+		notify(player, "Code invalide.", "danger")
+		return
+	end
+	if data.Codes[code] then
+		notify(player, "Code deja utilise.", "danger")
+		return
+	end
+	data.Codes[code] = true
+	PetService.AddCoins(player, reward)
+	Remotes.FX:FireClient(player, "Code", { coins = reward })
+	notify(player, "Code " .. code .. " : +" .. reward .. " coins !", "gold")
+	PetService.Sync(player)
+end
+
 -- Joueurs -------------------------------------------------------------------------------
 
 local function onPlayerAdded(player)
@@ -406,9 +448,8 @@ local function updateLeaderboard()
 		return a.value > b.value
 	end)
 	local lines = {}
-	local medals = { "🥇", "🥈", "🥉" }
 	for i = 1, math.min(10, #entries) do
-		table.insert(lines, string.format("%s %s  -  %d 🪙", medals[i] or (i .. "."), entries[i].name, entries[i].value))
+		table.insert(lines, string.format("%d.  %s  -  %d", i, entries[i].name, entries[i].value))
 	end
 	label.Text = #lines > 0 and table.concat(lines, "\n") or "Aucun joueur classe"
 end
@@ -428,6 +469,8 @@ function PetService.Init()
 			hatch(player, tostring(a))
 		elseif action == "equip" then
 			equip(player, a)
+		elseif action == "equipBest" then
+			equipBest(player)
 		elseif action == "evolve" then
 			evolve(player, a)
 		elseif action == "delete" then
@@ -438,6 +481,8 @@ function PetService.Init()
 			teleport(player, tostring(a))
 		elseif action == "daily" then
 			daily(player)
+		elseif action == "code" then
+			redeem(player, a)
 		elseif action == "sync" then
 			PetService.Sync(player)
 		end

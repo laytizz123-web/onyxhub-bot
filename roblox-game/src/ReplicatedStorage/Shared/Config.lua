@@ -17,6 +17,22 @@ Config.Colors = {
 	Grass = Color3.fromRGB(110, 200, 90),
 }
 
+-- Les icones sont integrees au jeu (assets/icons -> IconData.lua). Pour utiliser une image uploadee a la place,
+-- mets son ID ici, par ex. Config.IconImages.pets = "rbxassetid://1234567890".
+Config.IconImages = {
+	index = "", eggs = "", pets = "", shop = "", rewards = "", worlds = "", race = "", leaderboard = "", trading = "",
+	quests = "", settings = "", inventory = "", teleport = "", daily = "", codes = "", ranks = "", achievements = "",
+	freegift = "", events = "", exit = "", coin = "", speed = "", power = "", stamina = "", luck = "", lock = "",
+	gem = "", star = "", close = "", paw = "", egg = "",
+}
+
+-- Codes cadeaux (a changer librement)
+Config.Codes = {
+	PETRUSH = 500,
+	LAUNCH = 1500,
+	RACE = 1000,
+}
+
 Config.Icons = {
 	coins = "🪙", pets = "🐾", egg = "🥚", index = "📖", race = "🏁", zone = "🗺️", daily = "🎁", chest = "🎁",
 	speed = "⚡", power = "💪", stamina = "🛡️", luck = "🍀", evolve = "🧬", equip = "✅", trophy = "🏆",

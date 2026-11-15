@@ -29,13 +29,34 @@ Pet gratuit 🐱 → ramasser des 🪙 avec ses pets → ouvrir des 🥚 → dé
   **classement** 📈 en jeu (top coins global).
 - Sauvegarde DataStore (`PetRush_v1`), leaderstats Coins / Pets / RaceWins.
 
+## Icônes et décor
+
+- **Vraies icônes** : les 20 icônes de menu (PETS, EGGS, INDEX, WORLDS, RACE, DAILY,
+  LEADERBOARD, CODES...) viennent de `assets/icon-sheet.webp`, plus 11 petites icônes
+  dessinées dans le même style (pièce, stats, cadenas, gemme, fermer...). Toutes sont
+  **intégrées au jeu** dans `IconData.lua` et affichées via `EditableImage` : aucun upload
+  nécessaire pour les voir dans Studio.
+- Si `EditableImage` n'est pas disponible (certaines expériences publiées), le jeu bascule
+  sur des icônes vectorielles. Pour garantir les vraies images partout : importe le dossier
+  `assets/icons/` avec **Asset Manager → Bulk Import**, puis colle chaque ID dans
+  `Config.IconImages` (par ex. `pets = "rbxassetid://123"`).
+- Pour changer les icônes : remplace `assets/icon-sheet.webp` (grille 5×4) ou les PNG, puis
+  `python3 tools/build_icons.py` et `node build-place.js`.
+- **Portraits 3D** : chaque pet est affiché en 3D (ViewportFrame) dans les menus, l'index,
+  les œufs, la barre d'équipement et l'éclosion.
+- **Décor en Terrain Roblox** : herbe, collines et montagnes autour des zones, étangs,
+  oasis, dunes, nuages volumétriques. Props cartoon : maisons à toit pointu, arbres ronds,
+  sapins, palmiers, champignons, pyramides à degrés, fontaine, lampadaires, stands à auvent
+  rayé, arches de pierre avec barrière magique, piste de course avec damier et tribunes.
+
 ## Contrôles
 
 | Action | PC | Mobile |
 | --- | --- | --- |
 | Mes pets (équiper, évoluer, supprimer) | `P` ou bouton | bouton |
 | Pet Index | `I` ou bouton | bouton |
-| Zones (débloquer / se téléporter) | `Z` ou bouton | bouton |
+| Mondes (débloquer / se téléporter) | `Z` ou bouton | bouton |
+| Codes cadeaux (PETRUSH, LAUNCH, RACE) | bouton CODES | bouton |
 | Courses | `R`, bouton ou stand 🏁 | bouton |
 | Ouvrir un œuf | stand 🥚 de la zone (touche `E`) | bouton de l'invite |
 | Débloquer une zone | porte dorée (maintenir `E`) ou menu Zones | idem |

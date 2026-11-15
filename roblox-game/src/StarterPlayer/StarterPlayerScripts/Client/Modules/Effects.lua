@@ -9,6 +9,7 @@ local Debris = game:GetService("Debris")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local State = require(script.Parent.State)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 
 local Effects = {}
 
@@ -96,7 +97,7 @@ local function shockwave(position, color, size, duration)
 	Debris:AddItem(ring, duration + 0.1)
 end
 
-local function floatingText(position, text, color, size)
+local function floatingText(position, text, color, size, iconName)
 	local holder = Instance.new("Part")
 	holder.Anchored = true
 	holder.CanCollide = false
@@ -106,21 +107,38 @@ local function floatingText(position, text, color, size)
 	holder.Position = position + Vector3.new(0, 2, 0)
 	holder.Parent = workspace
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(size or 140, 40)
+	gui.Size = UDim2.fromOffset(size or 140, 46)
 	gui.AlwaysOnTop = true
 	gui.Parent = holder
 	local l = Instance.new("TextLabel")
-	l.Size = UDim2.fromScale(1, 1)
+	l.Size = UDim2.new(1, iconName and -46 or 0, 1, 0)
+	l.Position = UDim2.fromOffset(iconName and 46 or 0, 0)
 	l.BackgroundTransparency = 1
 	l.Text = text
 	l.Font = Enum.Font.FredokaOne
 	l.TextScaled = true
 	l.TextColor3 = color
-	l.TextStrokeTransparency = 0.2
+	l.TextXAlignment = iconName and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
 	l.Parent = gui
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.fromRGB(22, 24, 52)
+	st.Thickness = 3
+	st.Parent = l
+	local icon
+	if iconName then
+		icon = Icons.Image(iconName, gui, { Size = UDim2.fromOffset(46, 46) })
+	end
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.3
+	scale.Parent = l
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	TweenService:Create(holder, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = holder.Position + Vector3.new(0, 4, 0) }):Play()
-	task.delay(0.6, function()
-		TweenService:Create(l, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	task.delay(0.65, function()
+		TweenService:Create(l, TweenInfo.new(0.35), { TextTransparency = 1 }):Play()
+		TweenService:Create(st, TweenInfo.new(0.35), { Transparency = 1 }):Play()
+		if icon then
+			TweenService:Create(icon, TweenInfo.new(0.35), { ImageTransparency = 1 }):Play()
+		end
 	end)
 	Debris:AddItem(holder, 1.1)
 end
@@ -186,7 +204,7 @@ handlers.Collect = function(data)
 		end
 	end
 	if mine then
-		floatingText(data.position, "+" .. data.amount .. " 🪙", Config.Colors.Gold, data.chest and 220 or 130)
+		floatingText(data.position, "+" .. data.amount, Config.Colors.Gold, data.chest and 220 or 140, "coin")
 		if data.chest then
 			flashScreen(Config.Colors.Gold, 0.75, 0.6)
 		end
@@ -223,7 +241,7 @@ handlers.Evolve = function(data)
 	if hrp then
 		burst(hrp.Position, evo.color or Config.Colors.Gold, 80, 20, 0.9, 4)
 		shockwave(hrp.Position - Vector3.new(0, 2, 0), evo.color or Config.Colors.Gold, 30, 1)
-		floatingText(hrp.Position + Vector3.new(0, 3, 0), evo.icon .. " " .. evo.name .. " !", evo.color or Config.Colors.Gold, 240)
+		floatingText(hrp.Position + Vector3.new(0, 3, 0), string.upper(evo.name) .. " !", evo.color or Config.Colors.Gold, 260, "sparkle")
 	end
 	HUD.playHatch({ petId = data.petId, rarity = Config.PetById[data.petId].rarity, egg = "Village" })
 end
@@ -232,7 +250,7 @@ handlers.ZoneUnlock = function(data)
 	local zone = Config.ZoneById[data.zoneId]
 	playSound("unlock", 1, 1)
 	flashScreen(Config.Colors.Gold, 0.5, 1)
-	HUD.toast("🗺️ " .. zone.icon .. " " .. zone.name .. " debloque ! Utilise le menu ZONES pour t'y rendre.", "gold")
+	HUD.toast(zone.name .. " debloque ! Ouvre MONDES pour t'y rendre.", "gold")
 end
 
 handlers.Teleport = function(data)
@@ -248,7 +266,18 @@ end
 handlers.Daily = function(data)
 	playSound("win", 0.8, 1.2)
 	flashScreen(Config.Colors.Gold, 0.6, 1)
-	HUD.toast("🎁 Cadeau du jour : +" .. data.coins .. " coins et un oeuf gratuit !", "gold")
+	HUD.toast("Cadeau du jour : +" .. data.coins .. " coins et un oeuf gratuit !", "gold")
+end
+
+handlers.Code = function(data)
+	playSound("win", 0.8, 1.3)
+	flashScreen(Config.Colors.Gold, 0.65, 0.8)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		floatingText(hrp.Position + Vector3.new(0, 3, 0), "+" .. data.coins, Config.Colors.Gold, 220, "coin")
+		burst(hrp.Position, Config.Colors.Gold, 50, 16, 0.6, -5)
+	end
 end
 
 handlers.RaceStart = function()
