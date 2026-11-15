@@ -12,6 +12,54 @@ local MapBuilder = require(script.Parent.MapBuilder)
 
 local CharacterService = {}
 
+
+-- Apparence de classe : gantelets neon sur les mains + contour colore
+local function applyLook(character, def)
+	for _, old in ipairs(character:GetChildren()) do
+		if old.Name == "ClassGauntlet" or old.Name == "ClassOutline" then
+			old:Destroy()
+		end
+	end
+	for _, handName in ipairs({ "RightHand", "LeftHand", "Right Arm", "Left Arm" }) do
+		local hand = character:FindFirstChild(handName)
+		if hand then
+			local gauntlet = Instance.new("Part")
+			gauntlet.Name = "ClassGauntlet"
+			gauntlet.Size = hand.Size + Vector3.new(0.3, (handName:find("Arm") and -0.9 or 0.3), 0.3)
+			gauntlet.CFrame = hand.CFrame * CFrame.new(0, handName:find("Arm") and -0.5 or 0, 0)
+			gauntlet.Material = Enum.Material.Neon
+			gauntlet.Color = def.color
+			gauntlet.Transparency = 0.35
+			gauntlet.CanCollide = false
+			gauntlet.CanQuery = false
+			gauntlet.Massless = true
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = hand
+			weld.Part1 = gauntlet
+			weld.Parent = gauntlet
+			gauntlet.Parent = character
+			local att = Instance.new("Attachment")
+			att.Parent = gauntlet
+			local sparks = Instance.new("ParticleEmitter")
+			sparks.Rate = 4
+			sparks.Lifetime = NumberRange.new(0.4, 0.8)
+			sparks.Speed = NumberRange.new(0.5, 1.5)
+			sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0) })
+			sparks.Transparency = NumberSequence.new(0.2, 1)
+			sparks.LightEmission = 1
+			sparks.Color = ColorSequence.new(def.color)
+			sparks.Parent = att
+		end
+	end
+	local outline = Instance.new("Highlight")
+	outline.Name = "ClassOutline"
+	outline.FillTransparency = 1
+	outline.OutlineColor = def.color
+	outline.OutlineTransparency = 0.35
+	outline.DepthMode = Enum.HighlightDepthMode.Occluded
+	outline.Parent = character
+end
+
 local function applyClass(player, character)
 	local data = DataService.Get(player)
 	if not data then
@@ -38,6 +86,7 @@ local function applyClass(player, character)
 	character:SetAttribute("UltActive", false)
 	character:SetAttribute("LastDamager", 0)
 	character:SetAttribute("LastDamageTime", 0)
+	applyLook(character, def)
 
 	humanoid.Died:Connect(function()
 		local killerId = character:GetAttribute("LastDamager") or 0

@@ -358,9 +358,56 @@ end
 
 local handlers = {}
 
+-- Trainee lumineuse sur les gantelets pendant un coup
+local function handTrail(character, color, duration)
+	if not character then
+		return
+	end
+	for _, gauntlet in ipairs(character:GetChildren()) do
+		if gauntlet.Name == "ClassGauntlet" then
+			local a0 = Instance.new("Attachment")
+			a0.Position = Vector3.new(0, 0.5, 0)
+			a0.Parent = gauntlet
+			local a1 = Instance.new("Attachment")
+			a1.Position = Vector3.new(0, -0.5, 0)
+			a1.Parent = gauntlet
+			local trail = Instance.new("Trail")
+			trail.Attachment0 = a0
+			trail.Attachment1 = a1
+			trail.Lifetime = 0.25
+			trail.LightEmission = 1
+			trail.WidthScale = NumberSequence.new(1.5, 0)
+			trail.Transparency = NumberSequence.new(0.1, 1)
+			trail.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+			trail.Parent = gauntlet
+			Debris:AddItem(a0, duration)
+			Debris:AddItem(a1, duration)
+			Debris:AddItem(trail, duration)
+		end
+	end
+end
+
+-- Arc de frappe lumineux
+local function slashArc(position, color, size)
+	local arc = Instance.new("Part")
+	arc.Shape = Enum.PartType.Cylinder
+	arc.Size = Vector3.new(0.3, size, size)
+	arc.Material = Enum.Material.Neon
+	arc.Color = color
+	arc.Transparency = 0.3
+	arc.Anchored = true
+	arc.CanCollide = false
+	arc.CanQuery = false
+	arc.CFrame = CFrame.new(position) * CFrame.Angles(math.random() * math.pi, math.random() * math.pi, math.random() * math.pi)
+	arc.Parent = workspace
+	TweenService:Create(arc, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(0.1, size * 1.8, size * 1.8), Transparency = 1 }):Play()
+	Debris:AddItem(arc, 0.25)
+end
+
 handlers.Swing = function(data)
 	local character = getCharacter(data.userId)
 	Anim.play(character, "m1", data.combo)
+	handTrail(character, data.color or Config.Colors.Accent, 0.5)
 	local hrp = hrpOf(character)
 	if hrp then
 		playSound("swing", 0.5, 0.9 + data.combo * 0.1, hrp.Position)
@@ -383,7 +430,9 @@ handlers.Hit = function(data)
 		floatingText(data.position, "BLOQUE " .. data.damage, Config.Colors.Gold, 120)
 	else
 		burst(data.position, color, data.heavy and 30 or 14, data.heavy and 22 or 12, data.heavy and 0.8 or 0.45)
+		burst(data.position, Color3.new(1, 1, 1), 8, 25, 0.25, -40, 0.35)
 		shockwave(data.position, Color3.new(1, 1, 1), data.heavy and 12 or 5, 0.25, false)
+		slashArc(data.position, color, data.heavy and 9 or 5)
 		playSound(data.heavy and "heavy" or "hit", data.heavy and 1 or 0.7, data.heavy and 0.9 or (0.9 + math.random() * 0.3), data.position)
 		floatingText(data.position, tostring(data.damage), data.heavy and Config.Colors.Accent2 or Color3.new(1, 1, 1), data.heavy and 150 or 100)
 		-- Animation de recul de la victime
@@ -476,6 +525,7 @@ end
 handlers.Cast = function(data)
 	local character = getCharacter(data.userId)
 	Anim.play(character, data.pose or "cast")
+	handTrail(character, data.ult and Config.Colors.Ult or (data.color or Config.Colors.Accent), (data.windup or 0.3) + 0.6)
 	local hrp = hrpOf(character)
 	if not hrp then
 		return

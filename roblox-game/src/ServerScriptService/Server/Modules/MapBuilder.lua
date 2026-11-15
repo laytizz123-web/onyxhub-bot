@@ -3,6 +3,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 
@@ -91,6 +92,7 @@ local function buildGround(root)
 		{ Vector3.new(700, 0.3, 24), CFrame.new(0, 0.15, 0) },
 		{ Vector3.new(24, 0.3, 500), CFrame.new(-120, 0.15, -40) },
 		{ Vector3.new(24, 0.3, 500), CFrame.new(120, 0.15, -40) },
+		{ Vector3.new(700, 0.3, 14), CFrame.new(0, 0.15, -240) },
 	}) do
 		makePart({ Name = "Road", Size = def[1], CFrame = def[2], Material = Enum.Material.Asphalt, Color = Color3.fromRGB(40, 40, 46) }).Parent = root
 	end
@@ -414,6 +416,233 @@ local function buildDummy(root, position, index)
 	end)
 end
 
+
+-- Vie et ambiance -------------------------------------------------------------------
+
+local function loopTween(part, info, goal)
+	TweenService:Create(part, info, goal):Play()
+end
+
+local function buildLife(root)
+	-- Enseignes neon qui changent de couleur sur les immeubles
+	local signColors = { Config.Colors.Accent, Config.Colors.Accent2, Config.Colors.Ult, Config.Colors.Gold }
+	local k = 0
+	for _, building in ipairs(root:GetChildren()) do
+		if building.Name == "Building" then
+			k += 1
+			local size = building.Size
+			local sign = makePart({
+				Name = "NeonSign",
+				Size = Vector3.new(size.X * 0.7, 2.4, 0.4),
+				CFrame = building.CFrame * CFrame.new(0, size.Y / 2 - 5, size.Z / 2 + 0.3),
+				Material = Enum.Material.Neon,
+				Color = signColors[(k % #signColors) + 1],
+				CanCollide = false,
+			})
+			sign.Parent = root
+			local words = { "ONYX", "ARENA", "FIGHT", "VOLT", "BLAZE", "TITAN", "NEON", "CITY" }
+			addLabel(sign, words[(k % #words) + 1], Enum.NormalId.Front, Color3.new(1, 1, 1))
+			local nextColor = signColors[((k + 1) % #signColors) + 1]
+			loopTween(sign, TweenInfo.new(2 + (k % 3), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Color = nextColor })
+			-- Fenetres allumees qui clignotent doucement
+			local windowLight = makePart({
+				Name = "WindowGlow",
+				Size = Vector3.new(size.X * 0.8, size.Y * 0.6, 0.2),
+				CFrame = building.CFrame * CFrame.new(0, 0, -size.Z / 2 - 0.15),
+				Material = Enum.Material.Neon,
+				Color = Color3.fromRGB(255, 230, 160),
+				Transparency = 0.7,
+				CanCollide = false,
+			})
+			windowLight.Parent = root
+			loopTween(windowLight, TweenInfo.new(3 + (k % 4), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.95 })
+		end
+	end
+
+	-- Voitures qui roulent sur les routes
+	local carColors = { Color3.fromRGB(230, 60, 60), Color3.fromRGB(60, 120, 230), Color3.fromRGB(240, 240, 240), Color3.fromRGB(250, 200, 40) }
+	local function car(startCF, endCF, duration, color)
+		local body = makePart({ Name = "Car", Size = Vector3.new(5, 2, 10), CFrame = startCF, Material = Enum.Material.Metal, Color = color, CanCollide = false })
+		body.Parent = root
+		local roof = makePart({ Name = "CarRoof", Size = Vector3.new(4.2, 1.4, 5), CFrame = startCF * CFrame.new(0, 1.7, -0.5), Material = Enum.Material.Glass, Color = Color3.fromRGB(40, 40, 50), Transparency = 0.3, CanCollide = false })
+		roof.Anchored = false
+		roof.Parent = root
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = body
+		w.Part1 = roof
+		w.Parent = roof
+		for _, x in ipairs({ -1.6, 1.6 }) do
+			local lamp = makePart({ Name = "Headlight", Size = Vector3.new(1, 0.6, 0.3), CFrame = startCF * CFrame.new(x, -0.2, -5), Material = Enum.Material.Neon, Color = Color3.fromRGB(255, 255, 220), CanCollide = false })
+			lamp.Anchored = false
+			lamp.Parent = root
+			local w2 = Instance.new("WeldConstraint")
+			w2.Part0 = body
+			w2.Part1 = lamp
+			w2.Parent = lamp
+			local tail = makePart({ Name = "Taillight", Size = Vector3.new(1, 0.6, 0.3), CFrame = startCF * CFrame.new(x, -0.2, 5), Material = Enum.Material.Neon, Color = Color3.fromRGB(255, 40, 40), CanCollide = false })
+			tail.Anchored = false
+			tail.Parent = root
+			local w3 = Instance.new("WeldConstraint")
+			w3.Part0 = body
+			w3.Part1 = tail
+			w3.Parent = tail
+		end
+		local light = Instance.new("PointLight")
+		light.Range = 16
+		light.Brightness = 1.2
+		light.Color = Color3.fromRGB(255, 255, 220)
+		light.Parent = body
+		task.spawn(function()
+			while body.Parent do
+				body.CFrame = startCF
+				local tween = TweenService:Create(body, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = endCF })
+				tween:Play()
+				tween.Completed:Wait()
+				task.wait(0.5)
+			end
+		end)
+	end
+	-- Routes verticales x = -120 et x = 120 (de z = -290 a z = 210), route centrale z = 0
+	car(CFrame.new(-116, 1.6, -290) * CFrame.Angles(0, math.pi, 0), CFrame.new(-116, 1.6, 200) * CFrame.Angles(0, math.pi, 0), 26, carColors[1])
+	car(CFrame.new(-124, 1.6, 200), CFrame.new(-124, 1.6, -290), 30, carColors[2])
+	car(CFrame.new(116, 1.6, 200), CFrame.new(116, 1.6, -290), 24, carColors[3])
+	car(CFrame.new(124, 1.6, -290) * CFrame.Angles(0, math.pi, 0), CFrame.new(124, 1.6, 200) * CFrame.Angles(0, math.pi, 0), 32, carColors[4])
+	car(CFrame.new(-340, 1.6, -243) * CFrame.Angles(0, -math.pi / 2, 0), CFrame.new(340, 1.6, -243) * CFrame.Angles(0, -math.pi / 2, 0), 40, carColors[2])
+	car(CFrame.new(340, 1.6, -237) * CFrame.Angles(0, math.pi / 2, 0), CFrame.new(-340, 1.6, -237) * CFrame.Angles(0, math.pi / 2, 0), 44, carColors[1])
+
+	-- Anneaux holographiques tournants au-dessus de l'arene
+	local center = Config.Map.ArenaCenter
+	for i = 1, 3 do
+		local radius = Config.Map.ArenaRadius - 6 + i * 6
+		local ring = makePart({
+			Name = "HoloRing",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.4, radius * 2, radius * 2),
+			CFrame = CFrame.new(center + Vector3.new(0, 20 + i * 5, 0)) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(math.rad(8 * i), 0, 0),
+			Material = Enum.Material.Neon,
+			Color = (i % 2 == 0) and Config.Colors.Accent or Config.Colors.Ult,
+			Transparency = 0.55,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		ring.Parent = root
+		local cover = makePart({
+			Name = "HoloRingCover",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.6, radius * 2 - 2.5, radius * 2 - 2.5),
+			CFrame = ring.CFrame,
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		cover.Parent = root
+		task.spawn(function()
+			local base = ring.CFrame
+			local t = 0
+			while ring.Parent do
+				local dt = task.wait(0.05)
+				t += dt * (0.3 + i * 0.15) * ((i % 2 == 0) and 1 or -1)
+				ring.CFrame = CFrame.new(base.Position) * CFrame.Angles(0, t, 0) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(math.rad(8 * i), 0, 0)
+			end
+		end)
+	end
+
+	-- Projecteurs qui balayent le ciel
+	for i = 1, 4 do
+		local a = (i / 4) * math.pi * 2
+		local base = makePart({ Name = "Spotlight", Size = Vector3.new(2, 2, 2), CFrame = CFrame.new(center + Vector3.new(math.cos(a) * 60, 1.5, math.sin(a) * 60)), Material = Enum.Material.Metal, Color = Color3.fromRGB(40, 40, 50) })
+		base.Parent = root
+		local beam = makePart({
+			Name = "SpotBeam",
+			Size = Vector3.new(1.2, 120, 1.2),
+			CFrame = base.CFrame * CFrame.Angles(math.rad(25), 0, 0) * CFrame.new(0, 60, 0),
+			Material = Enum.Material.Neon,
+			Color = (i % 2 == 0) and Config.Colors.Accent or Config.Colors.Ult,
+			Transparency = 0.75,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		beam.Parent = root
+		task.spawn(function()
+			local t = i * 1.3
+			while beam.Parent do
+				local dt = task.wait(0.05)
+				t += dt * 0.6
+				beam.CFrame = base.CFrame * CFrame.Angles(0, t, 0) * CFrame.Angles(math.rad(25 + 10 * math.sin(t * 0.7)), 0, 0) * CFrame.new(0, 60, 0)
+			end
+		end)
+	end
+
+	-- Particules ambiantes (poussiere lumineuse) sur l'arene, la ville et le parc
+	local function ambient(position, size, color, rate)
+		local zone = makePart({ Name = "Ambient", Size = size, CFrame = CFrame.new(position), Transparency = 1, CanCollide = false, CanQuery = false })
+		zone.Parent = root
+		local e = Instance.new("ParticleEmitter")
+		e.Rate = rate
+		e.Lifetime = NumberRange.new(4, 7)
+		e.Speed = NumberRange.new(0.5, 1.5)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.35), NumberSequenceKeypoint.new(1, 0) })
+		e.Transparency = NumberSequence.new(0.3)
+		e.LightEmission = 1
+		e.Color = ColorSequence.new(color)
+		e.Shape = Enum.ParticleEmitterShape.Box
+		e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+		e.Parent = zone
+	end
+	ambient(center + Vector3.new(0, 10, 0), Vector3.new(110, 20, 110), Config.Colors.Accent, 25)
+	ambient(Config.Map.CityOrigin + Vector3.new(0, 15, -60), Vector3.new(400, 30, 260), Color3.fromRGB(255, 200, 120), 30)
+	ambient(Config.Map.CalmZone + Vector3.new(0, 6, 0), Vector3.new(130, 12, 110), Color3.fromRGB(180, 255, 120), 20)
+
+	-- Nuages qui derivent
+	for i = 1, 10 do
+		local x = -300 + i * 60
+		local cloud = makePart({
+			Name = "Cloud",
+			Size = Vector3.new(40 + (i % 3) * 15, 8, 20 + (i % 2) * 10),
+			CFrame = CFrame.new(x, 150 + (i % 4) * 15, -200 + (i * 37) % 400),
+			Material = Enum.Material.SmoothPlastic,
+			Color = Color3.fromRGB(255, 235, 245),
+			Transparency = 0.45,
+			CanCollide = false,
+			CanQuery = false,
+		})
+		cloud.Parent = root
+		loopTween(cloud, TweenInfo.new(40 + i * 5, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), { CFrame = cloud.CFrame * CFrame.new(120, 0, 0) })
+	end
+
+	-- Pulsation des lumieres de l'arene
+	for _, light in ipairs(root:GetChildren()) do
+		if light.Name == "PillarLight" or light.Name == "ArenaRing" or light.Name == "SafeRing" then
+			loopTween(light, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.5 })
+		end
+	end
+
+	-- Hologramme tournant au spawn
+	local spawnPos = Config.Map.SpawnPosition
+	local holo = makePart({
+		Name = "HoloStatue",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(6, 6, 6),
+		CFrame = CFrame.new(spawnPos.X + 40, 10, spawnPos.Z),
+		Material = Enum.Material.ForceField,
+		Color = Config.Colors.Accent,
+		CanCollide = false,
+		CanQuery = false,
+	})
+	holo.Parent = root
+	local holoLight = Instance.new("PointLight")
+	holoLight.Color = Config.Colors.Accent
+	holoLight.Range = 25
+	holoLight.Brightness = 2
+	holoLight.Parent = holo
+	loopTween(holo, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = holo.CFrame * CFrame.new(0, 3, 0) * CFrame.Angles(0, math.pi, 0), Size = Vector3.new(8, 8, 8) })
+	local pedestal = makePart({ Name = "HoloPedestal", Size = Vector3.new(8, 4, 8), CFrame = CFrame.new(spawnPos.X + 40, 2, spawnPos.Z), Material = Enum.Material.Marble, Color = Color3.fromRGB(230, 230, 240) })
+	pedestal.Parent = root
+	local pedestalRing = makePart({ Name = "HoloPedestalRing", Size = Vector3.new(9, 0.4, 9), CFrame = CFrame.new(spawnPos.X + 40, 4.2, spawnPos.Z), Material = Enum.Material.Neon, Color = Config.Colors.Accent })
+	pedestalRing.Parent = root
+end
+
 function MapBuilder.Build()
 	local old = workspace:FindFirstChild("OnyxBattlegrounds")
 	if old then
@@ -433,6 +662,7 @@ function MapBuilder.Build()
 	buildArena(root)
 	buildCity(root)
 	buildCalmZone(root)
+	buildLife(root)
 
 	local dummies = Instance.new("Folder")
 	dummies.Name = "Dummies"
