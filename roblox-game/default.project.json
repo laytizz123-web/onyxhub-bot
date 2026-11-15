@@ -1,5 +1,5 @@
 {
-  "name": "OnyxBattlegrounds",
+  "name": "PetRush",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {

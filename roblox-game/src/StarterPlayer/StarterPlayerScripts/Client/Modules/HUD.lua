@@ -1,29 +1,31 @@
--- Interface stylee : icones dynamiques, degrades, lueurs, animations.
+-- Interface PET RUSH : coins, pets, oeufs, index, zones, courses, cadeau du jour, notifications.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local PetModel = require(ReplicatedStorage.Shared.PetModel)
 local State = require(script.Parent.State)
 
 local HUD = {}
-local C = Config.Combat
 local ICON = Config.Icons
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local FONT = Enum.Font.GothamBlack
+local FONT = Enum.Font.FredokaOne
 local FONT_BOLD = Enum.Font.GothamBold
 local TOUCH = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local ui = {}
-local Input
+local panels = {}
 
--- Helpers ------------------------------------------------------------------------
+-- Helpers -------------------------------------------------------------------------------
 
 local function new(class, props, parent)
 	local inst = Instance.new(class)
@@ -34,30 +36,30 @@ local function new(class, props, parent)
 	return inst
 end
 local function corner(p, r)
-	return new("UICorner", { CornerRadius = UDim.new(0, r or 10) }, p)
+	return new("UICorner", { CornerRadius = UDim.new(0, r or 12) }, p)
 end
 local function stroke(p, color, thickness, transparency)
-	return new("UIStroke", { Color = color, Thickness = thickness or 2, Transparency = transparency or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, p)
+	return new("UIStroke", { Color = color, Thickness = thickness or 2, Transparency = transparency or 0 }, p)
 end
 local function gradient(p, c1, c2, rotation)
 	return new("UIGradient", { Color = ColorSequence.new(c1, c2), Rotation = rotation or 90 }, p)
 end
 local function label(props, parent)
-	local base = { BackgroundTransparency = 1, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, TextStrokeTransparency = 0.7, TextStrokeColor3 = Color3.new(0, 0, 0) }
+	local base = { BackgroundTransparency = 1, Font = FONT, TextColor3 = Color3.new(1, 1, 1), TextScaled = true, TextStrokeTransparency = 0.75, TextStrokeColor3 = Color3.new(0, 0, 0) }
 	for k, v in pairs(props) do
 		base[k] = v
 	end
 	return new("TextLabel", base, parent)
 end
-local function glassFrame(props, parent, color)
-	local base = { BackgroundColor3 = Config.Colors.Panel, BackgroundTransparency = 0.12, BorderSizePixel = 0 }
+local function glass(props, parent, color)
+	local base = { BackgroundColor3 = Config.Colors.Panel, BackgroundTransparency = 0.1, BorderSizePixel = 0 }
 	for k, v in pairs(props) do
 		base[k] = v
 	end
 	local f = new("Frame", base, parent)
 	corner(f, 14)
 	gradient(f, Config.Colors.Panel, Config.Colors.Panel2, 90)
-	stroke(f, color or Config.Colors.Accent, 2, 0.35)
+	stroke(f, color or Config.Colors.Accent, 2, 0.3)
 	return f
 end
 local function button(props, parent, color)
@@ -68,21 +70,14 @@ local function button(props, parent, color)
 	end
 	local b = new("TextButton", base, parent)
 	corner(b, 12)
-	gradient(b, Color3.new(1, 1, 1), Color3.fromRGB(160, 160, 160), 90)
+	gradient(b, Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170), 90)
 	stroke(b, Color3.new(1, 1, 1), 1.5, 0.6)
-	new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, b)
-	-- Survol / clic animes
+	new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5) }, b)
 	b.MouseEnter:Connect(function()
 		TweenService:Create(b, TweenInfo.new(0.12), { BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.25) }):Play()
 	end)
 	b.MouseLeave:Connect(function()
 		TweenService:Create(b, TweenInfo.new(0.15), { BackgroundColor3 = color }):Play()
-	end)
-	b.MouseButton1Down:Connect(function()
-		TweenService:Create(b, TweenInfo.new(0.06), { BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.25) }):Play()
-	end)
-	b.MouseButton1Up:Connect(function()
-		TweenService:Create(b, TweenInfo.new(0.12), { BackgroundColor3 = color }):Play()
 	end)
 	return b
 end
@@ -91,14 +86,17 @@ local function panel(name, size, title, icon, color, parent)
 	corner(frame, 20)
 	gradient(frame, Config.Colors.Panel, Config.Colors.Panel2, 90)
 	stroke(frame, color, 3, 0.1)
-	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = color, BackgroundTransparency = 0.75, BorderSizePixel = 0 }, frame)
+	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = color, BackgroundTransparency = 0.7, BorderSizePixel = 0 }, frame)
 	corner(head, 20)
 	gradient(head, Color3.new(1, 1, 1), Color3.new(0, 0, 0), 0)
-	label({ Size = UDim2.new(1, -80, 0, 36), Position = UDim2.new(0, 18, 0, 10), Text = icon .. "  " .. title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.new(1, 1, 1) }, head)
+	local t = label({ Name = "Title", Size = UDim2.new(1, -80, 0, 36), Position = UDim2.new(0, 18, 0, 10), Text = icon .. "  " .. title, TextXAlignment = Enum.TextXAlignment.Left }, head)
 	local close = button({ Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -10, 0, 8), AnchorPoint = Vector2.new(1, 0), Text = "✕" }, head, Config.Colors.Danger)
 	close.Activated:Connect(function()
-		HUD.hidePanel(frame)
+		HUD.hide(frame)
 	end)
+	frame:SetAttribute("FullSize", size)
+	panels[name] = frame
+	ui[name .. "Title"] = t
 	return frame
 end
 local function scrollList(parent, top, bottom)
@@ -106,16 +104,25 @@ local function scrollList(parent, top, bottom)
 	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
 	return scroll
 end
+local function grid(parent, top, cell)
+	local scroll = new("ScrollingFrame", { Size = UDim2.new(1, -24, 1, -(top + 12)), Position = UDim2.new(0, 12, 0, top), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 6, ScrollBarImageColor3 = Config.Colors.Accent, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y }, parent)
+	new("UIGridLayout", { CellSize = cell, CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+	return scroll
+end
 
-function HUD.showPanel(frame)
+function HUD.show(frame)
+	for _, other in pairs(panels) do
+		if other ~= frame and other.Visible then
+			other.Visible = false
+		end
+	end
 	frame.Visible = true
-	local size = frame:GetAttribute("FullSize") or frame.Size
-	frame:SetAttribute("FullSize", size)
+	local size = frame:GetAttribute("FullSize")
 	frame.Size = UDim2.fromOffset(size.X.Offset * 0.8, size.Y.Offset * 0.8)
 	TweenService:Create(frame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = size }):Play()
 end
-function HUD.hidePanel(frame)
-	local size = frame:GetAttribute("FullSize") or frame.Size
+function HUD.hide(frame)
+	local size = frame:GetAttribute("FullSize")
 	local t = TweenService:Create(frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.fromOffset(size.X.Offset * 0.85, size.Y.Offset * 0.85) })
 	t:Play()
 	t.Completed:Connect(function()
@@ -123,164 +130,137 @@ function HUD.hidePanel(frame)
 		frame.Size = size
 	end)
 end
-
--- Slot de competence -------------------------------------------------------------------
-
-local function skillSlot(parent, index, key)
-	local slot = new("TextButton", { Name = "Skill" .. index, Size = UDim2.fromOffset(96, 96), BackgroundColor3 = Config.Colors.Panel, BackgroundTransparency = 0.1, Text = "", AutoButtonColor = false, LayoutOrder = index, BorderSizePixel = 0 }, parent)
-	corner(slot, 16)
-	gradient(slot, Config.Colors.Panel, Config.Colors.Panel2, 90)
-	local st = stroke(slot, Config.Colors.Accent, 3)
-	local glow = new("Frame", { Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Accent, BackgroundTransparency = 1, BorderSizePixel = 0 }, slot)
-	corner(glow, 16)
-	local fill = new("Frame", { Name = "Cooldown", Size = UDim2.fromScale(1, 0), Position = UDim2.fromScale(0, 1), AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 3 }, slot)
-	corner(fill, 16)
-	label({ Name = "Icon", Size = UDim2.new(1, 0, 0, 44), Position = UDim2.new(0, 0, 0, 8), Text = "👊", TextStrokeTransparency = 1, ZIndex = 2 }, slot)
-	label({ Name = "Key", Size = UDim2.fromOffset(26, 22), Position = UDim2.new(0, 6, 0, 4), Text = key, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(220, 220, 230), ZIndex = 4 }, slot)
-	label({ Name = "Title", Size = UDim2.new(1, -8, 0, 30), Position = UDim2.new(0, 4, 1, -36), Text = "", TextWrapped = true, Font = FONT_BOLD, ZIndex = 4 }, slot)
-	label({ Name = "Timer", Size = UDim2.new(1, -8, 0, 30), Position = UDim2.new(0, 4, 0, 30), Text = "", TextColor3 = Config.Colors.Gold, ZIndex = 4 }, slot)
-	slot:SetAttribute("WasReady", true)
-	return slot, st
+function HUD.toggle(name)
+	local frame = panels[name]
+	if not frame then
+		return
+	end
+	if frame.Visible then
+		HUD.hide(frame)
+	else
+		if ui.rebuild[name] then
+			ui.rebuild[name]()
+		end
+		HUD.show(frame)
+	end
 end
 
--- Construction --------------------------------------------------------------------------
+local function rarityOf(petId)
+	return Config.RarityById[Config.PetById[petId].rarity]
+end
+
+local function statsText(petId, evo)
+	local s = PetModel.Stats(petId, evo)
+	return string.format("%s %d  %s %d  %s %d  %s %d", ICON.speed, s.speed, ICON.power, s.power, ICON.stamina, s.stamina, ICON.luck, s.luck)
+end
+
+-- Construction -------------------------------------------------------------------------------
 
 local function build()
-	local gui = new("ScreenGui", { Name = "OnyxHUD", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
+	local gui = new("ScreenGui", { Name = "PetHUD", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
 	ui.gui = gui
+	ui.rebuild = {}
 
-	-- Profil (haut gauche)
-	local profile = glassFrame({ Size = UDim2.fromOffset(300, 118), Position = UDim2.new(0, 14, 0, 14) }, gui, Config.Colors.Gold)
-	ui.charIcon = label({ Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 10, 0, 10), Text = "🥊", TextStrokeTransparency = 1 }, profile)
-	ui.levelText = label({ Size = UDim2.new(1, -76, 0, 26), Position = UDim2.new(0, 68, 0, 8), Text = "Niveau 1", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, profile)
-	ui.titleText = label({ Size = UDim2.new(1, -76, 0, 20), Position = UDim2.new(0, 68, 0, 36), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 235) }, profile)
-	local xpBg = new("Frame", { Size = UDim2.new(1, -20, 0, 10), Position = UDim2.new(0, 10, 0, 66), BackgroundColor3 = Color3.fromRGB(40, 40, 55), BorderSizePixel = 0 }, profile)
-	corner(xpBg, 5)
-	ui.xpFill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Gold, BorderSizePixel = 0 }, xpBg)
-	corner(ui.xpFill, 5)
-	gradient(ui.xpFill, Color3.new(1, 1, 1), Color3.fromRGB(200, 150, 0), 0)
-	ui.xpText = label({ Size = UDim2.new(1, -20, 0, 16), Position = UDim2.new(0, 10, 0, 78), Text = "", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 215), TextXAlignment = Enum.TextXAlignment.Right }, profile)
-	ui.recordText = label({ Size = UDim2.new(1, -20, 0, 22), Position = UDim2.new(0, 10, 0, 94), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(230, 230, 240) }, profile)
+	-- Barre du haut (gauche)
+	local top = glass({ Size = UDim2.fromOffset(330, 92), Position = UDim2.new(0, 14, 0, 14) }, gui, Config.Colors.Gold)
+	ui.coins = label({ Size = UDim2.new(1, -16, 0, 40), Position = UDim2.new(0, 10, 0, 6), Text = ICON.coins .. " 0", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, top)
+	ui.power = label({ Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 46), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Accent }, top)
+	ui.stats = label({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 10, 0, 68), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, top)
 
-	-- Pieces
-	local coinsFrame = glassFrame({ Size = UDim2.fromOffset(170, 40), Position = UDim2.new(0, 14, 0, 140) }, gui, Config.Colors.Gold)
-	ui.coinsText = label({ Size = UDim2.new(1, -16, 1, -8), Position = UDim2.new(0, 8, 0, 4), Text = ICON.coins .. " 0", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Config.Colors.Gold }, coinsFrame)
-
-	-- Boutons menus (haut droite)
-	local right = new("Frame", { Size = UDim2.fromOffset(190, 110), Position = UDim2.new(1, -14, 0, 14), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, gui)
+	-- Boutons menu (droite)
+	local right = new("Frame", { Size = UDim2.fromOffset(176, 300), Position = UDim2.new(1, -14, 0, 14), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, gui)
 	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }, right)
-	ui.charButton = button({ Size = UDim2.fromOffset(190, 46), Text = ICON.character .. "  PERSONNAGE" .. (TOUCH and "" or "  C"), LayoutOrder = 1 }, right, Config.Colors.Accent)
-	ui.cosmButton = button({ Size = UDim2.fromOffset(190, 46), Text = ICON.cosmetics .. "  COSMETIQUES" .. (TOUCH and "" or "  K"), LayoutOrder = 2 }, right, Config.Colors.Ult)
-
-	-- Vie + ultimate (bas centre)
-	local bars = new("Frame", { Size = UDim2.fromOffset(480, 62), Position = UDim2.new(0.5, 0, 1, -142), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
-	local hpBg = new("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(20, 22, 32), BorderSizePixel = 0 }, bars)
-	corner(hpBg, 10)
-	stroke(hpBg, Color3.new(1, 1, 1), 2, 0.7)
-	ui.hpGhost = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.3, BorderSizePixel = 0 }, hpBg)
-	corner(ui.hpGhost, 10)
-	ui.hpFill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Health, BorderSizePixel = 0, ZIndex = 2 }, hpBg)
-	corner(ui.hpFill, 10)
-	ui.hpGradient = gradient(ui.hpFill, Color3.new(1, 1, 1), Color3.fromRGB(120, 120, 120), 90)
-	ui.hpText = label({ Size = UDim2.fromScale(1, 1), Text = "❤️ 100 / 100", Font = FONT_BOLD, ZIndex = 3 }, hpBg)
-	local ultBg = new("Frame", { Size = UDim2.new(1, 0, 0, 22), Position = UDim2.new(0, 0, 0, 36), BackgroundColor3 = Color3.fromRGB(20, 22, 32), BorderSizePixel = 0 }, bars)
-	corner(ultBg, 10)
-	ui.ultStroke = stroke(ultBg, Config.Colors.Ult, 2, 0.5)
-	ui.ultFill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Config.Colors.Ult, BorderSizePixel = 0 }, ultBg)
-	corner(ui.ultFill, 10)
-	ui.ultGradient = gradient(ui.ultFill, Color3.new(1, 1, 1), Config.Colors.Ult, 0)
-	ui.ultText = label({ Size = UDim2.fromScale(1, 1), Text = ICON.ult .. " ULTIMATE 0 %", Font = FONT_BOLD, ZIndex = 3 }, ultBg)
-
-	-- Competences (bas)
-	local skills = new("Frame", { Name = "Skills", Size = UDim2.fromOffset(660, 104), Position = UDim2.new(0.5, 0, 1, -24), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, gui)
-	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, skills)
-	ui.slots = {}
-	ui.slotStrokes = {}
-	for i = 1, 4 do
-		local slot, st = skillSlot(skills, i, tostring(i))
-		ui.slots[i] = slot
-		ui.slotStrokes[i] = st
-		slot.Activated:Connect(function()
-			Input.skill(i)
+	local menuDefs = {
+		{ "Pets", ICON.pets .. "  MES PETS", Config.Colors.Accent2, "P" },
+		{ "Index", ICON.index .. "  INDEX", Config.Colors.Accent, "I" },
+		{ "Zones", ICON.zone .. "  ZONES", Config.Colors.Grass, "Z" },
+		{ "Race", ICON.race .. "  COURSES", Config.Colors.Gold, "R" },
+	}
+	ui.menuButtons = {}
+	for i, def in ipairs(menuDefs) do
+		local b = button({ Size = UDim2.fromOffset(176, 46), Text = def[2] .. (TOUCH and "" or "  " .. def[4]), LayoutOrder = i }, right, def[3])
+		b.Activated:Connect(function()
+			HUD.toggle(def[1])
 		end)
+		ui.menuButtons[def[1]] = b
 	end
-	ui.ultButton = button({ Size = UDim2.fromOffset(96, 96), Text = ICON.ult .. "\nULT" .. (TOUCH and "" or " G"), LayoutOrder = 5 }, skills, Config.Colors.Ult)
-	ui.ultButton.Activated:Connect(function()
-		Input.ultimate()
+	ui.dailyButton = button({ Size = UDim2.fromOffset(176, 46), Text = ICON.daily .. "  CADEAU", LayoutOrder = 5, Visible = false }, right, Config.Colors.Gold)
+	ui.dailyButton.Activated:Connect(function()
+		Remotes.Pets:FireServer("daily")
 	end)
 
-	-- Boutons tactiles M1 / bloquer / dash
-	if TOUCH then
-		local touch = new("Frame", { Size = UDim2.fromOffset(230, 170), Position = UDim2.new(1, -20, 1, -150), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1 }, gui)
-		local m1 = button({ Size = UDim2.fromOffset(116, 116), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), Text = ICON.m1 .. "\nM1" }, touch, Config.Colors.Accent2)
-		m1.Activated:Connect(function()
-			Input.m1()
-		end)
-		local dash = button({ Size = UDim2.fromOffset(84, 84), Position = UDim2.new(0, 0, 1, 0), AnchorPoint = Vector2.new(0, 1), Text = ICON.dash .. "\nDASH" }, touch, Config.Colors.Accent)
-		dash.Activated:Connect(function()
-			Input.dash()
-		end)
-		local block = button({ Size = UDim2.fromOffset(84, 64), Position = UDim2.new(0, 0, 0, 0), Text = ICON.block .. " BLOC" }, touch, Config.Colors.Gold)
-		block.MouseButton1Down:Connect(function()
-			Input.setBlock(true)
-		end)
-		block.MouseButton1Up:Connect(function()
-			Input.setBlock(false)
-		end)
-		block.MouseLeave:Connect(function()
-			Input.setBlock(false)
-		end)
-	end
+	-- Pets equipes (bas gauche)
+	ui.equippedBar = new("Frame", { Size = UDim2.fromOffset(330, 70), Position = UDim2.new(0, 14, 1, -14), AnchorPoint = Vector2.new(0, 1), BackgroundTransparency = 1 }, gui)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ui.equippedBar)
 
-	-- Combo + etat + dash
-	ui.combo = label({ Size = UDim2.fromOffset(320, 56), Position = UDim2.new(0.5, 0, 0.6, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", TextColor3 = Config.Colors.Accent2, Visible = false, TextStrokeTransparency = 0.3 }, gui)
-	gradient(ui.combo, Color3.new(1, 1, 1), Config.Colors.Accent2, 90)
-	ui.status = label({ Size = UDim2.fromOffset(400, 34), Position = UDim2.new(0.5, 0, 0.69, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", Font = FONT_BOLD, TextColor3 = Config.Colors.Gold }, gui)
-	local dashFrame = glassFrame({ Size = UDim2.fromOffset(150, 32), Position = UDim2.new(0.5, 0, 1, -210), AnchorPoint = Vector2.new(0.5, 1) }, gui, Config.Colors.Accent)
-	ui.dashFrame = dashFrame
-	ui.dashFill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Accent, BackgroundTransparency = 0.6, BorderSizePixel = 0 }, dashFrame)
-	corner(ui.dashFill, 14)
-	ui.dashHint = label({ Size = UDim2.fromScale(1, 1), Text = "", Font = FONT_BOLD, ZIndex = 2 }, dashFrame)
+	-- Zone actuelle (bas centre)
+	ui.zoneLabel = label({ Size = UDim2.fromOffset(400, 30), Position = UDim2.new(0.5, 0, 1, -16), AnchorPoint = Vector2.new(0.5, 1), Text = "", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(230, 230, 240) }, gui)
 
 	-- Notifications
-	ui.toasts = new("Frame", { Size = UDim2.fromOffset(600, 230), Position = UDim2.new(0.5, 0, 0, 18), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, gui)
+	ui.toasts = new("Frame", { Size = UDim2.fromOffset(620, 240), Position = UDim2.new(0.5, 0, 0, 16), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, gui)
 	new("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, ui.toasts)
 
-	-- Intro
-	ui.intro = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Panel2, BackgroundTransparency = 0.2, BorderSizePixel = 0, ZIndex = 20, Visible = false }, gui)
-	gradient(ui.intro, Config.Colors.Panel2, Color3.fromRGB(40, 10, 60), 45)
-	ui.introTitle = label({ Size = UDim2.fromOffset(900, 110), Position = UDim2.new(0.5, 0, 0.4, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "⚔️ " .. Config.GameName .. " ⚔️", TextColor3 = Config.Colors.Accent, ZIndex = 21, TextStrokeTransparency = 0.2 }, ui.intro)
-	gradient(ui.introTitle, Color3.new(1, 1, 1), Config.Colors.Accent, 90)
-	ui.introSub = label({ Size = UDim2.fromOffset(700, 40), Position = UDim2.new(0.5, 0, 0.52, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "Choisis ton personnage et domine l'arene", Font = FONT_BOLD, TextColor3 = Color3.fromRGB(230, 230, 240), ZIndex = 21 }, ui.intro)
+	-- Course en direct (haut centre sous les toasts)
+	ui.raceLive = glass({ Size = UDim2.fromOffset(300, 150), Position = UDim2.new(1, -14, 0, 300), AnchorPoint = Vector2.new(1, 0), Visible = false }, gui, Config.Colors.Gold)
+	ui.raceLiveTitle = label({ Size = UDim2.new(1, -16, 0, 26), Position = UDim2.new(0, 8, 0, 6), Text = "🏁 COURSE", TextColor3 = Config.Colors.Gold, TextXAlignment = Enum.TextXAlignment.Left }, ui.raceLive)
+	ui.raceLiveList = label({ Size = UDim2.new(1, -16, 1, -40), Position = UDim2.new(0, 8, 0, 34), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextScaled = false, TextSize = 16 }, ui.raceLive)
 
 	-- Panneaux
-	ui.characters = panel("Characters", UDim2.fromOffset(700, 470), "CHOISIS TON PERSONNAGE", ICON.character, Config.Colors.Accent, gui)
-	ui.charGrid = new("Frame", { Size = UDim2.new(1, -24, 1, -72), Position = UDim2.new(0, 12, 0, 62), BackgroundTransparency = 1 }, ui.characters)
-	new("UIGridLayout", { CellSize = UDim2.fromOffset(326, 190), CellPadding = UDim2.fromOffset(12, 12), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, ui.charGrid)
+	local pets = panel("Pets", UDim2.fromOffset(760, 540), "MES PETS", ICON.pets, Config.Colors.Accent2, gui)
+	ui.petsInfo = label({ Size = UDim2.new(1, -32, 0, 22), Position = UDim2.new(0, 16, 0, 60), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, pets)
+	ui.petsGrid = grid(pets, 88, UDim2.fromOffset(232, 150))
 
-	ui.cosmetics = panel("Cosmetics", UDim2.fromOffset(600, 540), "COSMETIQUES", ICON.cosmetics, Config.Colors.Ult, gui)
-	ui.cosmList = scrollList(ui.cosmetics, 64)
+	local index = panel("Index", UDim2.fromOffset(760, 540), "PET INDEX", ICON.index, Config.Colors.Accent, gui)
+	ui.indexInfo = label({ Size = UDim2.new(1, -32, 0, 22), Position = UDim2.new(0, 16, 0, 60), Text = "", Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, index)
+	ui.indexGrid = grid(index, 88, UDim2.fromOffset(140, 120))
+
+	local zones = panel("Zones", UDim2.fromOffset(520, 400), "ZONES", ICON.zone, Config.Colors.Grass, gui)
+	ui.zonesList = scrollList(zones, 64)
+
+	local egg = panel("Egg", UDim2.fromOffset(520, 560), "OEUF", ICON.egg, Config.Colors.Accent2, gui)
+	ui.eggList = scrollList(egg, 64, 70)
+	ui.eggButton = button({ Size = UDim2.new(1, -24, 0, 50), Position = UDim2.new(0, 12, 1, -60), Text = "" }, egg, Config.Colors.Gold)
+	ui.eggButton.Activated:Connect(function()
+		if ui.currentEgg then
+			Remotes.Pets:FireServer("hatch", ui.currentEgg)
+		end
+	end)
+
+	local race = panel("Race", UDim2.fromOffset(640, 540), "COURSES DE PETS", ICON.race, Config.Colors.Gold, gui)
+	ui.raceInfo = label({ Size = UDim2.new(1, -32, 0, 40), Position = UDim2.new(0, 16, 0, 60), Text = "", Font = FONT_BOLD, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 235) }, race)
+	ui.raceTypes = new("Frame", { Size = UDim2.new(1, -24, 0, 70), Position = UDim2.new(0, 12, 0, 104), BackgroundTransparency = 1 }, race)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, ui.raceTypes)
+	ui.racePets = grid(race, 184, UDim2.fromOffset(190, 100))
+	ui.racePets.Size = UDim2.new(1, -24, 1, -250)
+	ui.raceJoin = button({ Size = UDim2.new(1, -24, 0, 48), Position = UDim2.new(0, 12, 1, -58), Text = "" }, race, Config.Colors.Gold)
+	ui.raceJoin.Activated:Connect(function()
+		if ui.raceType and ui.racePet then
+			Remotes.Race:FireServer("join", ui.raceType, ui.racePet)
+		else
+			HUD.toast("Choisis un type de course et un pet.", "info")
+		end
+	end)
+
+	-- Eclosion plein ecran
+	ui.hatch = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Config.Colors.Panel2, BackgroundTransparency = 0.25, Visible = false, ZIndex = 30, BorderSizePixel = 0 }, gui)
+	ui.hatchEgg = label({ Size = UDim2.fromOffset(220, 220), Position = UDim2.new(0.5, 0, 0.45, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "🥚", ZIndex = 31, TextStrokeTransparency = 1 }, ui.hatch)
+	ui.hatchName = label({ Size = UDim2.fromOffset(700, 60), Position = UDim2.new(0.5, 0, 0.68, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", ZIndex = 31 }, ui.hatch)
+	ui.hatchRarity = label({ Size = UDim2.fromOffset(500, 34), Position = UDim2.new(0.5, 0, 0.76, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", Font = FONT_BOLD, ZIndex = 31 }, ui.hatch)
+	ui.hatchStats = label({ Size = UDim2.fromOffset(500, 26), Position = UDim2.new(0.5, 0, 0.82, 0), AnchorPoint = Vector2.new(0.5, 0.5), Text = "", Font = FONT_BOLD, ZIndex = 31, TextColor3 = Color3.fromRGB(220, 220, 235) }, ui.hatch)
 end
 
--- Notifications ----------------------------------------------------------------------
+-- Notifications ------------------------------------------------------------------------------
 
 local toastCount = 0
 function HUD.toast(text, kind)
 	toastCount += 1
-	local styles = {
-		danger = { Config.Colors.Danger, ICON.warning },
-		gold = { Config.Colors.Gold, ICON.wins },
-		good = { Config.Colors.Accent, "✅" },
-		kill = { Config.Colors.Accent2, ICON.kills },
-		ult = { Config.Colors.Ult, ICON.ult },
-		info = { Color3.fromRGB(200, 200, 215), "ℹ️" },
-	}
-	local style = styles[kind] or styles.info
-	local frame = glassFrame({ Size = UDim2.new(1, 0, 0, 40), LayoutOrder = toastCount, BackgroundTransparency = 0.15 }, ui.toasts, style[1])
-	local l = label({ Size = UDim2.new(1, -20, 1, -10), Position = UDim2.new(0, 10, 0, 5), Text = style[2] .. "  " .. text, TextColor3 = style[1], Font = FONT_BOLD }, frame)
+	local colors = { danger = Config.Colors.Danger, gold = Config.Colors.Gold, good = Config.Colors.Accent, info = Color3.fromRGB(210, 210, 225) }
+	local color = colors[kind] or colors.info
+	local frame = glass({ Size = UDim2.new(1, 0, 0, 40), LayoutOrder = toastCount, BackgroundTransparency = 0.15 }, ui.toasts, color)
+	local l = label({ Size = UDim2.new(1, -20, 1, -10), Position = UDim2.new(0, 10, 0, 5), Text = text, TextColor3 = color, Font = FONT_BOLD }, frame)
 	frame.Size = UDim2.new(1, 0, 0, 0)
 	TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(1, 0, 0, 40) }):Play()
-	task.delay(3.5, function()
+	task.delay(4, function()
 		TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0) }):Play()
 		TweenService:Create(l, TweenInfo.new(0.3), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 		task.wait(0.45)
@@ -288,334 +268,411 @@ function HUD.toast(text, kind)
 	end)
 end
 
--- Personnages ------------------------------------------------------------------------------
+-- Carte de pet ---------------------------------------------------------------------------------
 
-local function statBar(parent, y, text, ratio, color)
-	label({ Size = UDim2.new(0.38, 0, 0, 16), Position = UDim2.new(0, 10, 0, y), Text = text, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, parent)
-	local bg = new("Frame", { Size = UDim2.new(0.56, -14, 0, 8), Position = UDim2.new(0.42, 0, 0, y + 4), BackgroundColor3 = Color3.fromRGB(40, 40, 55), BorderSizePixel = 0 }, parent)
-	corner(bg, 4)
-	local fill = new("Frame", { Size = UDim2.fromScale(math.clamp(ratio, 0.05, 1), 1), BackgroundColor3 = color, BorderSizePixel = 0 }, bg)
-	corner(fill, 4)
+local function petCard(parent, pet, order, options)
+	local def = Config.PetById[pet.id]
+	local rarity = rarityOf(pet.id)
+	local evo = Config.Evolutions[pet.evo]
+	local card = new("Frame", { BackgroundColor3 = Config.Colors.Panel, LayoutOrder = order, BorderSizePixel = 0 }, parent)
+	corner(card, 12)
+	gradient(card, rarity.color:Lerp(Config.Colors.Panel, 0.7), Config.Colors.Panel2, 90)
+	stroke(card, options.selected and Config.Colors.Gold or (evo.color or rarity.color), options.selected and 4 or 2)
+	label({ Size = UDim2.fromOffset(54, 54), Position = UDim2.new(0, 6, 0, 6), Text = def.icon, TextStrokeTransparency = 1 }, card)
+	label({ Size = UDim2.new(1, -70, 0, 24), Position = UDim2.new(0, 64, 0, 8), Text = (evo.icon ~= "" and evo.icon .. " " or "") .. pet.id, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = evo.color or Color3.new(1, 1, 1) }, card)
+	label({ Size = UDim2.new(1, -70, 0, 18), Position = UDim2.new(0, 64, 0, 34), Text = rarity.icon .. " " .. rarity.name .. (evo.name ~= "" and ("  •  " .. evo.name) or ""), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rarity.color }, card)
+	label({ Size = UDim2.new(1, -12, 0, 18), Position = UDim2.new(0, 6, 0, 62), Text = statsText(pet.id, pet.evo), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(215, 215, 230) }, card)
+	return card
 end
 
-local function rebuildCharacters()
-	for _, child in ipairs(ui.charGrid:GetChildren()) do
+-- Mes pets --------------------------------------------------------------------------------------
+
+local function rebuildPets()
+	for _, child in ipairs(ui.petsGrid:GetChildren()) do
 		if child:IsA("Frame") then
 			child:Destroy()
 		end
 	end
-	for i, def in ipairs(Config.Characters) do
-		local selected = State.stats.character == def.id
-		local card = new("Frame", { BackgroundColor3 = Config.Colors.Panel, LayoutOrder = i, BorderSizePixel = 0 }, ui.charGrid)
-		corner(card, 14)
-		gradient(card, def.color:Lerp(Config.Colors.Panel, 0.65), Config.Colors.Panel2, 90)
-		stroke(card, selected and Config.Colors.Gold or def.color, selected and 4 or 2)
-		label({ Size = UDim2.fromOffset(60, 60), Position = UDim2.new(0, 8, 0, 6), Text = def.icon or "🥊", TextStrokeTransparency = 1 }, card)
-		label({ Size = UDim2.new(1, -80, 0, 30), Position = UDim2.new(0, 72, 0, 8), Text = def.name .. (selected and "  ✔" or ""), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = def.color }, card)
-		label({ Size = UDim2.new(1, -80, 0, 18), Position = UDim2.new(0, 72, 0, 40), Text = def.description, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, card)
-		statBar(card, 68, "❤️ Vie " .. def.health, def.health / 150, Config.Colors.Health)
-		statBar(card, 88, "💨 Vitesse " .. def.walkSpeed, def.walkSpeed / 22, Config.Colors.Accent)
-		statBar(card, 108, "👊 M1 " .. def.m1Damage, def.m1Damage / 12, Config.Colors.Accent2)
-		local icons = {}
-		for _, s in ipairs(def.skills) do
-			table.insert(icons, (s.icon or "") .. " " .. s.name)
+	local data = State.data
+	ui.petsInfo.Text = string.format("%d / %d pets  •  %d / %d equipes  •  %s Puissance totale %d  •  %s %d exemplaires identiques = evolution", #data.pets, Config.MaxPets, #data.equipped, Config.MaxEquipped, ICON.power, data.power, ICON.evolve, Config.EvolveCost)
+	local sorted = table.clone(data.pets)
+	table.sort(sorted, function(a, b)
+		local ra, rb = rarityOf(a.id).index, rarityOf(b.id).index
+		if ra ~= rb then
+			return ra > rb
 		end
-		label({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 130), Text = table.concat(icons, "   "), Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(235, 235, 245) }, card)
-		local b = button({ Size = UDim2.new(1, -16, 0, 32), Position = UDim2.new(0, 8, 1, -40), Text = selected and "✔ SELECTIONNE" or "CHOISIR " .. (def.icon or "") }, card, selected and Color3.fromRGB(70, 70, 85) or def.color)
-		b.Activated:Connect(function()
-			Remotes.Menu:FireServer("character", def.id)
-			HUD.hidePanel(ui.characters)
+		if a.evo ~= b.evo then
+			return a.evo > b.evo
+		end
+		return a.uid < b.uid
+	end)
+	local counts = {}
+	for _, pet in ipairs(data.pets) do
+		local k = pet.id .. ":" .. pet.evo
+		counts[k] = (counts[k] or 0) + 1
+	end
+	for i, pet in ipairs(sorted) do
+		local equipped = table.find(data.equipped, pet.uid) ~= nil
+		local card = petCard(ui.petsGrid, pet, i, { selected = equipped })
+		local eq = button({ Size = UDim2.new(0.5, -8, 0, 30), Position = UDim2.new(0, 6, 1, -36), Text = equipped and "✔ EQUIPE" or ICON.equip .. " EQUIPER" }, card, equipped and Color3.fromRGB(70, 70, 90) or Config.Colors.Accent)
+		eq.Activated:Connect(function()
+			Remotes.Pets:FireServer("equip", pet.uid)
+		end)
+		local same = counts[pet.id .. ":" .. pet.evo] or 0
+		local canEvolve = same >= Config.EvolveCost and pet.evo < #Config.Evolutions
+		local ev = button({ Size = UDim2.new(0.5, -8, 0, 30), Position = UDim2.new(0.5, 2, 1, -36), Text = pet.evo >= #Config.Evolutions and "🌌 MAX" or (ICON.evolve .. " " .. same .. "/" .. Config.EvolveCost) }, card, canEvolve and Config.Colors.Accent2 or Color3.fromRGB(70, 70, 90))
+		ev.Activated:Connect(function()
+			Remotes.Pets:FireServer("evolve", pet.uid)
+		end)
+		local del = button({ Size = UDim2.fromOffset(26, 26), Position = UDim2.new(1, -4, 0, 4), AnchorPoint = Vector2.new(1, 0), Text = ICON.delete }, card, Config.Colors.Danger)
+		del.Activated:Connect(function()
+			Remotes.Pets:FireServer("delete", pet.uid)
 		end)
 	end
 end
 
--- Cosmetiques ------------------------------------------------------------------------------
-
-local function rebuildCosmetics()
-	for _, child in ipairs(ui.cosmList:GetChildren()) do
-		if child:IsA("Frame") or child:IsA("TextLabel") then
+local function rebuildEquippedBar()
+	for _, child in ipairs(ui.equippedBar:GetChildren()) do
+		if child:IsA("Frame") then
 			child:Destroy()
 		end
 	end
-	local order = 0
-	local function section(icon, title, kind, list, equipped, bag, color)
-		order += 1
-		label({ Size = UDim2.new(1, 0, 0, 30), Text = icon .. "  " .. title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, LayoutOrder = order }, ui.cosmList)
-		for _, item in ipairs(list) do
-			order += 1
-			local owned = bag[item.id] == true
-			local isEquipped = equipped == item.id
-			local row = glassFrame({ Size = UDim2.new(1, 0, 0, 48), LayoutOrder = order }, ui.cosmList, isEquipped and Config.Colors.Gold or (item.color or Color3.fromRGB(90, 90, 110)))
-			if item.color then
-				local dot = new("Frame", { Size = UDim2.fromOffset(26, 26), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = item.color, BorderSizePixel = 0 }, row)
-				corner(dot, 13)
-				gradient(dot, Color3.new(1, 1, 1), item.color, 90)
+	for i, uid in ipairs(State.data.equipped) do
+		local pet = State.petByUid(uid)
+		if pet then
+			local rarity = rarityOf(pet.id)
+			local evo = Config.Evolutions[pet.evo]
+			local slot = glass({ Size = UDim2.fromOffset(70, 70), LayoutOrder = i }, ui.equippedBar, evo.color or rarity.color)
+			label({ Size = UDim2.new(1, 0, 0, 40), Position = UDim2.new(0, 0, 0, 4), Text = Config.PetById[pet.id].icon, TextStrokeTransparency = 1 }, slot)
+			label({ Size = UDim2.new(1, -4, 0, 16), Position = UDim2.new(0, 2, 1, -20), Text = (evo.icon ~= "" and evo.icon or rarity.icon) .. " " .. pet.id, Font = FONT_BOLD }, slot)
+		end
+	end
+	for i = #State.data.equipped + 1, Config.MaxEquipped do
+		local slot = glass({ Size = UDim2.fromOffset(70, 70), LayoutOrder = i, BackgroundTransparency = 0.5 }, ui.equippedBar, Color3.fromRGB(90, 90, 110))
+		label({ Size = UDim2.fromScale(1, 1), Text = "+", TextColor3 = Color3.fromRGB(120, 120, 140) }, slot)
+	end
+end
+
+-- Index ----------------------------------------------------------------------------------------
+
+local function rebuildIndex()
+	for _, child in ipairs(ui.indexGrid:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	local found = 0
+	for _, pet in ipairs(Config.Pets) do
+		if State.data.index[pet.id] then
+			found += 1
+		end
+	end
+	ui.indexInfo.Text = string.format("%d / %d pets decouverts  •  %s %d oeufs ouverts", found, #Config.Pets, ICON.egg, State.data.hatched)
+	for i, pet in ipairs(Config.Pets) do
+		local known = State.data.index[pet.id] == true
+		local rarity = Config.RarityById[pet.rarity]
+		local egg = Config.EggById[pet.egg]
+		local card = new("Frame", { BackgroundColor3 = Config.Colors.Panel, LayoutOrder = i, BorderSizePixel = 0 }, ui.indexGrid)
+		corner(card, 12)
+		gradient(card, known and rarity.color:Lerp(Config.Colors.Panel, 0.65) or Config.Colors.Panel, Config.Colors.Panel2, 90)
+		stroke(card, known and rarity.color or Color3.fromRGB(70, 70, 90), 2)
+		label({ Size = UDim2.new(1, 0, 0, 50), Position = UDim2.new(0, 0, 0, 6), Text = known and pet.icon or "❓", TextStrokeTransparency = 1, TextTransparency = known and 0 or 0.4 }, card)
+		label({ Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 0, 58), Text = known and pet.id or "???", Font = FONT_BOLD, TextColor3 = known and Color3.new(1, 1, 1) or Color3.fromRGB(140, 140, 160) }, card)
+		label({ Size = UDim2.new(1, -8, 0, 16), Position = UDim2.new(0, 4, 0, 80), Text = rarity.icon .. " " .. rarity.name, Font = FONT_BOLD, TextColor3 = rarity.color }, card)
+		label({ Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 0, 98), Text = egg.icon .. " " .. egg.name, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(190, 190, 210) }, card)
+	end
+end
+
+-- Zones ----------------------------------------------------------------------------------------
+
+local function rebuildZones()
+	for _, child in ipairs(ui.zonesList:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	for i, zone in ipairs(Config.Zones) do
+		local unlocked = State.data.zones[zone.id] == true
+		local row = glass({ Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i }, ui.zonesList, unlocked and zone.ground or Color3.fromRGB(90, 90, 110))
+		label({ Size = UDim2.fromOffset(50, 50), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), Text = zone.icon, TextStrokeTransparency = 1 }, row)
+		label({ Size = UDim2.new(0.5, 0, 0, 28), Position = UDim2.new(0, 70, 0, 8), Text = zone.name, TextXAlignment = Enum.TextXAlignment.Left }, row)
+		local egg = Config.Eggs[i]
+		label({ Size = UDim2.new(0.55, 0, 0, 18), Position = UDim2.new(0, 70, 0, 40), Text = ICON.coins .. " " .. zone.coinValue .. " / coin   " .. egg.icon .. " oeuf " .. egg.price, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225) }, row)
+		local b = button({ Size = UDim2.fromOffset(150, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), Text = unlocked and "➡️ Y ALLER" or (ICON.lock .. " " .. zone.price) }, row, unlocked and Config.Colors.Accent or Config.Colors.Gold)
+		b.Activated:Connect(function()
+			if unlocked then
+				Remotes.Pets:FireServer("teleport", zone.id)
+				HUD.hide(panels.Zones)
 			else
-				label({ Size = UDim2.fromOffset(26, 26), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), Text = kind == "title" and ICON.title or "⭕", TextStrokeTransparency = 1 }, row)
+				Remotes.Pets:FireServer("unlock", zone.id)
 			end
-			label({ Size = UDim2.new(0.48, 0, 1, -14), Position = UDim2.new(0, 46, 0, 7), Text = item.name, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left }, row)
-			local info
-			if kind == "title" then
-				local req = item.requirement
-				info = (req.kind == "level" and (ICON.level .. " Niveau " .. req.value)) or (req.kind == "kills" and (ICON.kills .. " " .. req.value .. " kills")) or (ICON.wins .. " " .. req.value .. " victoires")
-			else
-				info = owned and "✔ Possede" or (ICON.coins .. " " .. item.price)
-			end
-			label({ Size = UDim2.new(0.26, 0, 1, -14), Position = UDim2.new(0.5, 0, 0, 7), Text = info, Font = FONT_BOLD, TextColor3 = Color3.fromRGB(200, 200, 215) }, row)
-			local text = isEquipped and "✔ EQUIPE" or (owned and "EQUIPER" or (kind == "title" and "🔒" or "ACHETER"))
-			local color2 = isEquipped and Color3.fromRGB(70, 70, 85) or (owned and Config.Colors.Accent or (kind == "title" and Color3.fromRGB(80, 80, 95) or Config.Colors.Gold))
-			local b = button({ Size = UDim2.fromOffset(104, 34), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), Text = text }, row, color2)
-			b.Activated:Connect(function()
-				if isEquipped then
-					return
-				end
-				if owned then
-					Remotes.Menu:FireServer("equip", kind, item.id)
-				elseif kind ~= "title" then
-					Remotes.Menu:FireServer("buy", kind, item.id)
-				end
-			end)
-		end
-	end
-	local s = State.stats
-	section(ICON.aura, "AURAS", "aura", Config.Auras, s.aura, s.unlocked.auras or {}, Config.Colors.Accent)
-	section(ICON.trail, "EFFETS DE DASH", "trail", Config.Trails, s.trail, s.unlocked.trails or {}, Config.Colors.Accent2)
-	section(ICON.title, "TITRES", "title", Config.Titles, s.title, s.unlocked.titles or {}, Config.Colors.Gold)
-end
-
--- Mises a jour ------------------------------------------------------------------------------
-
-local function titleName(id)
-	for _, t in ipairs(Config.Titles) do
-		if t.id == id then
-			return t.name
-		end
-	end
-	return ""
-end
-
-local function onStats(stats)
-	State.stats = stats
-	local def = Config.CharacterById[stats.character] or Config.Characters[1]
-	ui.charIcon.Text = def.icon or "🥊"
-	ui.levelText.Text = ICON.level .. " Niveau " .. stats.level .. "  ·  " .. def.name
-	ui.levelText.TextColor3 = def.color
-	ui.titleText.Text = ICON.title .. " " .. titleName(stats.title)
-	TweenService:Create(ui.xpFill, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale(math.clamp(stats.xp / math.max(1, stats.xpNext), 0, 1), 1) }):Play()
-	ui.xpText.Text = ICON.xp .. " " .. stats.xp .. " / " .. stats.xpNext .. " XP"
-	ui.coinsText.Text = ICON.coins .. " " .. stats.coins
-	ui.recordText.Text = string.format("%s %d   %s %d   %s %d", ICON.kills, stats.kills, ICON.wins, stats.wins, ICON.deaths, stats.deaths)
-	if ui.characters.Visible then
-		rebuildCharacters()
-	end
-	if ui.cosmetics.Visible then
-		rebuildCosmetics()
-	end
-	State.fire("stats", stats)
-end
-
-local function refreshSkillNames()
-	local character = player.Character
-	local id = (character and character:GetAttribute("CharacterId")) or State.stats.character
-	local def = Config.CharacterById[id] or Config.Characters[1]
-	local ult = character and character:GetAttribute("UltActive") == true
-	local list = ult and def.ultSkills or def.skills
-	for i = 1, 4 do
-		local skill = list[i]
-		ui.slots[i].Title.Text = skill and skill.name or ""
-		ui.slots[i].Icon.Text = skill and (skill.icon or "👊") or ""
-		ui.slotStrokes[i].Color = ult and Config.Colors.Ult or def.color
-		ui.slots[i].Glow.BackgroundColor3 = ult and Config.Colors.Ult or def.color
-	end
-	ui.charIcon.Text = def.icon or "🥊"
-end
-
-local function toggle(name)
-	if name == "close" then
-		if ui.characters.Visible then
-			HUD.hidePanel(ui.characters)
-		end
-		if ui.cosmetics.Visible then
-			HUD.hidePanel(ui.cosmetics)
-		end
-	elseif name == "characters" then
-		if ui.characters.Visible then
-			HUD.hidePanel(ui.characters)
-		else
-			rebuildCharacters()
-			HUD.showPanel(ui.characters)
-			if ui.cosmetics.Visible then
-				HUD.hidePanel(ui.cosmetics)
-			end
-		end
-	elseif name == "cosmetics" then
-		if ui.cosmetics.Visible then
-			HUD.hidePanel(ui.cosmetics)
-		else
-			rebuildCosmetics()
-			Remotes.Menu:FireServer("stats")
-			HUD.showPanel(ui.cosmetics)
-			if ui.characters.Visible then
-				HUD.hidePanel(ui.characters)
-			end
-		end
+		end)
 	end
 end
 
-local lastHp = 1
-local function update(dt)
-	local now = os.clock()
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		local ratio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
-		ui.hpFill.Size = UDim2.fromScale(ratio, 1)
-		ui.hpFill.BackgroundColor3 = Config.Colors.Health:Lerp(Config.Colors.Danger, 1 - ratio)
-		-- Barre fantome qui suit avec retard
-		if ratio < lastHp then
-			lastHp = math.max(ratio, lastHp - dt * 0.6)
-		else
-			lastHp = ratio
-		end
-		ui.hpGhost.Size = UDim2.fromScale(lastHp, 1)
-		ui.hpText.Text = "❤️ " .. math.floor(humanoid.Health) .. " / " .. math.floor(humanoid.MaxHealth)
+-- Oeuf -----------------------------------------------------------------------------------------
 
-		local ult = character:GetAttribute("Ult") or 0
-		local active = character:GetAttribute("UltActive") == true
-		ui.ultFill.Size = UDim2.fromScale(ult / 100, 1)
-		ui.ultGradient.Offset = Vector2.new((now * 0.6) % 2 - 1, 0)
-		if active then
-			ui.ultText.Text = ICON.ult .. " ULTIMATE MODE " .. math.floor(ult) .. " %"
-			ui.ultFill.BackgroundColor3 = Config.Colors.Gold
-			ui.ultStroke.Color = Config.Colors.Gold
-		elseif ult >= 100 then
-			ui.ultText.Text = ICON.ult .. " ULTIMATE PRET !" .. (TOUCH and "" or "  (G)")
-			ui.ultFill.BackgroundColor3 = Config.Colors.Ult:Lerp(Color3.new(1, 1, 1), 0.5 + 0.5 * math.sin(now * 8))
-			ui.ultStroke.Color = Color3.new(1, 1, 1)
-			ui.ultStroke.Transparency = 0.2 + 0.3 * math.sin(now * 8)
-			local scale = 1 + 0.06 * math.sin(now * 8)
-			ui.ultButton.Size = UDim2.fromOffset(96 * scale, 96 * scale)
-		else
-			ui.ultText.Text = ICON.ult .. " ULTIMATE " .. math.floor(ult) .. " %"
-			ui.ultFill.BackgroundColor3 = Config.Colors.Ult
-			ui.ultStroke.Color = Config.Colors.Ult
-			ui.ultStroke.Transparency = 0.5
-			ui.ultButton.Size = UDim2.fromOffset(96, 96)
-		end
-		ui.ultButton.BackgroundColor3 = (ult >= 100 and not active) and Config.Colors.Gold or Config.Colors.Ult
-
-		local stunned = (character:GetAttribute("StunUntil") or 0) > now
-		if stunned then
-			ui.status.Text = "💫 ETOURDI"
-			ui.status.TextColor3 = Config.Colors.Danger
-		elseif State.blocking then
-			ui.status.Text = ICON.block .. " BLOCAGE"
-			ui.status.TextColor3 = Config.Colors.Gold
-		else
-			ui.status.Text = ""
+function HUD.openEgg(eggId)
+	local egg = Config.EggById[eggId]
+	if not egg then
+		return
+	end
+	ui.currentEgg = eggId
+	ui.EggTitle.Text = egg.icon .. "  " .. egg.name
+	for _, child in ipairs(ui.eggList:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
 		end
 	end
-
-	for i = 1, 4 do
-		local cd = State.cooldowns[i]
-		local slot = ui.slots[i]
-		local ready = not (cd and cd.untilTime > now)
-		if not ready then
-			local left = cd.untilTime - now
-			slot.Cooldown.Size = UDim2.fromScale(1, math.clamp(left / cd.duration, 0, 1))
-			slot.Timer.Text = string.format("%.1f", left)
-			slot.Icon.TextTransparency = 0.5
-			slot.Glow.BackgroundTransparency = 1
-		else
-			slot.Cooldown.Size = UDim2.fromScale(1, 0)
-			slot.Timer.Text = ""
-			slot.Icon.TextTransparency = 0
-			slot.Glow.BackgroundTransparency = 0.88 + 0.08 * math.sin(now * 3 + i)
+	-- Chances (avec la chance des pets equipes)
+	local luck = 0
+	for _, uid in ipairs(State.data.equipped) do
+		local pet = State.petByUid(uid)
+		if pet then
+			luck += PetModel.Stats(pet.id, pet.evo).luck
 		end
-		if ready and not slot:GetAttribute("WasReady") then
-			-- Flash "pret"
-			slot.Size = UDim2.fromOffset(110, 110)
-			TweenService:Create(slot, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(96, 96) }):Play()
-			slot.Glow.BackgroundTransparency = 0.3
-		end
-		slot:SetAttribute("WasReady", ready)
 	end
+	local luckMult = 1 + math.min(luck, 300) / 150
+	local pool, total = {}, 0
+	for _, pet in ipairs(Config.Pets) do
+		if pet.egg == eggId then
+			local rarity = Config.RarityById[pet.rarity]
+			local weight = rarity.weight * (rarity.index >= 3 and luckMult or 1)
+			table.insert(pool, { pet = pet, weight = weight })
+			total += weight
+		end
+	end
+	for i, entry in ipairs(pool) do
+		local pet = entry.pet
+		local rarity = Config.RarityById[pet.rarity]
+		local known = State.data.index[pet.id]
+		local row = glass({ Size = UDim2.new(1, 0, 0, 50), LayoutOrder = i }, ui.eggList, rarity.color)
+		label({ Size = UDim2.fromOffset(40, 40), Position = UDim2.new(0, 8, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), Text = known and pet.icon or "❓", TextStrokeTransparency = 1 }, row)
+		label({ Size = UDim2.new(0.45, 0, 0, 24), Position = UDim2.new(0, 56, 0, 5), Text = known and pet.id or "???", TextXAlignment = Enum.TextXAlignment.Left }, row)
+		label({ Size = UDim2.new(0.45, 0, 0, 16), Position = UDim2.new(0, 56, 0, 30), Text = rarity.icon .. " " .. rarity.name, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rarity.color }, row)
+		local pct = entry.weight / total * 100
+		label({ Size = UDim2.new(0.3, -10, 1, -12), Position = UDim2.new(0.7, 0, 0, 6), Text = pct >= 1 and string.format("%.1f %%", pct) or string.format("%.2f %%", pct), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = rarity.color }, row)
+	end
+	ui.eggButton.Text = ICON.egg .. "  OUVRIR  •  " .. ICON.coins .. " " .. egg.price .. (luck > 0 and ("   " .. ICON.luck .. " +" .. math.floor((luckMult - 1) * 100) .. " %") or "")
+	HUD.show(panels.Egg)
+end
 
-	local dashLeft = State.dashReadyAt - now
-	if dashLeft > 0 then
-		ui.dashHint.Text = ICON.dash .. string.format(" %.1fs", dashLeft)
-		ui.dashFill.Size = UDim2.fromScale(1 - math.clamp(dashLeft / C.DashCooldown, 0, 1), 1)
+-- Courses ---------------------------------------------------------------------------------------
+
+local function rebuildRace()
+	for _, child in ipairs(ui.raceTypes:GetChildren()) do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+	for _, child in ipairs(ui.racePets:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	for i, t in ipairs(Config.Race.Types) do
+		local selected = ui.raceType == t.id
+		local b = button({ Size = UDim2.new(0.5, -5, 1, 0), Text = t.icon .. " " .. t.name .. "\n" .. t.description .. "  •  " .. ICON.coins .. " " .. t.reward, LayoutOrder = i }, ui.raceTypes, selected and Config.Colors.Gold or Color3.fromRGB(70, 70, 90))
+		b.Activated:Connect(function()
+			ui.raceType = t.id
+			rebuildRace()
+		end)
+	end
+	for i, pet in ipairs(State.data.pets) do
+		local card = petCard(ui.racePets, pet, i, { selected = ui.racePet == pet.uid })
+		local b = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 5 }, card)
+		b.Activated:Connect(function()
+			ui.racePet = pet.uid
+			rebuildRace()
+		end)
+	end
+	local race = State.race
+	if race.phase == "Idle" then
+		ui.raceInfo.Text = "Aucune course en cours. Choisis un type et un pet, puis lance la course : les autres joueurs ont " .. Config.Race.LobbyTime .. " s pour te rejoindre. Les places vides sont prises par des bots."
+		ui.raceJoin.Text = ICON.race .. "  LANCER / REJOINDRE"
+	elseif race.phase == "Lobby" then
+		ui.raceInfo.Text = "🏁 Course " .. tostring(race.type) .. " en preparation : " .. #race.racers .. " / " .. Config.Race.MaxRacers .. " inscrits. Rejoins maintenant !"
+		ui.raceJoin.Text = ICON.race .. "  REJOINDRE"
 	else
-		ui.dashHint.Text = ICON.dash .. " DASH PRET" .. (TOUCH and "" or "  Q")
-		ui.dashFill.Size = UDim2.fromScale(1, 1)
-	end
-	if now - State.comboAt > C.ComboReset then
-		ui.combo.Visible = false
+		ui.raceInfo.Text = "Course en cours, regarde la piste !"
+		ui.raceJoin.Text = "⏳ EN COURS"
 	end
 end
 
-function HUD.showCombo(count)
-	State.combo = count
-	State.comboAt = os.clock()
-	local words = { "HIT", "DOUBLE", "TRIPLE", "SMASH !" }
-	ui.combo.Text = (count >= 4 and "💥 " or "👊 ") .. count .. " " .. (words[count] or "HITS")
-	ui.combo.Visible = true
-	ui.combo.Size = UDim2.fromOffset(220, 36)
-	ui.combo.Rotation = (math.random() - 0.5) * 8
-	TweenService:Create(ui.combo, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(320, 56), Rotation = 0 }):Play()
+local function onRace(race)
+	State.race = race
+	if panels.Race.Visible then
+		rebuildRace()
+	end
+	if race.phase == "Idle" then
+		ui.raceLive.Visible = false
+		return
+	end
+	ui.raceLive.Visible = true
+	local lines = {}
+	if race.phase == "Lobby" then
+		ui.raceLiveTitle.Text = "🏁 LOBBY " .. tostring(race.type)
+		for _, r in ipairs(race.racers) do
+			table.insert(lines, Config.PetById[r.petId].icon .. " " .. r.name)
+		end
+	elseif race.phase == "Countdown" then
+		ui.raceLiveTitle.Text = "🏁 DEPART IMMINENT"
+		for _, r in ipairs(race.racers) do
+			table.insert(lines, Config.PetById[r.petId].icon .. " " .. r.name)
+		end
+	elseif race.phase == "Racing" then
+		ui.raceLiveTitle.Text = "🏁 COURSE " .. tostring(race.type)
+		local sorted = table.clone(race.racers)
+		table.sort(sorted, function(a, b)
+			return (a.progress or 0) > (b.progress or 0)
+		end)
+		for i, r in ipairs(sorted) do
+			local pct = race.total and math.floor((r.progress or 0) / race.total * 100) or 0
+			table.insert(lines, string.format("%d. %s %s  %d%%", i, Config.PetById[r.petId].icon, r.name, pct))
+		end
+	else
+		ui.raceLiveTitle.Text = "🏆 RESULTATS"
+		local medals = { "🥇", "🥈", "🥉", "4." }
+		for _, r in ipairs(race.results or race.racers) do
+			table.insert(lines, (medals[r.rank] or "") .. " " .. Config.PetById[r.petId].icon .. " " .. r.name)
+		end
+	end
+	ui.raceLiveList.Text = table.concat(lines, "\n")
 end
 
-function HUD.playIntro()
-	ui.intro.Visible = true
-	ui.intro.BackgroundTransparency = 0.2
-	ui.introTitle.TextTransparency = 1
-	ui.introTitle.Position = UDim2.new(0.5, 0, 0.3, 0)
-	ui.introSub.TextTransparency = 1
-	TweenService:Create(ui.introTitle, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextTransparency = 0, Position = UDim2.new(0.5, 0, 0.4, 0) }):Play()
-	task.delay(0.4, function()
-		TweenService:Create(ui.introSub, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
-	end)
-	task.delay(2.4, function()
-		TweenService:Create(ui.intro, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
-		TweenService:Create(ui.introTitle, TweenInfo.new(0.5), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-		TweenService:Create(ui.introSub, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
-		task.wait(0.7)
-		ui.intro.Visible = false
+-- Eclosion ---------------------------------------------------------------------------------------
+
+function HUD.playHatch(data)
+	local def = Config.PetById[data.petId]
+	local rarity = Config.RarityById[data.rarity]
+	ui.hatch.Visible = true
+	ui.hatchEgg.Text = Config.EggById[data.egg or "Village"].icon
+	ui.hatchEgg.TextTransparency = 0
+	ui.hatchName.Text = ""
+	ui.hatchRarity.Text = ""
+	ui.hatchStats.Text = ""
+	task.spawn(function()
+		for i = 1, 10 do
+			ui.hatchEgg.Rotation = (i % 2 == 0) and 12 or -12
+			ui.hatchEgg.Size = UDim2.fromOffset(220 + i * 6, 220 + i * 6)
+			task.wait(0.09)
+		end
+		ui.hatchEgg.Rotation = 0
+		ui.hatchEgg.Text = def.icon
+		ui.hatchEgg.Size = UDim2.fromOffset(60, 60)
+		TweenService:Create(ui.hatchEgg, TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 300) }):Play()
+		ui.hatchName.Text = def.id
+		ui.hatchName.TextColor3 = rarity.color
+		ui.hatchRarity.Text = rarity.icon .. " " .. rarity.name
+		ui.hatchRarity.TextColor3 = rarity.color
+		ui.hatchStats.Text = statsText(def.id, 1)
+		task.wait(2.6)
+		TweenService:Create(ui.hatch, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
+		task.wait(0.4)
+		ui.hatch.Visible = false
+		ui.hatch.BackgroundTransparency = 0.25
 	end)
 end
 
-function HUD.Init(inputModule)
-	Input = inputModule
+-- Mises a jour ----------------------------------------------------------------------------------
+
+local function onSync(data)
+	State.data = data
+	ui.coins.Text = ICON.coins .. " " .. data.coins
+	ui.power.Text = ICON.power .. " Puissance " .. data.power .. "   " .. ICON.pets .. " " .. #data.pets .. " pets"
+	ui.stats.Text = string.format("%s %d courses gagnees   %s %d oeufs   %s %d total", ICON.trophy, data.raceWins, ICON.egg, data.hatched, ICON.coins, data.totalCoins)
+	ui.dailyButton.Visible = data.dailyReady
+	rebuildEquippedBar()
+	if panels.Pets.Visible then
+		rebuildPets()
+	end
+	if panels.Index.Visible then
+		rebuildIndex()
+	end
+	if panels.Zones.Visible then
+		rebuildZones()
+	end
+	if panels.Race.Visible then
+		rebuildRace()
+	end
+	if panels.Egg.Visible and ui.currentEgg then
+		HUD.openEgg(ui.currentEgg)
+	end
+	State.fire("sync", data)
+end
+
+local function isNear(tag, distance)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return false
+	end
+	for _, s in ipairs(CollectionService:GetTagged(tag)) do
+		if (s.Position - hrp.Position).Magnitude <= distance then
+			return true
+		end
+	end
+	return false
+end
+
+function HUD.Init()
 	build()
-	Remotes.Stats.OnClientEvent:Connect(onStats)
+	ui.rebuild = { Pets = rebuildPets, Index = rebuildIndex, Zones = rebuildZones, Race = rebuildRace }
+	Remotes.PetsSync.OnClientEvent:Connect(onSync)
+	Remotes.RaceSync.OnClientEvent:Connect(onRace)
 	Remotes.Notify.OnClientEvent:Connect(HUD.toast)
-	ui.charButton.Activated:Connect(function()
-		toggle("characters")
-	end)
-	ui.cosmButton.Activated:Connect(function()
-		toggle("cosmetics")
-	end)
-	State.Changed.Event:Connect(function(what, data)
-		if what == "toggle" then
-			toggle(data)
-		elseif what == "notify" then
-			HUD.toast(data.text, data.kind)
-		elseif what == "respawn" then
-			task.delay(0.5, refreshSkillNames)
+
+	ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		local s = prompt.Parent
+		if not s then
+			return
+		end
+		if CollectionService:HasTag(s, "EggStand") then
+			HUD.openEgg(s:GetAttribute("EggId"))
+		elseif CollectionService:HasTag(s, "RaceStand") then
+			rebuildRace()
+			HUD.show(panels.Race)
 		end
 	end)
-	local function hookCharacter(character)
-		task.wait(0.3)
-		refreshSkillNames()
-		character:GetAttributeChangedSignal("UltActive"):Connect(refreshSkillNames)
-		character:GetAttributeChangedSignal("CharacterId"):Connect(refreshSkillNames)
-	end
-	if player.Character then
-		task.spawn(hookCharacter, player.Character)
-	end
-	player.CharacterAdded:Connect(hookCharacter)
-	RunService.RenderStepped:Connect(update)
-	task.delay(0.5, HUD.playIntro)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+		local map = { [Enum.KeyCode.P] = "Pets", [Enum.KeyCode.I] = "Index", [Enum.KeyCode.Z] = "Zones", [Enum.KeyCode.R] = "Race" }
+		local name = map[input.KeyCode]
+		if name then
+			HUD.toggle(name)
+		elseif input.KeyCode == Enum.KeyCode.Escape then
+			for _, f in pairs(panels) do
+				if f.Visible then
+					HUD.hide(f)
+				end
+			end
+		end
+	end)
+
+	-- Zone actuelle + pulsation du bouton cadeau
+	RunService.Heartbeat:Connect(function()
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local current
+			for _, zone in ipairs(Config.Zones) do
+				if math.abs(hrp.Position.X - zone.center.X) <= zone.size / 2 + 50 and math.abs(hrp.Position.Z - zone.center.Z) <= zone.size / 2 + 50 then
+					current = zone
+				end
+			end
+			ui.zoneLabel.Text = current and (current.icon .. " " .. current.name .. "   •   " .. ICON.coins .. " " .. current.coinValue .. " par coin") or ""
+		end
+		if ui.dailyButton.Visible then
+			ui.dailyButton.Rotation = math.sin(os.clock() * 6) * 4
+		end
+	end)
+	task.delay(1, function()
+		Remotes.Pets:FireServer("sync")
+		Remotes.Race:FireServer("state")
+	end)
 end
 
 return HUD

@@ -1,4 +1,4 @@
--- Sauvegarde DataStore + leaderstats + classement global (OrderedDataStore).
+-- Sauvegarde DataStore + leaderstats + classement global coins.
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -8,10 +8,10 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local DataService = {}
 
-local store, winsStore
+local store, topStore
 pcall(function()
-	store = DataStoreService:GetDataStore("OnyxBG_v1")
-	winsStore = DataStoreService:GetOrderedDataStore("OnyxBG_Wins_v1")
+	store = DataStoreService:GetDataStore("PetRush_v1")
+	topStore = DataStoreService:GetOrderedDataStore("PetRush_Coins_v1")
 end)
 
 local cache = {}
@@ -19,17 +19,17 @@ local stats = {}
 
 local function defaultData()
 	return {
-		XP = 0,
-		Level = 1,
-		Coins = 0,
-		Kills = 0,
-		Deaths = 0,
-		Wins = 0,
-		Character = "Fighter",
-		Aura = "none",
-		Trail = "none",
-		Title = "rookie",
-		Unlocked = { auras = { none = true }, trails = { none = true }, titles = { rookie = true } },
+		Coins = Config.StartCoins,
+		TotalCoins = 0,
+		Pets = {}, -- { uid = n, id = "Chaton", evo = 1 }
+		NextUid = 1,
+		Equipped = {}, -- liste d'uids
+		Zones = { Village = true },
+		Index = {}, -- [petId] = true (decouverts)
+		Hatched = 0,
+		RaceWins = 0,
+		Races = 0,
+		LastDaily = 0,
 	}
 end
 
@@ -47,32 +47,29 @@ function DataService.Load(player)
 			for k, v in pairs(result) do
 				data[k] = v
 			end
-			data.Unlocked = data.Unlocked or defaultData().Unlocked
-			data.Unlocked.auras = data.Unlocked.auras or { none = true }
-			data.Unlocked.trails = data.Unlocked.trails or { none = true }
-			data.Unlocked.titles = data.Unlocked.titles or { rookie = true }
 		elseif not ok then
-			warn("[OnyxBG] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
+			warn("[PetRush] Chargement impossible pour " .. player.Name .. " : " .. tostring(result))
 		end
 	end
-	if not Config.CharacterById[data.Character] then
-		data.Character = "Fighter"
-	end
+	data.Zones = data.Zones or { Village = true }
+	data.Zones.Village = true
+	data.Pets = data.Pets or {}
+	data.Equipped = data.Equipped or {}
+	data.Index = data.Index or {}
 	cache[player] = data
 
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
 	local values = {}
-	for _, name in ipairs({ "Wins", "Kills", "Level" }) do
+	for _, name in ipairs({ "Coins", "Pets", "RaceWins" }) do
 		local v = Instance.new("IntValue")
 		v.Name = name
-		v.Value = data[name]
 		v.Parent = leaderstats
 		values[name] = v
 	end
 	leaderstats.Parent = player
 	stats[player] = values
-	player:SetAttribute("Level", data.Level)
+	DataService.Sync(player)
 	return data
 end
 
@@ -84,9 +81,9 @@ function DataService.Sync(player)
 	local data = cache[player]
 	local values = stats[player]
 	if data and values then
-		values.Wins.Value = data.Wins
-		values.Kills.Value = data.Kills
-		values.Level.Value = data.Level
+		values.Coins.Value = math.floor(data.Coins)
+		values.Pets.Value = #data.Pets
+		values.RaceWins.Value = data.RaceWins
 	end
 end
 
@@ -101,11 +98,11 @@ function DataService.Save(player)
 		end)
 	end)
 	if not ok then
-		warn("[OnyxBG] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
+		warn("[PetRush] Sauvegarde impossible pour " .. player.Name .. " : " .. tostring(err))
 	end
-	if winsStore then
+	if topStore then
 		pcall(function()
-			winsStore:SetAsync(tostring(player.UserId), data.Wins)
+			topStore:SetAsync(tostring(player.UserId), math.floor(data.TotalCoins))
 		end)
 	end
 end
@@ -115,20 +112,19 @@ function DataService.Release(player)
 	stats[player] = nil
 end
 
--- Top global (userId -> wins) ; retourne { {userId=, wins=} }
-function DataService.GetTopWins(count)
-	if not winsStore then
+function DataService.GetTop(count)
+	if not topStore then
 		return {}
 	end
 	local ok, pages = pcall(function()
-		return winsStore:GetSortedAsync(false, count)
+		return topStore:GetSortedAsync(false, count)
 	end)
 	if not ok then
 		return {}
 	end
 	local result = {}
 	for _, entry in ipairs(pages:GetCurrentPage()) do
-		table.insert(result, { userId = tonumber(entry.key), wins = entry.value })
+		table.insert(result, { userId = tonumber(entry.key), value = entry.value })
 	end
 	return result
 end

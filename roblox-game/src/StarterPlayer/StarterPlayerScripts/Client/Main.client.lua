@@ -1,10 +1,10 @@
--- Point d'entree client d'ONYX BATTLEGROUNDS.
+-- Point d'entree client de PET RUSH.
 
 local Modules = script.Parent.Modules
-local Input = require(Modules.Input)
 local HUD = require(Modules.HUD)
 local Effects = require(Modules.Effects)
+local PetFollow = require(Modules.PetFollow)
 
-Input.Init()
-HUD.Init(Input)
+HUD.Init()
 Effects.Init(HUD)
+PetFollow.Init()

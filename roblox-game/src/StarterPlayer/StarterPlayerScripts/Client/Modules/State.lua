@@ -2,17 +2,21 @@
 
 local State = {}
 
-State.stats = { xp = 0, level = 1, xpNext = 100, coins = 0, kills = 0, deaths = 0, wins = 0, character = "Fighter", aura = "none", trail = "none", title = "rookie", unlocked = { auras = {}, trails = {}, titles = {} } }
-State.cooldowns = {} -- [slot] = { untilTime, duration }
-State.dashReadyAt = 0
-State.blocking = false
-State.combo = 0
-State.comboAt = 0
-
+State.data = { coins = 0, totalCoins = 0, pets = {}, equipped = {}, zones = { Village = true }, index = {}, hatched = 0, raceWins = 0, races = 0, dailyReady = false, dailyIn = 0, power = 0 }
+State.race = { phase = "Idle", racers = {} }
 State.Changed = Instance.new("BindableEvent")
 
 function State.fire(what, data)
 	State.Changed:Fire(what, data)
+end
+
+function State.petByUid(uid)
+	for _, pet in ipairs(State.data.pets) do
+		if pet.uid == uid then
+			return pet
+		end
+	end
+	return nil
 end
 
 return State

@@ -3,7 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local NAMES = { "Combat", "CombatFX", "SkillAck", "Stats", "Menu", "Notify" }
+local NAMES = { "Pets", "PetsSync", "Race", "RaceSync", "Notify", "FX" }
 
 local Remotes = {}
 

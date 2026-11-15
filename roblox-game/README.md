@@ -1,125 +1,89 @@
-# ONYX BATTLEGROUNDS – jeu Roblox
+# 🐾 PET RUSH – jeu Roblox
 
-Un **Battleground** : grande zone de combat en Free For All où chaque joueur choisit un
-personnage, enchaîne des combos M1, bloque, dash, utilise 4 compétences, charge son
-**Ultimate**, monte en niveau et débloque des cosmétiques.
+Collection de pets + courses. Les joueurs ouvrent des œufs, équipent leurs pets pour ramasser
+des coins dans 3 zones, font évoluer leurs animaux (Golden → Rainbow → Cosmic) et les font
+courir sur la piste du village.
 
 ## Boucle de jeu
 
-Spawn (zone sûre) → Choisir un personnage (`C`) → Combattre dans la ville / l'arène →
-Gagner XP, pièces, kills, victoires → Débloquer auras, effets de dash, titres → Recommencer
+Pet gratuit 🐱 → ramasser des 🪙 avec ses pets → ouvrir des 🥚 → débloquer 🌲 Forest puis
+🏜️ Desert → évoluer 🧬 → gagner des courses 🏁 → compléter le 📖 Pet Index
+
+## Contenu
+
+- **19 pets**, 7 raretés : ⚪ Common, 🟢 Uncommon, 🔵 Rare, 🟣 Epic, 🟡 Legendary, 🔴 Mythical,
+  🌈 Secret. Chaque pet a 4 stats : ⚡ Speed, 💪 Power, 🛡️ Stamina, 🍀 Luck.
+- **3 zones** avec leur œuf exclusif, leurs coins et leur coffre :
+  🏡 Starter Village (œuf 50) → 🌲 Forest (2 500 coins, œuf 600) → 🏜️ Desert (25 000 coins, œuf 6 000).
+- **Collecte** : les pets équipés (3 max) suivent le joueur. Le rayon de collecte grandit avec
+  le nombre de pets et les gains avec leur 💪 Power. La 🍀 Luck augmente les chances de
+  raretés hautes dans les œufs.
+- **Coffres rares** 🎁 : apparaissent aléatoirement dans une zone (annonce + rayon lumineux),
+  le premier arrivé les ouvre.
+- **Évolution** 🧬 : 3 exemplaires identiques → ✨ Golden (x2,5) → 🌈 Rainbow (x6) → 🌌 Cosmic (x15),
+  avec nouvelle apparence et particules.
+- **Courses de pets** 🏁 : stand au village, ⚡ Sprint (1 tour, la vitesse compte) ou
+  🛡️ Marathon (3 tours, l'endurance compte). Lobby de 25 s, 4 coureurs, bots pour compléter,
+  simulation avec Speed / Stamina / Luck, classement en direct, récompenses.
+- **Pet Index** 📖, **cadeau du jour** 🎁 (500 coins + œuf gratuit toutes les 20 h),
+  **classement** 📈 en jeu (top coins global).
+- Sauvegarde DataStore (`PetRush_v1`), leaderstats Coins / Pets / RaceWins.
 
 ## Contrôles
 
-| Action | PC | Manette | Mobile |
-| --- | --- | --- | --- |
-| Attaque de base (M1, combo 4 coups) | Clic gauche | `R2` | bouton M1 |
-| Bloquer (maintenir) | `F` | `L2` | bouton BLOC |
-| Dash (avant / arrière / gauche / droite selon le déplacement) | `Q` | `L1` | bouton DASH |
-| Compétences 1 à 4 | `1` `2` `3` `4` | `X` `B` `A` `R1` | boutons à l'écran |
-| Ultimate | `G` | `Y` | bouton ULT |
-| Personnage | `C` | | bouton |
-| Cosmétiques | `K` | | bouton |
-
-## Système de combat
-
-- **M1** : 4 coups enchaînés (droite, gauche, coup de pied, coup lourd). Le 4e coup
-  repousse l'adversaire, brise sa garde et l'étourdit plus longtemps.
-- **Blocage** : -70 % de dégâts sur les M1, -50 % sur les compétences. Le 4e coup du combo
-  brise le blocage. On ne peut pas attaquer ni dasher en bloquant.
-- **Dash** : déplacement rapide dans la direction du mouvement (1,6 s de recharge) avec
-  traînée cosmétique.
-- **Étourdissement / knockback / mise au sol** selon la puissance du coup.
-- **Ultimate** : chaque dégât infligé ou subi remplit la barre. À 100 %, `G` active le mode
-  Ultimate pendant 16 s : aura, lumière, ambiance sonore, dégâts x1,25 et **4 nouvelles
-  compétences** par personnage.
-- **Compétences** : 5 types génériques (corps à corps, ruée, projectile, zone, bonus) avec
-  dégâts, recharge, animation procédurale, effets visuels et sonores définis dans `Config.lua`.
-
-## Personnages
-
-| | Vie | Vitesse | Style | Compétences | Ultimate |
-| --- | --- | --- | --- | --- | --- |
-| **Fighter** | 100 | 17 | équilibré | Uppercut, Rush Punch, Shockwave, Finisher | Meteor Fist, Blitz Rush, Earth Breaker, Omega Strike |
-| **Volt** | 85 | 21 | rapide, mobilité | Spark Jab, Lightning Dash, Thunder Bolt, Overcharge | Chain Lightning, Volt Rush, Plasma Shot, Storm Cage |
-| **Titan** | 145 | 14 | lent, dévastateur | Boulder Punch, Charge, Ground Slam, Titan Crush | Quake, Avalanche, Mountain Fist, Cataclysm |
-| **Blaze** | 90 | 17 | distance, dégâts | Fire Punch, Flame Dash, Fire Blast, Inferno | Hellfire Fist, Phoenix Dash, Dragon Breath, Supernova |
-
-## Map
-
-- **Spawn** : zone sûre (aucun dégât, impossible d'attaquer), panneau de contrôles,
-  **tableau de classement** (top victoires, global via OrderedDataStore + joueurs présents).
-- **Arène** : plateforme centrale néon entourée de piliers lumineux.
-- **Centre-ville** : immeubles avec toits accessibles (caisses en escalier), rues larges,
-  lampadaires.
-- **Zone calme** : parc avec 4 mannequins d'entraînement (600 PV, régénération,
-  réapparition) pour tester les compétences, même seul.
-
-## Progression
-
-- **XP** : 2 par coup, 60 par kill, 120 par victoire. Niveau = courbe croissante.
-- **Pièces** : 1 par coup, 40 par kill, 120 par victoire.
-- **Victoire** : 3 éliminations d'affilée sans mourir.
-- **Cosmétiques** (uniquement visuels) : 5 auras, 4 traînées de dash à acheter avec des
-  pièces, 9 titres débloqués par niveau / kills / victoires. Affichés au-dessus de la tête.
-- Tout est sauvegardé en DataStore (`OnyxBG_v1`).
+| Action | PC | Mobile |
+| --- | --- | --- |
+| Mes pets (équiper, évoluer, supprimer) | `P` ou bouton | bouton |
+| Pet Index | `I` ou bouton | bouton |
+| Zones (débloquer / se téléporter) | `Z` ou bouton | bouton |
+| Courses | `R`, bouton ou stand 🏁 | bouton |
+| Ouvrir un œuf | stand 🥚 de la zone (touche `E`) | bouton de l'invite |
+| Débloquer une zone | porte dorée (maintenir `E`) ou menu Zones | idem |
+| Cadeau du jour | stand 🎁 ou bouton CADEAU | idem |
 
 ## Installation
 
-### 1. Le plus simple : ouvrir le fichier de place
-
-1. Télécharge `OnyxBattlegrounds.rbxlx`.
+1. Télécharge `PetRush.rbxlx`.
 2. Roblox Studio : **Fichier → Ouvrir depuis un fichier**.
-3. **Jouer**. Map, mannequins et interface sont générés par script.
+3. **Jouer**. Map, coins, stands et interface sont générés par script.
 
-Test à plusieurs : **Test → Clients et serveurs**, 2 joueurs ou plus.
+Avec Rojo : `rojo serve default.project.json`. Régénérer le fichier : `node build-place.js`.
 
-### 2. Avec Rojo
-
-```bash
-rojo serve default.project.json
-```
-
-Régénérer le fichier de place après modification :
-
-```bash
-node build-place.js
-```
-
-## Publication
-
-Après **Fichier → Publier sur Roblox**, active *Paramètres du jeu → Sécurité → Accès aux
-services API par Studio* pour que la sauvegarde et le classement global fonctionnent.
+Après publication, active *Paramètres du jeu → Sécurité → Accès aux services API par Studio*
+pour la sauvegarde et le classement global.
 
 ## Structure
 
 ```
 src/
   ReplicatedStorage/Shared/
-    Config.lua            Personnages, compétences, combat, progression, cosmétiques, map
-    Remotes.lua           RemoteEvents
+    Config.lua          Raretés, pets, œufs, zones, évolutions, courses (tout l'équilibrage)
+    PetModel.lua        Modèles 3D des pets (8 formes) + stats effectives
+    Remotes.lua
   ServerScriptService/Server/
     Main.server.lua
     Modules/
-      MapBuilder.lua      Map complète + mannequins + zone sûre
-      CombatService.lua   M1/combos, blocage, dash, compétences, dégâts, stun, knockback, ultimate
-      CharacterService.lua Application de la classe, mort, crédit des kills
-      ProgressionService.lua XP, niveaux, pièces, titres, cosmétiques, classement
-      DataService.lua     DataStore + leaderstats + OrderedDataStore
+      MapBuilder.lua    3 zones, portes, stands, piste de course, classement, ambiance
+      PetService.lua    Éclosion, équipement, évolution, index, zones, cadeau du jour
+      CoinService.lua   Coins, collecte automatique par les pets, coffres rares
+      RaceService.lua   Lobby, compte à rebours, simulation de course, récompenses
+      DataService.lua   DataStore + leaderstats + OrderedDataStore
   StarterPlayer/StarterPlayerScripts/Client/
     Main.client.lua
     Modules/
-      Input.lua           Contrôles, dash local, orientation caméra, ruées
-      Anim.lua            Animations procédurales (Motor6D) R15/R6, sans assets
-      HUD.lua             Vie, ultimate, compétences, combo, stats, menus
-      Effects.lua         Particules, ondes de choc, dégâts flottants, auras, traînées, sons
+      HUD.lua           Interface complète (pets, index, zones, œufs, courses, éclosion)
+      PetFollow.lua     Pets qui suivent les joueurs (rendu local fluide)
+      Effects.lua       Coins animés, particules, textes flottants, sons
       State.lua
 ```
 
-## Ajouter un personnage ou une compétence
+## Ajouter un pet, un œuf ou une zone
 
-Ajoute une entrée dans `Config.Characters` : 4 `skills` + 4 `ultSkills` avec un `type`
-(`melee`, `rush`, `projectile`, `aoe`, `buff`), des dégâts, une recharge, une `pose`
-(`jab`, `uppercut`, `heavy`, `rush`, `slam`, `cast`, `power`) et un `sound`
-(`heavy`, `whoosh`, `slam`, `zap`, `fire`, `explosion`, `thunder`, `charge`).
-Aucun autre fichier à modifier.
+Tout se fait dans `Config.lua` : ajoute une entrée dans `Pets` (icône, rareté, œuf, forme,
+couleur, stats), dans `Eggs` et dans `Zones`. Les formes disponibles : `cat`, `dog`, `bunny`,
+`bird`, `dragon`, `snake`, `bear`, `blob`.
+
+## Idées pour la suite
+
+Trading entre joueurs, quêtes quotidiennes, événements temporaires, skins de pets,
+nouvelles zones (❄️ Ice World, 🌋 Volcano, 🌌 Space).
