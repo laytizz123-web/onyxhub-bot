@@ -3952,6 +3952,7 @@ const tools = (() => {
   const FILE = path.join(process.env.DATA_DIR || __dirname, "tools.json");
 
   /* ---------- storage ---------- */
+  const BADWORDS_DEFAULT = () => ["ntm", "fdp", "tg", "ftg", "pd", "connard", "connasse", "enculé", "salope", "pute", "batard", "bâtard", "nique ta mère", "ta mère la", "fils de pute", "abruti", "débile", "fuck", "bitch", "motherfucker", "nigga", "nigger", "negro", "pédé", "gouine", "suce"];
   const CROSS_VALUES = () => [
     { id: "less", label: "Moins de Garama", roles: [] },
     { id: "more", label: "Plus de Garama", roles: [] },
@@ -3972,16 +3973,19 @@ const tools = (() => {
     vouches: {},
     vouchN: 0,
     scams: {}, // user id -> { reason, proof, by, at }
+    staffStats: {}, // user id -> { ct, ix } trades and indexes done
     idle: {}, // ticket channel id -> { warnAt, msgId }
     voc: { hubs: [], rooms: {} },
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
-      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
+      levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, boardChannelId: "", boardMsgId: "", voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
       tickets: { inactiveH: 48, closeH: 24 }, // 0 = no automatic closing
+      commandsOnly: { channels: [] },
+      badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
       scam: { channelId: "" },
       rules: { roleId: "", channelId: "", msgId: "", everyoneSaw: false, on: false, opened: [], text: null }, // text: { title, body, end, button, color } chosen with /reglement modifier
       index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
@@ -4024,6 +4028,8 @@ const tools = (() => {
     // missing, empty (saved by the previous version), or one-role categories: back to the five values
     for (const k of ["roles", "auto", "prices", "cautions", "panels"]) if (!next.cfg.index[k] || typeof next.cfg.index[k] !== "object" || Array.isArray(next.cfg.index[k])) next.cfg.index[k] = {};
     if (!Array.isArray(next.cfg.rules.opened)) next.cfg.rules.opened = [];
+    if (!Array.isArray(next.cfg.commandsOnly.channels)) next.cfg.commandsOnly.channels = [];
+    for (const k of ["words", "channels", "roles"]) if (!Array.isArray(next.cfg.badwords[k])) next.cfg.badwords[k] = k === "words" ? BADWORDS_DEFAULT() : [];
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
@@ -4037,7 +4043,7 @@ const tools = (() => {
     next.indexStats = { ...base.indexStats, ...(raw.indexStats || {}) };
     if (!Array.isArray(next.voc.hubs)) next.voc.hubs = [];
     if (!next.voc.rooms || typeof next.voc.rooms !== "object") next.voc.rooms = {};
-    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches", "scams", "idle"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
+    for (const key of ["xp", "warns", "polls", "giveaways", "locks", "claims", "crosstrades", "vouches", "scams", "idle", "staffStats"]) if (!next[key] || typeof next[key] !== "object") next[key] = {};
     for (const [group, keys] of [[next.setup, ["items", "voiceItems", "levelRoles"]], [next.cfg.levels, ["rewards", "ignored"]]]) for (const k of keys) if (!Array.isArray(group[k])) group[k] = [];
     for (const [k, v] of Object.entries(next.vouches)) if (!Array.isArray(v)) delete next.vouches[k];
     if (!Number.isFinite(next.vouchN)) next.vouchN = 0;
@@ -4418,6 +4424,7 @@ const tools = (() => {
               .addIntegerOption((o) => o.setName("xp").setDescription(t("XP par minute (0-100)", "XP per minute (0-100)")).setMinValue(0).setMaxValue(100))
               .addIntegerOption((o) => o.setName("personnes").setDescription(t("Minimum de personnes dans le vocal (bots exclus)", "Minimum people in the voice channel (bots excluded)")).setMinValue(1).setMaxValue(10))
           )
+          .addSubcommand((s) => s.setName("classement").setDescription(t("Poster un classement XP qui se met à jour tout seul", "Post an XP leaderboard that updates by itself")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
           .addSubcommand((s) => s.setName("quiz-xp").setDescription(t("XP gagnés avec une bonne réponse au quiz", "XP won with a right quiz answer")).addIntegerOption((o) => o.setName("montant").setDescription("1-500").setMinValue(1).setMaxValue(500).setRequired(true)))
       ),
       D(
@@ -4688,6 +4695,23 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("off").setDescription(t("Désactiver : tout le monde revoit le serveur", "Turn off: everyone sees the server again")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir l'état du règlement", "See the state of the rules")))
       ),
+      // channels where only slash commands are allowed
+      D(P.ManageGuild, cmd("commandsonly", t("Salon où on ne peut utiliser que les commandes / (refaire = enlever)", "Channel where only / commands are allowed (again = remove)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText))),
+      // bad words filter
+      D(
+        P.ManageGuild,
+        cmd("antibadwords", t("Filtre des gros mots : liste, sanction, exceptions", "Bad words filter: list, sanction, exceptions"))
+          .addSubcommand((s) => s.setName("actif").setDescription(t("Activer ou couper le filtre", "Turn the filter on or off")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
+          .addSubcommand((s) => s.setName("ajouter").setDescription(t("Ajouter un mot ou une expression", "Add a word or an expression")).addStringOption((o) => o.setName("mot").setDescription(t("Le mot", "The word")).setRequired(true).setMaxLength(60)))
+          .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un mot", "Remove a word")).addStringOption((o) => o.setName("mot").setDescription(t("Le mot", "The word")).setRequired(true).setMaxLength(60)))
+          .addSubcommand((s) => s.setName("liste").setDescription(t("Voir la liste et les réglages", "See the list and the settings")))
+          .addSubcommand((s) => SANCTION(s.setName("sanction").setDescription(t("Que faire à celui qui dit un gros mot (le message est toujours supprimé)", "What happens to whoever says a bad word (the message is always deleted)"))))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Ignorer / ne plus ignorer un salon", "Ignore / stop ignoring a channel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)"))))
+          .addSubcommand((s) => s.setName("role").setDescription(t("Ignorer / ne plus ignorer un rôle", "Ignore / stop ignoring a role")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true)))
+          .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre la liste et les réglages par défaut", "Back to the default list and settings")))
+      ),
+      // the work of the middlemen and indexers
+      cmd("mmstats", t("Trades et index faits par les middlemen", "Trades and indexes done by the middlemen")).addUserOption((o) => o.setName("membre").setDescription(t("Un middleman (vide = le classement)", "A middleman (empty = the ranking)"))),
       // scammers blacklist
       D(
         P.ModerateMembers,
@@ -4778,7 +4802,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -4872,6 +4896,23 @@ const tools = (() => {
       return reply(i, cfg.voiceOn && cfg.voiceXp > 0
         ? ok(t(`XP en vocal : **${cfg.voiceXp} XP par minute**, avec au moins **${cfg.voiceMinPeople} personne${cfg.voiceMinPeople > 1 ? "s" : ""}** dans le vocal (sourdine « casque » = rien, salon AFK = rien).`, `Voice XP: **${cfg.voiceXp} XP per minute**, with at least **${cfg.voiceMinPeople} ${cfg.voiceMinPeople > 1 ? "people" : "person"}** in the voice channel (deafened = nothing, AFK channel = nothing).`))
         : ok(t("XP en vocal coupé.", "Voice XP turned off.")));
+    }
+    if (sub === "classement") {
+      const channel = i.options.getChannel?.("salon") || i.channel;
+      if (!channel?.send) return reply(i, no(t("Je ne peux pas écrire dans ce salon.", "I cannot write in that channel.")));
+      await i.deferReply({ flags: ephemeral });
+      if (cfg.boardChannelId && cfg.boardMsgId) {
+        const oldCh = await Promise.resolve(i.guild.channels.fetch(cfg.boardChannelId)).catch(() => null);
+        const old = await Promise.resolve(oldCh?.messages?.fetch?.(cfg.boardMsgId)).catch(() => null);
+        await old?.delete?.().catch(() => {});
+      }
+      const message = await Promise.resolve(channel.send(await xpBoardBody(i.guild))).catch(() => null);
+      if (!message) return i.editReply(no(t("Je ne peux pas écrire dans ce salon.", "I cannot write in that channel.")));
+      cfg.boardChannelId = channel.id;
+      cfg.boardMsgId = message.id;
+      boardShown = xpBoardSig(i.guild);
+      save(true);
+      return i.editReply(ok(t(`Classement XP posté dans <#${channel.id}> : il se met à jour tout seul.`, `XP leaderboard posted in <#${channel.id}>: it updates by itself.`)));
     }
     if (sub === "quiz-xp") {
       cfg.quizXp = i.options.getInteger("montant");
@@ -6411,6 +6452,7 @@ const tools = (() => {
     const sections = [
       [t("📈 Niveaux", "📈 Levels"), "`/rank` `/leaderboard` `/quiz`"],
       [t("📈 Niveaux (staff)", "📈 Levels (staff)"), "`/levels` `/xp` `/autoquiz`", P.ManageGuild],
+      [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
@@ -6423,6 +6465,7 @@ const tools = (() => {
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
       [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade` `/traduction`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
+      [t("🛡️ Modération+", "🛡️ Moderation+"), "`/scam` `/antibadwords` `/commandsonly` `/tickets`", P.ManageGuild],
       [t("👑 Admin", "👑 Admin"), "`/setup` `/reglement` `/panel` `/access` `/tiers`", P.Administrator],
     ];
     return i.reply({
@@ -6935,6 +6978,166 @@ const tools = (() => {
     );
   };
 
+  /* ---------- channels for / commands only ---------- */
+  async function onCommandsOnly(message) {
+    if (!message.guild || message.author?.bot || !db.cfg.commandsOnly.channels.includes(message.channelId)) return false;
+    if (message.member?.permissions?.has?.(P.ManageMessages)) return false;
+    await Promise.resolve(message.delete?.()).catch(() => {});
+    const hint = await Promise.resolve(message.channel.send?.({ content: t(`-# <@${message.author.id}> ici tu peux seulement utiliser les commandes **/**`, `-# <@${message.author.id}> here you can only use **/** commands`), allowedMentions: { users: [message.author.id] }, flags: MessageFlags.SuppressNotifications })).catch(() => null);
+    if (hint?.delete) setTimeout(() => hint.delete().catch(() => {}), 6000).unref?.();
+    return true;
+  }
+  H.commandsonly = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const id = i.options.getChannel?.("salon")?.id || i.channelId;
+    const added = toggle(db.cfg.commandsOnly.channels, id);
+    save();
+    return reply(i, ok(added ? t(`<#${id}> : seulement les commandes **/**. Les messages normaux sont supprimés (sauf le staff).`, `<#${id}>: only **/** commands. Normal messages are deleted (except staff).`) : t(`<#${id}> redevient un salon normal.`, `<#${id}> is a normal channel again.`)));
+  };
+
+  /* ---------- bad words ---------- */
+  /* lower case, no accents, letters written with numbers or symbols, repeated letters ("conaaaard") */
+  const plain = (x) =>
+    String(x || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[0@4]/g, (c) => ({ 0: "o", "@": "a", 4: "a" })[c])
+      .replace(/[1!|]/g, "i")
+      .replace(/3/g, "e")
+      .replace(/\$|5/g, "s")
+      .replace(/(.)\1{2,}/g, "$1");
+  /* The bad word found in a message, or "". Short words must stand alone ("pd" not in "pdf"); long ones are found anywhere. */
+  function badWordIn(content) {
+    const text = plain(content);
+    const squeezed = text.replace(/[^a-z]/g, "");
+    for (const w of db.cfg.badwords.words) {
+      const p = plain(w);
+      if (!p) continue;
+      if (p.includes(" ")) {
+        if (text.replace(/\s+/g, " ").includes(p)) return w;
+      } else if (p.length <= 4) {
+        if (new RegExp(`(^|[^a-z])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`).test(text)) return w;
+      } else if (squeezed.includes(p)) return w;
+    }
+    return "";
+  }
+  H.antibadwords = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const b = db.cfg.badwords;
+    const sub = i.options.getSubcommand();
+    let note = "";
+    if (sub === "actif") b.on = i.options.getBoolean("actif");
+    if (sub === "ajouter" || sub === "retirer") {
+      const word = String(i.options.getString("mot") || "").trim().toLowerCase();
+      if (!word) return reply(i, no(t("Écris un mot.", "Write a word.")));
+      const k = b.words.findIndex((w) => plain(w) === plain(word));
+      if (sub === "ajouter") {
+        if (k >= 0) return reply(i, no(t("Ce mot est déjà dans la liste.", "This word is already on the list.")));
+        if (b.words.length >= 300) return reply(i, no(t("300 mots maximum.", "300 words maximum.")));
+        b.words.push(word);
+        note = t(`« ${word} » ajouté.`, `"${word}" added.`);
+      } else {
+        if (k < 0) return reply(i, no(t("Ce mot n'est pas dans la liste.", "This word is not on the list.")));
+        b.words.splice(k, 1);
+        note = t(`« ${word} » retiré.`, `"${word}" removed.`);
+      }
+    }
+    if (sub === "sanction") setSanction(i, b);
+    if (sub === "salon") {
+      const id = i.options.getChannel?.("salon")?.id || i.channelId;
+      note = toggle(b.channels, id) ? t(`<#${id}> est ignoré.`, `<#${id}> is ignored.`) : t(`<#${id}> n'est plus ignoré.`, `<#${id}> is no longer ignored.`);
+    }
+    if (sub === "role") {
+      const id = i.options.getRole("role").id;
+      note = toggle(b.roles, id) ? t(`<@&${id}> est ignoré.`, `<@&${id}> is ignored.`) : t(`<@&${id}> n'est plus ignoré.`, `<@&${id}> is no longer ignored.`);
+    }
+    if (sub === "reset") db.cfg.badwords = { ...defaults().cfg.badwords, on: b.on };
+    save();
+    const c = db.cfg.badwords;
+    const e = embed(0xe74c3c)
+      .setTitle(t("🤬  Filtre des gros mots", "🤬  Bad words filter"))
+      .addFields(
+        { name: t("État", "State"), value: c.on ? "✅" : "❌", inline: true },
+        { name: t("Sanction", "Sanction"), value: sanctionText(c), inline: true },
+        { name: t(`Mots (${c.words.length})`, `Words (${c.words.length})`), value: `||${c.words.join(", ")}||`.slice(0, 1024) },
+        { name: t("Salons ignorés", "Ignored channels"), value: listOf(c.channels, "#") },
+        { name: t("Rôles ignorés", "Ignored roles"), value: listOf(c.roles, "@&") }
+      )
+      .setFooter({ text: t("Le staff (Gérer les messages) n'est jamais touché.", "Staff (Manage Messages) is never affected.") });
+    return i.reply({ content: sub === "liste" ? undefined : ok(note || t("Filtre mis à jour.", "Filter updated.")), embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
+  };
+
+  /* ---------- the work of the middlemen and indexers ---------- */
+  const addStat = (id, key) => {
+    if (!id) return;
+    const s = (db.staffStats[id] ||= { ct: 0, ix: 0 });
+    s[key] = (s[key] || 0) + 1;
+    save();
+  };
+  H.mmstats = async (i) => {
+    const user = i.options.getUser("membre");
+    const vouchCount = (id) => (db.vouches[id] || []).length;
+    if (user) {
+      const s = db.staffStats[user.id] || { ct: 0, ix: 0 };
+      const { avg } = vouchStats(user.id);
+      const e = embed(0x19c7a0)
+        .setTitle(t(`🛡️  Stats de ${user.username}`, `🛡️  ${user.username}'s stats`))
+        .setThumbnail(user.displayAvatarURL?.() || null)
+        .addFields({ name: t("🔁 Cross-trades", "🔁 Cross-trades"), value: `**${s.ct || 0}**`, inline: true }, { name: t("📖 Index", "📖 Indexes"), value: `**${s.ix || 0}**`, inline: true }, { name: t("⭐ Vouches", "⭐ Vouches"), value: `**${vouchCount(user.id)}**${vouchCount(user.id) ? ` · ${avg.toFixed(1)}/5` : ""}`, inline: true });
+      return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+    }
+    const rows = Object.entries(db.staffStats).map(([id, s]) => ({ id, total: (s.ct || 0) + (s.ix || 0), ...s })).filter((r) => r.total).sort((a, b) => b.total - a.total).slice(0, 10);
+    const medal = ["🥇", "🥈", "🥉"];
+    const e = embed(0x19c7a0)
+      .setTitle(t("🛡️  Classement des middlemen", "🛡️  Middlemen ranking"))
+      .setDescription(rows.length ? rows.map((r, k) => `${medal[k] || `**${k + 1}.**`} <@${r.id}> · **${r.total}** (🔁 ${r.ct || 0} · 📖 ${r.ix || 0} · ⭐ ${vouchCount(r.id)})`).join("\n") : t("*Aucun trade ou index terminé pour le moment.*", "*No trade or index done yet.*"));
+    return i.reply({ embeds: [e], allowedMentions: { parse: [] } });
+  };
+
+  /* ---------- the XP leaderboard that updates by itself ---------- */
+  const xpBoardSig = (guild) => JSON.stringify(Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, xp]) => [id, xp, guild?.members?.cache?.get?.(id)?.displayName || ""]));
+  let boardShown = "";
+  let boardBusy = false;
+  async function xpBoardBody(guild) {
+    const top = Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const rows = await Promise.all(
+      top.map(async ([id, xp]) => {
+        const m = await Promise.resolve(guild?.members?.fetch?.(id)).catch(() => null);
+        const l = levelOf(xp);
+        return { name: m?.displayName || m?.user?.username || t("Ancien membre", "Former member"), level: l.level, into: l.into, need: l.need, xp, avatar: m ? await loadAvatar(m, 64).catch(() => null) : null };
+      })
+    );
+    const file = new AttachmentBuilder(rows.length ? gfx.leaderboard(rows, cardLabel()) : gfx.banner("KAZUKI MM", "TOP XP", "#2a1a5e", "#7c4dff"), { name: "xpboard.png" });
+    const medal = ["🥇", "🥈", "🥉"];
+    const e = embed(0x7c4dff)
+      .setTitle(t("🏆  Classement XP", "🏆  XP leaderboard"))
+      .setDescription(top.length ? top.map(([id, xp], k) => `${medal[k] || `**${k + 1}.**`} <@${id}> · ${t("niveau", "level")} **${levelOf(xp).level}** · ${xp} XP`).join("\n") : t("*Personne n'a encore d'XP.*", "*Nobody has XP yet.*"))
+      .setImage("attachment://xpboard.png");
+    return { embeds: [e], files: [file], allowedMentions: { parse: [] } };
+  }
+  async function refreshXpBoard(force = false) {
+    const cfg = db.cfg.levels;
+    if (!cfg.boardChannelId || !cfg.boardMsgId || boardBusy) return false;
+    boardBusy = true;
+    try {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(cfg.boardChannelId)).catch(() => null);
+      const sig = xpBoardSig(channel?.guild);
+      if (!force && sig === boardShown) return false;
+      const message = channel ? await Promise.resolve(channel.messages?.fetch?.(cfg.boardMsgId)).catch(() => null) : null;
+      if (!message) {
+        cfg.boardMsgId = "";
+        save();
+        return false;
+      }
+      await message.edit({ ...(await xpBoardBody(channel.guild)), attachments: [] });
+      boardShown = sig;
+      return true;
+    } finally {
+      boardBusy = false;
+    }
+  }
+
   /* ---------- ticket transcripts: the whole conversation is saved in the logs before a ticket is deleted ---------- */
   const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   async function fetchAll(channel, max = 1000) {
@@ -7189,6 +7392,18 @@ const tools = (() => {
       await notice(message, done ? `${base} (${done})` : base);
       await log(message.guild, `🔗 **Anti-link** ${message.author} <#${message.channelId}>\n${String(message.content).slice(0, 300)}`, 0xe67e22);
       return true;
+    }
+
+    // ---- bad words
+    const bw = db.cfg.badwords;
+    if (bw.on && !bw.channels.includes(message.channelId) && !hasAny(message.member, bw.roles)) {
+      const word = badWordIn(message.content);
+      if (word) {
+        await message.delete().catch(() => {});
+        const done = await punish(message, bw, "bad word");
+        await notice(message, t(`🤬 ${who}, surveille ton langage.${done ? ` (${done})` : ""}`, `🤬 ${who}, watch your language.${done ? ` (${done})` : ""}`));
+        return true;
+      }
     }
 
     // ---- spam
@@ -7805,6 +8020,7 @@ const tools = (() => {
     if (!info) return reply(i, no(t("Ce n'est pas un ticket d'index.", "This is not an index ticket.")));
     if (!ixCanHandle(i.member, info.index)) return reply(i, no(t("Seuls le staff et les gens qui font cet index peuvent le marquer comme terminé.", "Only staff and the people who do this index can mark it as done.")));
     db.indexStats.done = (db.indexStats.done || 0) + 1;
+    addStat(i.user.id, "ix");
     save();
     await i.reply({ content: t(`✅ **Index ${info.index?.label || ""} terminé** pour <@${info.userId}> ! Merci 🙏 Tu peux fermer le ticket.`, `✅ **${info.index?.label || ""} index done** for <@${info.userId}>! Thanks 🙏 You can close the ticket.`), allowedMentions: { users: [info.userId] } });
     await log(i.guild, `✅ **Index ${info.index?.label || ""}**  ·  <@${info.userId}>  ·  ${t("terminé par", "done by")} <@${i.user.id}>`, 0x57f287, "ticket");
@@ -8203,6 +8419,7 @@ const tools = (() => {
     if (key.startsWith("del") && c[key]) await ctSay(i, t(`📤 L'objet a été **remis à** <@${who}>.`, `📤 The item was **handed to** <@${who}>.`), []);
     if (after === "done") {
       db.crossStats.done = (db.crossStats.done || 0) + 1;
+      addStat(c.mm, "ct");
       save(true);
       await ctSay(i, t(`🎉 **Cross-trade #${c.n} terminé** entre <@${c.a}> et <@${c.b}> ! Merci à <@${c.mm}>.`, `🎉 **Cross-trade #${c.n} completed** between <@${c.a}> and <@${c.b}>! Thanks to <@${c.mm}>.`), []);
       await log(i.guild, `🎉 **Cross-trade #${c.n}**  ·  <@${c.a}> ⇄ <@${c.b}>  ·  ${t("middleman", "middleman")} <@${c.mm}>`, 0x57f287, "ticket");
@@ -8339,6 +8556,7 @@ const tools = (() => {
     load();
     client.on(Events.MessageCreate, async (message) => {
       try {
+        if (await onCommandsOnly(message)) return;
         if (await protect(message)) return;
         if (await onVouchChannelMessage(message)) return;
         translateTicket(message).catch((e) => console.error("⚠️ Translation:", e?.message || e)); // does not wait: xp and quiz go on
@@ -8371,6 +8589,7 @@ const tools = (() => {
       tickVoiceXp().catch((e) => console.error("⚠️ voice xp:", e?.message || e));
       tickAutoQuiz().catch((e) => console.error("⚠️ auto quiz:", e?.message || e));
       tickIdleTickets().catch((e) => console.error("⚠️ idle tickets:", e?.message || e));
+      refreshXpBoard().catch((e) => console.error("⚠️ xp board:", e?.message || e));
     }, 30_000);
     tickTimer.unref?.();
     // the vouch ranking is checked every second and redrawn quietly when it changed
@@ -8385,7 +8604,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
