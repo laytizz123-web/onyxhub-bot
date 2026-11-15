@@ -3978,6 +3978,7 @@ const tools = (() => {
       welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
+      translate: { on: true },
       index: { roles: {}, auto: {}, prices: {}, cautions: {}, panels: {} }, // prices: index id -> text; panels: index id -> [{ c, m }] posted panels // index id -> role of the people who do that index; auto: the roles the bot made
       cross: { cats: CROSS_VALUES() }, // the value of the trade, lowest first: { id, label, roles: [] }
       vouch: { channelId: "", cooldownH: 24, panelChannelId: "", panelMsgId: "", stickyMsgId: "", roles: [], excluded: [] },
@@ -4663,6 +4664,8 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
+      // translation in the tickets
+      D(P.ManageGuild, cmd("traduction", t("Traduction automatique FR ⇄ EN dans les tickets", "Automatic FR ⇄ EN translation in tickets")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true))),
       // anti-links and anti-spam: everything can be tuned
       D(
         P.ManageGuild,
@@ -4716,7 +4719,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6518,6 +6521,46 @@ const tools = (() => {
     });
   };
 
+  /* ---------- translation in tickets: English -> French and French -> English, in small grey text under the message ---------- */
+  const TICKET_TOPICS = ["mm-ticket:", "ct-ticket:", "ix-ticket:", "app-ticket:"];
+  const isTicket = (channel) => TICKET_TOPICS.some((p) => String(channel?.topic || "").startsWith(p));
+  /* Google's free endpoint: detects the language and translates. Returns { lang, text } or null. */
+  async function googleTranslate(text, target) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout?.(8000) }).catch(() => null); // no network: no translation, quietly
+    if (!res) return null;
+    if (!res.ok) return null;
+    const data = await res.json();
+    const out = (data?.[0] || []).map((part) => part?.[0] || "").join("");
+    return out ? { lang: String(data?.[2] || ""), text: out } : null;
+  }
+  async function translateTicket(message) {
+    if (!db.cfg.translate.on || message.author?.bot || !message.guild || !isTicket(message.channel)) return false;
+    // what is worth translating: some words, not only links, mentions, emojis or numbers
+    const clean = String(message.content || "").replace(/https?:\/\/\S+/g, " ").replace(/<a?:\w+:\d+>|<[@#][!&]?\d+>/g, " ").trim();
+    if ((clean.match(/\p{L}/gu) || []).length < 3) return false;
+    let result = await googleTranslate(clean.slice(0, 1500), "fr");
+    if (!result) return false;
+    let from = result.lang.split("-")[0];
+    if (from === "fr") {
+      result = await googleTranslate(clean.slice(0, 1500), "en");
+      if (!result) return false;
+    } else if (from !== "en") return false; // only English and French
+    const to = from === "fr" ? "EN" : "FR";
+    const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    if (!result.text || norm(result.text) === norm(clean)) return false; // nothing changes (names, "ok", "gg"...)
+    const lines = result.text.split(/\n+/).filter((l) => l.trim()).slice(0, 20);
+    const body = lines.map((l, k) => `-# ${k ? "" : `🌐 ${from.toUpperCase()} → ${to} · `}${l.trim()}`).join("\n").slice(0, 1900);
+    await message.reply({ content: body, allowedMentions: { parse: [], repliedUser: false }, flags: MessageFlags.SuppressNotifications }).catch(() => {});
+    return true;
+  }
+  H.traduction = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    db.cfg.translate.on = i.options.getBoolean("actif");
+    save();
+    return reply(i, ok(db.cfg.translate.on ? t("🌐 Traduction FR ⇄ EN activée dans les tickets.", "🌐 FR ⇄ EN translation turned on in tickets.") : t("🌐 Traduction coupée.", "🌐 Translation turned off.")));
+  };
+
   /* ---------- message protection ---------- */
   const spam = new Map(); // user -> [{ at, text, message }]
   const INVITE = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/[\w-]+/i;
@@ -7719,6 +7762,7 @@ const tools = (() => {
       try {
         if (await protect(message)) return;
         if (await onVouchChannelMessage(message)) return;
+        translateTicket(message).catch((e) => console.error("⚠️ Translation:", e?.message || e)); // does not wait: xp and quiz go on
         if (await onQuizAnswer(message)) return;
         await onXp(message);
       } catch (error) {
@@ -7758,7 +7802,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
