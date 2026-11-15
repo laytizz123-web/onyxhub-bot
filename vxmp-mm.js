@@ -6528,8 +6528,8 @@ const tools = (() => {
   let translateWarnAt = 0;
   const pause = (ms) => new Promise((r) => setTimeout(r, ms).unref?.());
   /* Google's free endpoint: detects the language and translates. Retries when Google says "too many requests". Returns { lang, text } or null. */
-  async function googleTranslate(text, target) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
+  async function googleTranslate(text, target, source = "auto") {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${source}&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
     let status = "network";
     for (const wait of [0, 400, 1200]) {
       if (wait) await pause(wait);
@@ -6559,28 +6559,59 @@ const tools = (() => {
     return job;
   }
   const translateCache = new Map(); // same text -> same translation, no request
+  /* French SMS words Google does not know: written out before translating */
+  const FR_SLANG = { slt: "salut", cv: "ça va", cc: "coucou", tkt: "t'inquiète", jsp: "je sais pas", jpp: "j'en peux plus", stp: "s'il te plaît", svp: "s'il vous plaît", dsl: "désolé", bcp: "beaucoup", pk: "pourquoi", pq: "pourquoi", psk: "parce que", pcq: "parce que", frr: "frère", wsh: "wesh", mdr: "mdr", ptdr: "mdr", ajd: "aujourd'hui", auj: "aujourd'hui", rdv: "rendez-vous", bjr: "bonjour", bsr: "bonsoir", dac: "d'accord", dak: "d'accord", oklm: "tranquille", tjrs: "toujours", tjr: "toujours", qlq: "quelqu'un", qqn: "quelqu'un", ya: "il y a", jte: "je te", chui: "je suis", chuis: "je suis", jvais: "je vais", jveux: "je veux", tu: "tu", c: "c'est", g: "j'ai", t: "t'es", ui: "oui", nn: "non", wtf: "wtf" };
+  const SLANG_HINT = new Set(["slt", "cv", "cc", "tkt", "jsp", "jpp", "stp", "svp", "dsl", "bcp", "pk", "pq", "psk", "pcq", "frr", "wsh", "mdr", "ptdr", "ajd", "auj", "bjr", "bsr", "dac", "dak", "tjrs", "tjr", "qlq", "qqn", "jte", "chui", "chuis", "jvais", "jveux", "nn"]);
+  const EN_WORDS = new Set(["the", "is", "are", "of", "my", "you", "your", "i", "i'm", "a", "an", "to", "and", "it", "this", "that", "what", "do", "did", "can", "have", "with", "for", "in", "on", "me", "we", "he", "she", "they", "was", "will", "just", "please", "send", "give"]);
+  const expandSlang = (text) => {
+    if (text.toLowerCase().split(/[^\p{L}']+/u).some((w) => EN_WORDS.has(w))) return null; // an English sentence: "cv" is a CV there
+    let hit = false;
+    const out = text.replace(/[\p{L}']+/gu, (w) => {
+      const k = w.toLowerCase();
+      if (SLANG_HINT.has(k)) hit = true;
+      return FR_SLANG[k] && SLANG_HINT.has(k) ? FR_SLANG[k] : w;
+    });
+    return hit ? out : null;
+  };
   async function translateOne(message) {
     if (!db.cfg.translate.on || message.author?.bot || !message.guild || !isTicket(message.channel)) return false;
     // what is worth translating: words, not only links, mentions, emojis or numbers
     const clean = String(message.content || "").replace(/https?:\/\/\S+/g, " ").replace(/<a?:\w+:\d+>|<[@#][!&]?\d+>/g, " ").trim();
     if ((clean.match(/\p{L}/gu) || []).length < 2) return false;
     const text = clean.slice(0, 1500);
+    const norm = (x) => String(x || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const changed = (r) => r?.text && norm(r.text) !== norm(text);
     let pair = translateCache.get(text);
+    const slang = !pair && expandSlang(text);
+    if (slang) {
+      // French SMS words: it is French
+      const r = await googleTranslate(slang, "en", "fr");
+      if (changed(r)) pair = { from: "fr", result: r };
+    }
     if (!pair) {
       // both directions at the same time: one wait instead of two
       const [toFr, toEn] = await Promise.all([googleTranslate(text, "fr"), googleTranslate(text, "en")]);
       const lang = (toFr || toEn)?.lang.split("-")[0] || "";
       if (!lang) return false;
-      pair = { from: lang, result: lang === "fr" ? toEn : toFr };
-      if (!pair.result) return false;
+      if (lang === "fr" && changed(toEn)) pair = { from: "fr", result: toEn };
+      else if (lang === "en" && changed(toFr)) pair = { from: "en", result: toFr };
+      else {
+        // short messages and slang are often read as another language ("repond", "mdr"...): try it as French, then as English
+        const asFr = await googleTranslate(text, "en", "fr");
+        if (changed(asFr)) pair = { from: "fr", result: asFr };
+        else {
+          const asEn = await googleTranslate(text, "fr", "en");
+          if (changed(asEn)) pair = { from: "en", result: asEn };
+        }
+      }
+      if (!pair) return false; // the same in both languages ("ok", "yo", a name...): nothing to show
       translateCache.set(text, pair);
       if (translateCache.size > 500) translateCache.delete(translateCache.keys().next().value);
     }
     const from = pair.from;
     const result = pair.result;
     const to = from === "fr" ? "EN" : "FR";
-    const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-    if (!result.text || norm(result.text) === norm(clean)) return false; // the same once translated ("ok", "yo", a name...): nothing to show
+    if (!result.text) return false;
     const lines = result.text.split(/\n+/).filter((l) => l.trim()).slice(0, 20);
     const body = lines.map((l, k) => `-# ${k ? "" : `🌐 ${from.toUpperCase()} → ${to} · `}${l.trim()}`).join("\n").slice(0, 1900);
     await message.reply({ content: body, allowedMentions: { parse: [], repliedUser: false }, flags: MessageFlags.SuppressNotifications }).catch((error) => console.error("⚠️ Translation reply:", error?.message || error));
