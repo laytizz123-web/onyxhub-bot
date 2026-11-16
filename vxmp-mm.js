@@ -3989,7 +3989,8 @@ const tools = (() => {
       translate: { on: true },
       tickets: { inactiveH: 48, closeH: 24 }, // 0 = no automatic closing
       commandsOnly: { channels: [] },
-      eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 }, // shop: [{ roleId, price }]
+      eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
+      values: { overrides: {}, panels: [] }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -4037,6 +4038,8 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.rules.opened)) next.cfg.rules.opened = [];
     if (!Array.isArray(next.cfg.commandsOnly.channels)) next.cfg.commandsOnly.channels = [];
     if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
+    if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
+    if (!next.cfg.values.overrides || typeof next.cfg.values.overrides !== "object" || Array.isArray(next.cfg.values.overrides)) next.cfg.values.overrides = {};
     for (const k of ["words", "channels", "roles"]) if (!Array.isArray(next.cfg.badwords[k])) next.cfg.badwords[k] = k === "words" ? BADWORDS_DEFAULT() : [];
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
@@ -4657,6 +4660,8 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle middleman pour chaque valeur et le brancher", "Create a middleman role for each value and connect it")))
           .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /crosstrade autorole", "Delete the roles made by /crosstrade autorole")))
       ),
+      // brainrot values
+      ...valueCommands(D),
       // index: a role per index for the people who do it
       D(
         P.ManageGuild,
@@ -4843,7 +4848,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6496,6 +6501,8 @@ const tools = (() => {
       [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+      [t("📊 Valeurs", "📊 Values"), t("`/value` · le panel des valeurs a la recherche et le calculateur de trade", "`/value` · the value panel has the search and the trade calculator")],
+      [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
       [t("🎮 Jeux", "🎮 Games"), "`/morpion` `/puissance4` `/invites`"],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
@@ -8238,6 +8245,476 @@ const tools = (() => {
   const ixRole = (index) => (index ? db.cfg.index.roles[index.id] || "" : "");
   const ixCanHandle = (member, index) => appStaff(member) || Boolean(ixRole(index) && member?.roles?.cache?.has?.(ixRole(index)));
 
+  /* ---------- brainrot values: live from stealabrainrothelper.com (values) and sabexistcount.com (exist counts) ---------- */
+  const VALUES_FILE = path.join(process.env.DATA_DIR || __dirname, "values.json");
+  const VAL_SRC = {
+    values: "https://stealabrainrothelper.com/api/value-overrides.php",
+    data: "https://stealabrainrothelper.com/js/data.js",
+    exist: "https://sabexistcount.com/data/seo/sab-exist-count-list.json",
+  };
+  const VAL_EVERY = 30 * 60_000; // the values are read again every 30 minutes
+  const MUTS = ["Default", "Gold", "Diamond", "Bloodrot", "Candy", "Lava", "Galaxy", "Yin Yang", "Radioactive", "Cursed", "Rainbow", "Divine", "Cyber", "Phantom", "Crystal"];
+  const MUT_EMOJI = { Default: "⚪", Gold: "🟡", Diamond: "💎", Bloodrot: "🩸", Candy: "🍬", Lava: "🌋", Galaxy: "🌌", "Yin Yang": "☯️", Radioactive: "☢️", Cursed: "😈", Rainbow: "🌈", Divine: "✨", Cyber: "🤖", Phantom: "👻", Crystal: "💜" };
+  const MUT_FR = { Default: "Normal" };
+  const RARITY = {
+    common: ["⚪", 0x9ca3af],
+    rare: ["🔵", 0x3b82f6],
+    epic: ["🟣", 0xa855f7],
+    legendary: ["🟡", 0xeab308],
+    mythic: ["🔴", 0xef4444],
+    "brainrot god": ["🌈", 0xf97316],
+    secret: ["⚫", 0x06b6d4],
+    og: ["👑", 0xf59e0b],
+  };
+  const DEMAND = { high: t("🔥 Haute", "🔥 High"), mid: t("📊 Moyenne", "📊 Medium"), low: t("🧊 Basse", "🧊 Low") };
+  const vkey = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  let vals = { at: 0, tried: 0, rate: 20, items: {} }; // items: key -> { n, r, e, ecs, img, c, i, m: { mutation: { g, s, d, u } } }
+  let valBusy = false;
+  let valFetch = async (url) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { "user-agent": "KazukiBot/1.0 (Discord value panel)" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  };
+  try {
+    const saved = JSON.parse(fs.readFileSync(VALUES_FILE, "utf8"));
+    if (saved && saved.items && typeof saved.items === "object") vals = { ...vals, ...saved, tried: 0 };
+  } catch {
+    /* no values yet: they are read at the first tick */
+  }
+
+  /* Builds the list from the 3 sources. The values are needed; the exist counts and the incomes are a bonus. */
+  function buildValues(valuesJson, dataJs, existJson) {
+    const rate = Number(valuesJson?.garama_per_dragon) > 0 ? Number(valuesJson.garama_per_dragon) : 20;
+    const items = {};
+    const get = (name) => {
+      const k = vkey(name);
+      if (!k) return null;
+      if (!items[k]) items[k] = { n: String(name).replace(/[^\p{L}\p{N}\s'&.,!?()-]/gu, "").trim() || String(name), r: "", e: null, ecs: "", img: "", c: "", i: "", m: {} };
+      return items[k];
+    };
+    for (const [name, muts] of Object.entries(valuesJson?.overrides || {})) {
+      const it = get(name);
+      if (!it) continue;
+      it.n = name;
+      for (const [mut, v] of Object.entries(muts || {})) {
+        const status = v?.value_status || v?.status || "";
+        const num = Number(v?.value);
+        const g = status === "value" && Number.isFinite(num) ? (v.unit === "dragons" ? num * rate : num) : null;
+        it.m[mut] = { g: g === null ? null : Math.round(g * 1000) / 1000, s: status, d: v?.demand_level || "", u: String(v?.updated_at || "").slice(0, 10) };
+      }
+    }
+    // rarity, price and income from the brainrot list of the same site
+    const rows = String(dataJs || "").matchAll(/\{n:'((?:[^'\\]|\\.)*)',r:'([^']*)',c:'([^']*)',i:'([^']*)'/g);
+    for (const [, n, r, c, i] of rows) {
+      const it = items[vkey(n.replace(/\\'/g, "'"))];
+      if (!it) continue;
+      Object.assign(it, { r, c, i });
+    }
+    for (const row of existJson?.rows || []) {
+      const it = items[vkey(row.n)];
+      if (!it) continue;
+      if (Number.isFinite(row.e)) it.e = row.e;
+      it.ecs = row.ecs || "";
+      if (row.img) it.img = `https://sabexistcount.com${row.img}`;
+      if (!it.r && row.rl) it.r = row.rl;
+    }
+    for (const [k, it] of Object.entries(items)) if (!Object.keys(it.m).length) delete items[k];
+    return { rate, items };
+  }
+
+  async function refreshValues(force = false) {
+    if (valBusy) return false;
+    const now = Date.now();
+    if (!force && now - vals.at < VAL_EVERY) return false;
+    if (!force && now - vals.tried < 5 * 60_000) return false; // after a failure, wait 5 minutes
+    valBusy = true;
+    vals.tried = now;
+    try {
+      const [v, d, e] = await Promise.allSettled([valFetch(VAL_SRC.values), valFetch(VAL_SRC.data), valFetch(VAL_SRC.exist)]);
+      if (v.status !== "fulfilled") throw v.reason;
+      const built = buildValues(JSON.parse(v.value), d.status === "fulfilled" ? d.value : "", e.status === "fulfilled" ? JSON.parse(e.value) : null);
+      if (Object.keys(built.items).length < 10) throw new Error("almost empty list");
+      // keep the exist counts and incomes of the last read when one of the 2 extra sources is down
+      if (d.status !== "fulfilled" || e.status !== "fulfilled")
+        for (const [k, it] of Object.entries(built.items)) {
+          const old = vals.items[k];
+          if (!old) continue;
+          if (d.status !== "fulfilled") Object.assign(it, { r: it.r || old.r, c: old.c, i: old.i });
+          if (e.status !== "fulfilled") Object.assign(it, { e: old.e, ecs: old.ecs, img: old.img, r: it.r || old.r });
+        }
+      vals = { at: now, tried: now, rate: built.rate, items: built.items };
+      await fs.promises.writeFile(VALUES_FILE, JSON.stringify(vals)).catch((err) => console.error("⚠️ values: could not save values.json:", err?.message || err));
+      await refreshValuePanels();
+      return true;
+    } catch (error) {
+      console.error("⚠️ values: could not read the value sites:", error?.message || error);
+      return false;
+    } finally {
+      valBusy = false;
+    }
+  }
+
+  /* the value of an item for a mutation, in Garama (the server's own value wins over the site) */
+  function valueOf(it, mut = "Default") {
+    const own = db.cfg.values.overrides[vkey(it.n)]?.[mut];
+    if (own !== undefined) return { g: own, s: own === null ? "not_tradeable" : "value", d: it.m[mut]?.d || "", own: true };
+    const v = it.m[mut];
+    if (v) return { ...v, own: false };
+    return null;
+  }
+  const valItems = () => {
+    const list = Object.values(vals.items);
+    // brainrots only known by the server's own values
+    for (const [k, muts] of Object.entries(db.cfg.values.overrides)) if (!vals.items[k] && muts.__name) list.push({ n: muts.__name, r: "", e: null, ecs: "", img: "", c: "", i: "", m: {} });
+    return list;
+  };
+  const num = (n) => Number(n).toLocaleString(FR ? "fr-FR" : "en-US", { maximumFractionDigits: n < 1 ? 3 : 2 });
+  /* 44 Garama -> "🐉 2,2 Dragons" ; 4 Garama -> "🟢 4 Garama" */
+  function fmtValue(v, long = false) {
+    if (!v) return t("❔ inconnue", "❔ unknown");
+    if (v.s === "not_tradeable") return t("🚫 pas échangeable", "🚫 not tradeable");
+    if (v.s === "not_released") return t("⏳ pas encore sorti", "⏳ not released yet");
+    if (v.g === null || v.g === undefined || !Number.isFinite(v.g)) return t("❔ inconnue", "❔ unknown");
+    const rate = vals.rate || 20;
+    if (v.g >= rate) {
+      const d = v.g / rate;
+      return `🐉 **${num(d)}** Dragon${d >= 2 ? "s" : ""}${long ? `  ·  ≈ ${num(v.g)} Garama` : ""}`;
+    }
+    return `🟢 **${num(v.g)}** Garama`;
+  }
+  const rarityOf = (it) => RARITY[String(it.r || "").toLowerCase()] || ["▫️", 0x5865f2];
+
+  /* search: exact name, then start of the name or of a word, then inside the name, then 1-2 typos */
+  function lev(a, b) {
+    const row = Array.from({ length: b.length + 1 }, (_, k) => k);
+    for (let x = 1; x <= a.length; x++) {
+      let prev = row[0];
+      row[0] = x;
+      for (let y = 1; y <= b.length; y++) {
+        const tmp = row[y];
+        row[y] = Math.min(row[y] + 1, row[y - 1] + 1, prev + (a[x - 1] === b[y - 1] ? 0 : 1));
+        prev = tmp;
+      }
+    }
+    return row[b.length];
+  }
+  // what traders call them: "Dragon" is Dragon Cannelloni and "Garama" is Garama and Madundung (the 2 value units)
+  const VAL_ALIAS = { dragon: "dragoncannelloni", dragons: "dragoncannelloni", drag: "dragoncannelloni", garama: "garamaandmadundung", garamas: "garamaandmadundung", strawberry: "strawberryelephant", hh: "headlesshorseman" };
+  function valSearch(query, max = 25) {
+    const q = vkey(query);
+    const base = (it) => valueOf(it)?.g || 0;
+    const list = valItems();
+    if (!q) return list.sort((a, b) => base(b) - base(a)).slice(0, max);
+    const scored = [];
+    for (const it of list) {
+      const k = vkey(it.n);
+      const words = String(it.n).split(/\s+/).map(vkey).filter(Boolean);
+      let s = 0;
+      if (k === q || VAL_ALIAS[q] === k) s = 100;
+      else if (k.startsWith(q)) s = 90;
+      else if (words.some((w) => w.startsWith(q))) s = 80;
+      else if (k.includes(q)) s = 70;
+      else if (q.length >= 3) {
+        const allowed = q.length >= 8 ? 2 : 1;
+        const d = Math.min(lev(q, k.slice(0, q.length)), ...words.map((w) => lev(q, w.slice(0, Math.max(q.length, w.length)))));
+        if (d <= allowed) s = 50 - d;
+      }
+      if (s) scored.push([s, it]);
+    }
+    return scored.sort((a, b) => b[0] - a[0] || base(b[1]) - base(a[1])).slice(0, max).map((x) => x[1]);
+  }
+  const valByKey = (k) => vals.items[k] || valItems().find((it) => vkey(it.n) === k) || null;
+  const noValues = () => no(t("Les valeurs ne sont pas encore chargées. Réessaie dans une minute.", "The values are not loaded yet. Try again in a minute."));
+
+  /* the card of one brainrot */
+  function valueCard(it, focus = "") {
+    const [remoji, color] = rarityOf(it);
+    const base = valueOf(it, "Default");
+    const main = focus && focus !== "Default" ? valueOf(it, focus) : base;
+    const e = embed(color).setTitle(`${remoji}  ${it.n}${focus && focus !== "Default" ? `  ·  ${MUT_EMOJI[focus] || ""} ${focus}` : ""}`);
+    const lines = [`### ${fmtValue(main, true)}`];
+    if (main?.own) lines.push(t("-# ✏️ Valeur fixée par le staff du serveur", "-# ✏️ Value set by the server staff"));
+    if (base?.d && DEMAND[base.d]) lines.push(`${t("Demande", "Demand")} : ${DEMAND[base.d]}`);
+    e.setDescription(lines.join("\n"));
+    if (it.img) e.setThumbnail(it.img);
+    const info = [];
+    if (it.r) info.push({ name: t("💎 Rareté", "💎 Rarity"), value: it.r, inline: true });
+    if (it.ecs || Number.isFinite(it.e)) info.push({ name: t("🌍 Exist count", "🌍 Exist count"), value: it.ecs || num(it.e), inline: true });
+    if (it.i) info.push({ name: t("💸 Revenu", "💸 Income"), value: it.i, inline: true });
+    if (it.c) info.push({ name: t("🏷️ Prix en jeu", "🏷️ Game price"), value: it.c, inline: true });
+    if (info.length) e.addFields(...info);
+    const muts = [...new Set([...MUTS, ...Object.keys(it.m), ...Object.keys(db.cfg.values.overrides[vkey(it.n)] || {}).filter((m) => m !== "__name")])].filter((m) => {
+      const v = m !== "Default" && valueOf(it, m);
+      return v && ((v.g !== null && v.g !== undefined) || v.s === "not_tradeable");
+    });
+    if (muts.length) {
+      const text = muts.map((m) => `${MUT_EMOJI[m] || "▫️"} ${m} : ${fmtValue(valueOf(it, m))}`);
+      const half = Math.ceil(text.length / 2);
+      e.addFields({ name: t("🧬 Mutations", "🧬 Mutations"), value: text.slice(0, half).join("\n").slice(0, 1024), inline: true }, { name: "​", value: (text.slice(half).join("\n") || "​").slice(0, 1024), inline: true });
+    }
+    const updated = Object.values(it.m).map((v) => v.u).filter(Boolean).sort().pop();
+    e.setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama  ·  ${t("Sources", "Sources")} : stealabrainrothelper.com, sabexistcount.com${updated ? `  ·  ${t("maj", "upd.")} ${updated.split("-").reverse().join("/")}` : ""}` });
+    return e;
+  }
+
+  /* the panel: a search button, the top values and the trade calculator */
+  function valuePanelBody() {
+    const count = valItems().length;
+    const top = valSearch("", 5);
+    const e = embed(0x7c4dff)
+      .setTitle(t("📊  Valeurs Steal a Brainrot", "📊  Steal a Brainrot values"))
+      .setDescription(
+        [
+          t("Trouve la valeur de n'importe quel brainrot en **Dragons** 🐉 et en **Garama** 🟢, avec chaque mutation, la demande et l'exist count.", "Find the value of any brainrot in **Dragons** 🐉 and **Garama** 🟢, with every mutation, the demand and the exist count."),
+          "",
+          t("🔎 **Rechercher** : tape le nom, même avec une faute.", "🔎 **Search**: type the name, even with a typo."),
+          t("⚖️ **Calculer un trade** : vois si ton échange est WIN, FAIR ou LOSE.", "⚖️ **Trade calculator**: see if your trade is a WIN, FAIR or LOSE."),
+          t("🏆 **Top valeurs** : les brainrots les plus chers.", "🏆 **Top values**: the most valuable brainrots."),
+          t("-# Aussi avec la commande `/value`.", "-# Also with the `/value` command."),
+        ].join("\n")
+      )
+      .addFields(
+        { name: t("🐉 Taux", "🐉 Rate"), value: `1 Dragon = **${num(vals.rate)}** Garama`, inline: true },
+        { name: t("📚 Brainrots", "📚 Brainrots"), value: `**${count}**`, inline: true },
+        { name: t("🕒 Mis à jour", "🕒 Updated"), value: vals.at ? `<t:${Math.floor(vals.at / 1000)}:R>` : t("bientôt", "soon"), inline: true }
+      );
+    if (top.length) e.addFields({ name: t("🏆 Top 5", "🏆 Top 5"), value: top.map((it, k) => `**${k + 1}.** ${rarityOf(it)[0]} ${it.n} · ${fmtValue(valueOf(it))}`).join("\n") });
+    e.setFooter({ text: t("Valeurs de la communauté, à titre indicatif · stealabrainrothelper.com · sabexistcount.com", "Community values, for reference only · stealabrainrothelper.com · sabexistcount.com") });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("vl:search").setLabel(t("Rechercher", "Search")).setEmoji("🔎").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("vl:calc").setLabel(t("Calculer un trade", "Trade calculator")).setEmoji("⚖️").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("vl:top").setLabel(t("Top valeurs", "Top values")).setEmoji("🏆").setStyle(ButtonStyle.Secondary)
+    );
+    return { embeds: [e], components: [row], allowedMentions: { parse: [] } };
+  }
+  async function refreshValuePanels() {
+    const panels = db.cfg.values.panels;
+    let changed = false;
+    for (const p of [...panels]) {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(p.channelId)).catch(() => null);
+      const message = channel ? await Promise.resolve(channel.messages?.fetch?.(p.msgId)).catch(() => null) : null;
+      if (!message) {
+        // the panel message was deleted: it is forgotten
+        if (channel) {
+          panels.splice(panels.indexOf(p), 1);
+          changed = true;
+        }
+        continue;
+      }
+      await message.edit(valuePanelBody()).catch(() => {});
+    }
+    if (changed) save();
+  }
+
+  const mutOption = (o) => o.setName("mutation").setDescription(t("La mutation (vide = normal)", "The mutation (empty = normal)")).addChoices(...MUTS.map((m) => ({ name: `${MUT_EMOJI[m]} ${MUT_FR[m] && FR ? MUT_FR[m] : m}`, value: m })));
+  function valueCommands(D) {
+    return [
+      cmd("value", t("Voir la valeur d'un brainrot (Dragons / Garama)", "See the value of a brainrot (Dragons / Garama)"))
+        .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom (des propositions s'affichent)", "The name (suggestions show up)")).setRequired(true).setAutocomplete(true).setMaxLength(80))
+        .addStringOption(mutOption),
+      D(
+        P.ManageGuild,
+        cmd("valueadmin", t("Panel des valeurs et valeurs du serveur", "Value panel and server values"))
+          .addSubcommand((s) => s.setName("panel").setDescription(t("Poster le panel des valeurs", "Post the value panel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) =>
+            s
+              .setName("modifier")
+              .setDescription(t("Fixer la valeur d'un brainrot sur ton serveur (gagne sur le site)", "Set a brainrot value on your server (wins over the site)"))
+              .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom", "The name")).setRequired(true).setAutocomplete(true).setMaxLength(80))
+              .addNumberOption((o) => o.setName("valeur").setDescription(t("La valeur (0 = pas échangeable)", "The value (0 = not tradeable)")).setRequired(true).setMinValue(0).setMaxValue(1_000_000))
+              .addStringOption((o) => o.setName("unite").setDescription(t("Dragons ou Garama", "Dragons or Garama")).setRequired(true).addChoices({ name: "🐉 Dragons", value: "dragons" }, { name: "🟢 Garama", value: "garama" }))
+              .addStringOption(mutOption)
+          )
+          .addSubcommand((s) =>
+            s
+              .setName("retirer")
+              .setDescription(t("Enlever la valeur du serveur (la valeur du site revient)", "Remove the server value (the site value comes back)"))
+              .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom", "The name")).setRequired(true).setAutocomplete(true).setMaxLength(80))
+              .addStringOption((o) => mutOption(o).setDescription(t("La mutation (vide = toutes)", "The mutation (empty = all)")))
+          )
+          .addSubcommand((s) => s.setName("liste").setDescription(t("Voir les valeurs fixées par le serveur", "See the values set by the server")))
+          .addSubcommand((s) => s.setName("actualiser").setDescription(t("Relire les valeurs des sites maintenant", "Read the values from the sites now")))
+      ),
+    ];
+  }
+
+  async function valueAutocomplete(i) {
+    const focused = i.options.getFocused?.() ?? "";
+    const list = valSearch(String(focused), 25);
+    return i.respond(list.map((it) => ({ name: `${it.n}  ·  ${fmtValue(valueOf(it)).replace(/\*/g, "")}`.slice(0, 100), value: vkey(it.n).slice(0, 100) || it.n.slice(0, 100) }))).catch(() => {});
+  }
+  /* finds what the person meant: the chosen suggestion, or the best match of the typed text */
+  const valFind = (text) => valByKey(vkey(text)) || valByKey(VAL_ALIAS[vkey(text)] || "") || valSearch(text, 1)[0] || null;
+
+  H.value = async (i) => {
+    if (!valItems().length) return reply(i, noValues());
+    const asked = i.options.getString("brainrot") || "";
+    const it = valFind(asked);
+    if (!it) return reply(i, no(t(`Aucun brainrot ne ressemble à **${asked.slice(0, 80)}**.`, `No brainrot looks like **${asked.slice(0, 80)}**.`)));
+    return i.reply({ embeds: [valueCard(it, i.options.getString("mutation") || "")], allowedMentions: { parse: [] } });
+  };
+
+  H.valueadmin = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    const own = db.cfg.values.overrides;
+    if (sub === "panel") {
+      const channel = i.options.getChannel("salon") || i.channel;
+      if (!channel?.send) return reply(i, no(t("Je ne peux pas écrire dans ce salon.", "I cannot write in this channel.")));
+      await i.deferReply({ flags: ephemeral });
+      if (!valItems().length) await refreshValues(true);
+      const message = await channel.send(valuePanelBody()).catch(() => null);
+      if (!message) return i.editReply(no(t("Je n'ai pas pu poster le panel (permissions ?).", "I could not post the panel (permissions?).")));
+      db.cfg.values.panels.push({ channelId: channel.id, msgId: message.id });
+      db.cfg.values.panels = db.cfg.values.panels.slice(-10);
+      save();
+      return i.editReply(ok(t(`Panel des valeurs posté dans ${channel}. Il se met à jour tout seul toutes les 30 minutes.`, `Value panel posted in ${channel}. It updates itself every 30 minutes.`)));
+    }
+    if (sub === "actualiser") {
+      await i.deferReply({ flags: ephemeral });
+      const done = await refreshValues(true);
+      return i.editReply(done ? ok(t(`Valeurs relues : **${valItems().length}** brainrots, 1 Dragon = **${num(vals.rate)}** Garama.`, `Values read again: **${valItems().length}** brainrots, 1 Dragon = **${num(vals.rate)}** Garama.`)) : no(t("Les sites ne répondent pas pour le moment. Les dernières valeurs sont gardées.", "The sites do not answer right now. The last values are kept.")));
+    }
+    if (sub === "liste") {
+      const lines = [];
+      for (const [k, muts] of Object.entries(own)) {
+        const it = valByKey(k);
+        const name = it?.n || muts.__name || k;
+        for (const [m, g] of Object.entries(muts)) if (m !== "__name") lines.push(`• **${name}** ${MUT_EMOJI[m] || ""} ${m} → ${fmtValue({ g, s: g === null ? "not_tradeable" : "value" })}`);
+      }
+      return i.reply({ embeds: [embed(0x7c4dff).setTitle(t("✏️  Valeurs du serveur", "✏️  Server values")).setDescription(lines.length ? lines.join("\n").slice(0, 4000) : t("*Aucune. Toutes les valeurs viennent des sites.*", "*None. Every value comes from the sites.*"))], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    const asked = i.options.getString("brainrot") || "";
+    const it = valFind(asked);
+    const k = it ? vkey(it.n) : vkey(asked);
+    if (!k) return reply(i, no(t("Donne un nom de brainrot.", "Give a brainrot name.")));
+    const mut = i.options.getString("mutation") || "";
+    if (sub === "modifier") {
+      const value = i.options.getNumber("valeur");
+      const g = value === 0 ? null : i.options.getString("unite") === "dragons" ? value * (vals.rate || 20) : value;
+      own[k] = { ...(own[k] || {}), [mut || "Default"]: g === null ? null : Math.round(g * 1000) / 1000 };
+      if (!it) own[k].__name = asked.trim().slice(0, 80);
+      save();
+      refreshValuePanels().catch(() => {});
+      const shown = it || { n: own[k].__name, r: "", m: {}, e: null, ecs: "", img: "", c: "", i: "" };
+      return i.reply({ content: ok(t(`Valeur de **${shown.n}**${mut && mut !== "Default" ? ` ${mut}` : ""} fixée sur ton serveur.`, `Value of **${shown.n}**${mut && mut !== "Default" ? ` ${mut}` : ""} set on your server.`)), embeds: [valueCard(shown, mut)], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "retirer") {
+      if (!own[k]) return reply(i, no(t("Ce brainrot n'a pas de valeur fixée par le serveur.", "This brainrot has no value set by the server.")));
+      if (mut) delete own[k][mut];
+      if (!mut || !Object.keys(own[k]).filter((m) => m !== "__name").length) delete own[k];
+      save();
+      refreshValuePanels().catch(() => {});
+      return reply(i, ok(t("Valeur du serveur retirée : la valeur du site est de nouveau utilisée.", "Server value removed: the site value is used again.")));
+    }
+  };
+
+  /* panel buttons */
+  async function valueButton(i, kind) {
+    if (!valItems().length) return reply(i, noValues());
+    if (kind === "search") {
+      return i.showModal(
+        new ModalBuilder()
+          .setCustomId("vl:m:search")
+          .setTitle(t("Rechercher un brainrot", "Search a brainrot"))
+          .addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("name").setLabel(t("Nom du brainrot", "Brainrot name")).setPlaceholder(t("Ex : Meowl, strawbery, la grande…", "E.g. Meowl, strawbery, la grande…")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("mut").setLabel(t("Mutation (optionnel)", "Mutation (optional)")).setPlaceholder("Gold, Diamond, Rainbow…").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(20))
+          )
+      );
+    }
+    if (kind === "calc") {
+      const area = (id, label) => new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setPlaceholder(t("Un par ligne. Ex :\nMeowl\n2x Garama Rainbow\nDragon Gold", "One per line. E.g.:\nMeowl\n2x Garama Rainbow\nDragon Gold")).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(600));
+      return i.showModal(new ModalBuilder().setCustomId("vl:m:calc").setTitle(t("Calculer un trade", "Trade calculator")).addComponents(area("give", t("Ce que TU DONNES", "What YOU GIVE")), area("get", t("Ce que TU REÇOIS", "What YOU GET"))));
+    }
+    if (kind === "top") {
+      const top = valSearch("", 15);
+      const e = embed(0xf1c40f)
+        .setTitle(t("🏆  Top 15 des valeurs", "🏆  Top 15 values"))
+        .setDescription(top.map((it, k) => `${["🥇", "🥈", "🥉"][k] || `**${k + 1}.**`} ${rarityOf(it)[0]} **${it.n}** · ${fmtValue(valueOf(it))}`).join("\n") || "—")
+        .setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama` });
+      return i.reply({ embeds: [e], flags: ephemeral });
+    }
+  }
+  /* "rainbow", "Rainbow", "rainb" (when start = true) -> "Rainbow" */
+  const mutIn = (text, start = true) => {
+    const k = vkey(text);
+    if (!k) return "";
+    return MUTS.find((m) => m !== "Default" && vkey(m) === k) || (start && k.length >= 3 ? MUTS.find((m) => m !== "Default" && vkey(m).startsWith(k)) : "") || "";
+  };
+  async function valueSearchSubmit(i) {
+    const name = i.fields.getTextInputValue("name") || "";
+    const mut = mutIn(i.fields.getTextInputValue("mut") || "");
+    const found = valSearch(name, 25);
+    if (!found.length) return reply(i, no(t(`Aucun brainrot ne ressemble à **${name.slice(0, 80)}**. Vérifie l'orthographe.`, `No brainrot looks like **${name.slice(0, 80)}**. Check the spelling.`)));
+    const exact = vkey(found[0].n) === vkey(name);
+    const embeds = [valueCard(found[0], mut)];
+    const components = [];
+    if (!exact && found.length > 1)
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`vl:pick:${mut}`)
+            .setPlaceholder(t("Pas le bon ? Choisis dans la liste", "Not the right one? Pick from the list"))
+            .addOptions(found.map((it) => ({ label: it.n.slice(0, 100), value: vkey(it.n).slice(0, 100), description: fmtValue(valueOf(it)).replace(/\*/g, "").slice(0, 100), emoji: rarityOf(it)[0] })))
+        )
+      );
+    return i.reply({ embeds, components, flags: ephemeral });
+  }
+  async function valuePick(i, mut) {
+    const it = valByKey(i.values?.[0] || "");
+    if (!it) return reply(i, no(t("Ce brainrot n'existe plus dans la liste.", "This brainrot is no longer in the list.")));
+    return i.update({ embeds: [valueCard(it, mut)], components: i.message?.components || [] });
+  }
+  /* "2x Garama Rainbow" -> { qty: 2, it: Garama, mut: Rainbow } */
+  function parseTradeLine(line) {
+    let text = String(line).trim();
+    if (!text) return null;
+    let qty = 1;
+    const q = text.match(/^(\d{1,3})\s*[x×*](?=\s)|\s[x×*]\s*(\d{1,3})$/i);
+    if (q) {
+      qty = Math.min(99, Math.max(1, Number(q[1] || q[2])));
+      text = text.replace(q[0], " ").trim();
+    }
+    const whole = valByKey(vkey(text));
+    if (whole) return { raw: String(line).trim().slice(0, 60), qty, mut: "Default", it: whole };
+    const words = text.split(/\s+/);
+    let mut = "";
+    if (words.length > 2 && vkey(words.slice(-2).join("")) === "yinyang") (mut = "Yin Yang"), words.splice(-2);
+    else if (words.length > 2 && vkey(words.slice(0, 2).join("")) === "yinyang") (mut = "Yin Yang"), words.splice(0, 2);
+    else if (words.length > 1 && mutIn(words[words.length - 1], true)) mut = mutIn(words.pop(), true);
+    else if (words.length > 1 && mutIn(words[0], false)) mut = mutIn(words.shift(), false);
+    return { raw: String(line).trim().slice(0, 60), qty, mut: mut || "Default", it: valFind(words.join(" ")) };
+  }
+  async function valueCalcSubmit(i) {
+    const side = (id) => String(i.fields.getTextInputValue(id) || "").split(/\n|,|\+/).map(parseTradeLine).filter(Boolean).slice(0, 15);
+    const give = side("give");
+    const get = side("get");
+    const total = (list) => list.reduce((sum, x) => sum + (x.it ? (valueOf(x.it, x.mut)?.g || 0) * x.qty : 0), 0);
+    const show = (list) =>
+      list
+        .map((x) => {
+          if (!x.it) return `❓ ~~${x.raw}~~ ${t("(introuvable)", "(not found)")}`;
+          const v = valueOf(x.it, x.mut);
+          return `${x.qty > 1 ? `**${x.qty}×** ` : ""}${rarityOf(x.it)[0]} ${x.it.n}${x.mut !== "Default" ? ` ${MUT_EMOJI[x.mut] || ""} ${x.mut}` : ""} · ${fmtValue(v)}`;
+        })
+        .join("\n")
+        .slice(0, 1024) || "—";
+    const a = total(give);
+    const b = total(get);
+    const diff = a ? ((b - a) / a) * 100 : b ? 100 : 0;
+    const verdict = Math.abs(diff) <= 5 ? ["🤝 FAIR", 0xf1c40f, t("Échange équilibré.", "Balanced trade.")] : diff > 0 ? ["✅ WIN", 0x57f287, t(`Tu gagnes environ **${num(Math.round(diff))} %**.`, `You win about **${num(Math.round(diff))}%**.`)] : ["❌ LOSE", 0xed4245, t(`Tu perds environ **${num(Math.round(-diff))} %**.`, `You lose about **${num(Math.round(-diff))}%**.`)];
+    const e = embed(verdict[1])
+      .setTitle(`⚖️  ${verdict[0]}`)
+      .setDescription(`${verdict[2]}\n-# ${t("Valeurs indicatives de la communauté : les traits et la demande peuvent changer le prix réel.", "Community reference values: traits and demand can change the real price.")}`)
+      .addFields(
+        { name: `📤 ${t("Tu donnes", "You give")} · ${fmtValue({ g: a, s: "value" }).replace(/\*/g, "")}`, value: show(give) },
+        { name: `📥 ${t("Tu reçois", "You get")} · ${fmtValue({ g: b, s: "value" }).replace(/\*/g, "")}`, value: show(get) }
+      )
+      .setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama` });
+    return i.reply({ embeds: [e], flags: ephemeral });
+  }
+
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -8827,6 +9304,18 @@ const tools = (() => {
         await H[i.commandName](i);
         return true;
       }
+      if (i.isAutocomplete?.() && ["value", "valueadmin"].includes(i.commandName)) {
+        await valueAutocomplete(i);
+        return true;
+      }
+      if (typeof i.customId === "string" && i.customId.startsWith("vl:")) {
+        const [, kind, arg] = i.customId.split(":");
+        if (i.isButton?.()) await valueButton(i, kind);
+        else if (i.isModalSubmit?.() && kind === "m" && arg === "search") await valueSearchSubmit(i);
+        else if (i.isModalSubmit?.() && kind === "m" && arg === "calc") await valueCalcSubmit(i);
+        else if (i.isStringSelectMenu?.() && kind === "pick") await valuePick(i, arg || "");
+        return true;
+      }
       if (typeof i.customId === "string" && i.customId.startsWith("ix:")) {
         if (i.isStringSelectMenu?.() && i.customId === "ix:pick") await ixOpen(i);
         else if (i.isButton?.() && i.customId.startsWith("ix:open:")) await ixOpen(i, i.customId.slice(8));
@@ -8949,6 +9438,7 @@ const tools = (() => {
       tickIdleTickets().catch((e) => console.error("⚠️ idle tickets:", e?.message || e));
       refreshXpBoard().catch((e) => console.error("⚠️ xp board:", e?.message || e));
       tickCounters().catch((e) => console.error("⚠️ counters:", e?.message || e));
+      refreshValues().catch(() => {});
       // the invites of each server are read once the bot is connected (needed to know who invited a newcomer)
       for (const g of client.guilds?.cache?.values?.() || []) if (!inviteUses.has(g.id)) cacheInvites(g).catch(() => {});
     }, 30_000);
@@ -8965,7 +9455,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { buildValues, refreshValues, valSearch, valFind, parseTradeLine, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
