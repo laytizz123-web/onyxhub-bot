@@ -6501,7 +6501,7 @@ const tools = (() => {
       [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
-      [t("📊 Valeurs", "📊 Values"), t("`/value` · le panel des valeurs a la recherche et le calculateur de trade", "`/value` · the value panel has the search and the trade calculator")],
+      [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
       [t("🎮 Jeux", "🎮 Games"), "`/morpion` `/puissance4` `/invites`"],
@@ -8457,7 +8457,7 @@ const tools = (() => {
     return e;
   }
 
-  /* the panel: a search button, the top values and the trade calculator */
+  /* the panel: a search button and the top values */
   function valuePanelBody() {
     const count = valItems().length;
     const top = valSearch("", 5);
@@ -8468,7 +8468,6 @@ const tools = (() => {
           t("Trouve la valeur de n'importe quel brainrot en **Dragons** 🐉 et en **Garama** 🟢, avec chaque mutation, la demande et l'exist count.", "Find the value of any brainrot in **Dragons** 🐉 and **Garama** 🟢, with every mutation, the demand and the exist count."),
           "",
           t("🔎 **Rechercher** : tape le nom, même avec une faute.", "🔎 **Search**: type the name, even with a typo."),
-          t("⚖️ **Calculer un trade** : vois si ton échange est WIN, FAIR ou LOSE.", "⚖️ **Trade calculator**: see if your trade is a WIN, FAIR or LOSE."),
           t("🏆 **Top valeurs** : les brainrots les plus chers.", "🏆 **Top values**: the most valuable brainrots."),
           t("-# Aussi avec la commande `/value`.", "-# Also with the `/value` command."),
         ].join("\n")
@@ -8482,7 +8481,6 @@ const tools = (() => {
     e.setFooter({ text: t("Valeurs de la communauté, à titre indicatif · stealabrainrothelper.com · sabexistcount.com", "Community values, for reference only · stealabrainrothelper.com · sabexistcount.com") });
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("vl:search").setLabel(t("Rechercher", "Search")).setEmoji("🔎").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("vl:calc").setLabel(t("Calculer un trade", "Trade calculator")).setEmoji("⚖️").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("vl:top").setLabel(t("Top valeurs", "Top values")).setEmoji("🏆").setStyle(ButtonStyle.Secondary)
     );
     return { embeds: [e], components: [row], allowedMentions: { parse: [] } };
@@ -8623,10 +8621,6 @@ const tools = (() => {
           )
       );
     }
-    if (kind === "calc") {
-      const area = (id, label) => new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setPlaceholder(t("Un par ligne. Ex :\nMeowl\n2x Garama Rainbow\nDragon Gold", "One per line. E.g.:\nMeowl\n2x Garama Rainbow\nDragon Gold")).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(600));
-      return i.showModal(new ModalBuilder().setCustomId("vl:m:calc").setTitle(t("Calculer un trade", "Trade calculator")).addComponents(area("give", t("Ce que TU DONNES", "What YOU GIVE")), area("get", t("Ce que TU REÇOIS", "What YOU GET"))));
-    }
     if (kind === "top") {
       const top = valSearch("", 15);
       const e = embed(0xf1c40f)
@@ -8635,6 +8629,9 @@ const tools = (() => {
         .setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama` });
       return i.reply({ embeds: [e], flags: ephemeral });
     }
+    // a button of an older panel (the calculator was removed): the panel is updated
+    await reply(i, no(t("Ce bouton n'existe plus. Utilise 🔎 Rechercher.", "This button no longer exists. Use 🔎 Search.")));
+    if (i.message?.edit) await i.message.edit(valuePanelBody()).catch(() => {});
   }
   /* "rainbow", "Rainbow", "rainb" (when start = true) -> "Rainbow" */
   const mutIn = (text, start = true) => {
@@ -8666,55 +8663,6 @@ const tools = (() => {
     if (!it) return reply(i, no(t("Ce brainrot n'existe plus dans la liste.", "This brainrot is no longer in the list.")));
     return i.update({ embeds: [valueCard(it, mut)], components: i.message?.components || [] });
   }
-  /* "2x Garama Rainbow" -> { qty: 2, it: Garama, mut: Rainbow } */
-  function parseTradeLine(line) {
-    let text = String(line).trim();
-    if (!text) return null;
-    let qty = 1;
-    const q = text.match(/^(\d{1,3})\s*[x×*](?=\s)|\s[x×*]\s*(\d{1,3})$/i);
-    if (q) {
-      qty = Math.min(99, Math.max(1, Number(q[1] || q[2])));
-      text = text.replace(q[0], " ").trim();
-    }
-    const whole = valByKey(vkey(text));
-    if (whole) return { raw: String(line).trim().slice(0, 60), qty, mut: "Default", it: whole };
-    const words = text.split(/\s+/);
-    let mut = "";
-    if (words.length > 2 && vkey(words.slice(-2).join("")) === "yinyang") (mut = "Yin Yang"), words.splice(-2);
-    else if (words.length > 2 && vkey(words.slice(0, 2).join("")) === "yinyang") (mut = "Yin Yang"), words.splice(0, 2);
-    else if (words.length > 1 && mutIn(words[words.length - 1], true)) mut = mutIn(words.pop(), true);
-    else if (words.length > 1 && mutIn(words[0], false)) mut = mutIn(words.shift(), false);
-    return { raw: String(line).trim().slice(0, 60), qty, mut: mut || "Default", it: valFind(words.join(" ")) };
-  }
-  async function valueCalcSubmit(i) {
-    const side = (id) => String(i.fields.getTextInputValue(id) || "").split(/\n|,|\+/).map(parseTradeLine).filter(Boolean).slice(0, 15);
-    const give = side("give");
-    const get = side("get");
-    const total = (list) => list.reduce((sum, x) => sum + (x.it ? (valueOf(x.it, x.mut)?.g || 0) * x.qty : 0), 0);
-    const show = (list) =>
-      list
-        .map((x) => {
-          if (!x.it) return `❓ ~~${x.raw}~~ ${t("(introuvable)", "(not found)")}`;
-          const v = valueOf(x.it, x.mut);
-          return `${x.qty > 1 ? `**${x.qty}×** ` : ""}${rarityOf(x.it)[0]} ${x.it.n}${x.mut !== "Default" ? ` ${MUT_EMOJI[x.mut] || ""} ${x.mut}` : ""} · ${fmtValue(v)}`;
-        })
-        .join("\n")
-        .slice(0, 1024) || "—";
-    const a = total(give);
-    const b = total(get);
-    const diff = a ? ((b - a) / a) * 100 : b ? 100 : 0;
-    const verdict = Math.abs(diff) <= 5 ? ["🤝 FAIR", 0xf1c40f, t("Échange équilibré.", "Balanced trade.")] : diff > 0 ? ["✅ WIN", 0x57f287, t(`Tu gagnes environ **${num(Math.round(diff))} %**.`, `You win about **${num(Math.round(diff))}%**.`)] : ["❌ LOSE", 0xed4245, t(`Tu perds environ **${num(Math.round(-diff))} %**.`, `You lose about **${num(Math.round(-diff))}%**.`)];
-    const e = embed(verdict[1])
-      .setTitle(`⚖️  ${verdict[0]}`)
-      .setDescription(`${verdict[2]}\n-# ${t("Valeurs indicatives de la communauté : les traits et la demande peuvent changer le prix réel.", "Community reference values: traits and demand can change the real price.")}`)
-      .addFields(
-        { name: `📤 ${t("Tu donnes", "You give")} · ${fmtValue({ g: a, s: "value" }).replace(/\*/g, "")}`, value: show(give) },
-        { name: `📥 ${t("Tu reçois", "You get")} · ${fmtValue({ g: b, s: "value" }).replace(/\*/g, "")}`, value: show(get) }
-      )
-      .setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama` });
-    return i.reply({ embeds: [e], flags: ephemeral });
-  }
-
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -9312,7 +9260,6 @@ const tools = (() => {
         const [, kind, arg] = i.customId.split(":");
         if (i.isButton?.()) await valueButton(i, kind);
         else if (i.isModalSubmit?.() && kind === "m" && arg === "search") await valueSearchSubmit(i);
-        else if (i.isModalSubmit?.() && kind === "m" && arg === "calc") await valueCalcSubmit(i);
         else if (i.isStringSelectMenu?.() && kind === "pick") await valuePick(i, arg || "");
         return true;
       }
@@ -9455,7 +9402,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { buildValues, refreshValues, valSearch, valFind, parseTradeLine, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
