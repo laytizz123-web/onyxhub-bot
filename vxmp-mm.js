@@ -7457,6 +7457,8 @@ const tools = (() => {
   const xpBoardSig = (guild) => JSON.stringify(Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, xp]) => [id, xp, guild?.members?.cache?.get?.(id)?.displayName || ""]));
   let boardShown = "";
   let boardBusy = false;
+  let boardDrawn = 0;
+  const BOARD_EVERY = 5 * 60_000; // drawing the picture is heavy for a small host: at most once every 5 minutes
   async function xpBoardBody(guild) {
     const top = Object.entries(db.xp).sort((a, b) => b[1] - a[1]).slice(0, 10);
     const rows = await Promise.all(
@@ -7488,8 +7490,10 @@ const tools = (() => {
         save();
         return false;
       }
+      if (!force && Date.now() - boardDrawn < BOARD_EVERY) return false;
       await message.edit({ ...(await xpBoardBody(channel.guild)), attachments: [] });
       boardShown = sig;
+      boardDrawn = Date.now();
       return true;
     } finally {
       boardBusy = false;
@@ -8453,7 +8457,7 @@ const tools = (() => {
       e.addFields({ name: t("🧬 Mutations", "🧬 Mutations"), value: text.slice(0, half).join("\n").slice(0, 1024), inline: true }, { name: "​", value: (text.slice(half).join("\n") || "​").slice(0, 1024), inline: true });
     }
     const updated = Object.values(it.m).map((v) => v.u).filter(Boolean).sort().pop();
-    e.setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama  ·  ${t("Sources", "Sources")} : stealabrainrothelper.com, sabexistcount.com${updated ? `  ·  ${t("maj", "upd.")} ${updated.split("-").reverse().join("/")}` : ""}` });
+    e.setFooter({ text: [`1 🐉 Dragon = ${num(vals.rate)} Garama`, updated ? `${t("Mis à jour le", "Updated on")} ${updated.split("-").reverse().join("/")}` : ""].filter(Boolean).join("  ·  ") });
     return e;
   }
 
@@ -8478,7 +8482,7 @@ const tools = (() => {
         { name: t("🕒 Mis à jour", "🕒 Updated"), value: vals.at ? `<t:${Math.floor(vals.at / 1000)}:R>` : t("bientôt", "soon"), inline: true }
       );
     if (top.length) e.addFields({ name: t("🏆 Top 5", "🏆 Top 5"), value: top.map((it, k) => `**${k + 1}.** ${rarityOf(it)[0]} ${it.n} · ${fmtValue(valueOf(it))}`).join("\n") });
-    e.setFooter({ text: t("Valeurs de la communauté, à titre indicatif · stealabrainrothelper.com · sabexistcount.com", "Community values, for reference only · stealabrainrothelper.com · sabexistcount.com") });
+    e.setFooter({ text: t("Valeurs de la communauté, à titre indicatif", "Community values, for reference only") });
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("vl:search").setLabel(t("Rechercher", "Search")).setEmoji("🔎").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("vl:top").setLabel(t("Top valeurs", "Top values")).setEmoji("🏆").setStyle(ButtonStyle.Secondary)
@@ -8549,7 +8553,8 @@ const tools = (() => {
     const asked = i.options.getString("brainrot") || "";
     const it = valFind(asked);
     if (!it) return reply(i, no(t(`Aucun brainrot ne ressemble à **${asked.slice(0, 80)}**.`, `No brainrot looks like **${asked.slice(0, 80)}**.`)));
-    return i.reply({ embeds: [valueCard(it, i.options.getString("mutation") || "")], allowedMentions: { parse: [] } });
+    await i.deferReply();
+    return i.editReply({ embeds: [valueCard(it, i.options.getString("mutation") || "")], allowedMentions: { parse: [] } });
   };
 
   H.valueadmin = async (i) => {
@@ -8640,10 +8645,11 @@ const tools = (() => {
     return MUTS.find((m) => m !== "Default" && vkey(m) === k) || (start && k.length >= 3 ? MUTS.find((m) => m !== "Default" && vkey(m).startsWith(k)) : "") || "";
   };
   async function valueSearchSubmit(i) {
+    await i.deferReply({ flags: ephemeral });
     const name = i.fields.getTextInputValue("name") || "";
     const mut = mutIn(i.fields.getTextInputValue("mut") || "");
     const found = valSearch(name, 25);
-    if (!found.length) return reply(i, no(t(`Aucun brainrot ne ressemble à **${name.slice(0, 80)}**. Vérifie l'orthographe.`, `No brainrot looks like **${name.slice(0, 80)}**. Check the spelling.`)));
+    if (!found.length) return i.editReply(no(t(`Aucun brainrot ne ressemble à **${name.slice(0, 80)}**. Vérifie l'orthographe.`, `No brainrot looks like **${name.slice(0, 80)}**. Check the spelling.`)));
     const exact = vkey(found[0].n) === vkey(name);
     const embeds = [valueCard(found[0], mut)];
     const components = [];
@@ -8656,7 +8662,7 @@ const tools = (() => {
             .addOptions(found.map((it) => ({ label: it.n.slice(0, 100), value: vkey(it.n).slice(0, 100), description: fmtValue(valueOf(it)).replace(/\*/g, "").slice(0, 100), emoji: rarityOf(it)[0] })))
         )
       );
-    return i.reply({ embeds, components, flags: ephemeral });
+    return i.editReply({ embeds, components });
   }
   async function valuePick(i, mut) {
     const it = valByKey(i.values?.[0] || "");
