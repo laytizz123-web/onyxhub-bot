@@ -4201,8 +4201,8 @@ const tools = (() => {
 
   const cardLabel = () => ({ level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), title: t("CLASSEMENT", "LEADERBOARD"), up: t("NIVEAU SUPÉRIEUR !", "LEVEL UP!"), welcome: t("BIENVENUE", "WELCOME"), to: t("sur", "to"), member: t("MEMBRE", "MEMBER") });
 
-  /* The welcome picture of a member: an animated GIF, or a still PNG when animating is not wanted or fails. */
-  async function welcomeCard(member, animated = true) {
+  /* The welcome picture of a member: a still PNG (fast). The animated GIF took seconds to draw on a small host. */
+  async function welcomeCard(member, animated = false) {
     const opts = { name: member.displayName || member.user?.username || "?", server: member.guild?.name || "", count: member.guild?.memberCount ?? 0, avatar: await loadAvatar(member), label: cardLabel() };
     if (animated) {
       try {
@@ -5444,7 +5444,7 @@ const tools = (() => {
     if (sub === "test") {
       if (!w.message) return reply(i, no(t("Aucun message. Utilise `/welcome channel`.", "No message. Use `/welcome channel`.")));
       await i.deferReply({ flags: ephemeral });
-      const card = await welcomeCard(i.member, true);
+      const card = await welcomeCard(i.member);
       return i.editReply({ content: fill(w.message, i.member), embeds: [embed(0xff8a3d).setImage(card.url)], files: [card.file] });
     }
   };
@@ -5472,7 +5472,7 @@ const tools = (() => {
       if (channel?.isTextBased?.()) {
         const body = { content: fill(w.message, member), allowedMentions: { users: [member.id] } };
         try {
-          const card = await welcomeCard(member, recentJoins.length < 3); // many joins at once (a raid): a still picture, the server stays responsive
+          const card = await welcomeCard(member);
           body.embeds = [embed(0xff8a3d).setImage(card.url)];
           body.files = [card.file];
         } catch (error) {
