@@ -4818,7 +4818,7 @@ const tools = (() => {
             s
               .setName("limite")
               .setDescription(t("Combien de messages en combien de secondes = spam", "How many messages in how many seconds = spam"))
-              .addIntegerOption((o) => o.setName("messages").setDescription("2-30").setMinValue(2).setMaxValue(30).setRequired(true))
+              .addIntegerOption((o) => o.setName("messages").setDescription("2-100").setMinValue(2).setMaxValue(100).setRequired(true))
               .addIntegerOption((o) => o.setName("secondes").setDescription("2-120").setMinValue(2).setMaxValue(120).setRequired(true))
           )
           .addSubcommand((s) => SANCTION(s.setName("sanction").setDescription(t("Que faire au spammeur", "What happens to the spammer"))))
