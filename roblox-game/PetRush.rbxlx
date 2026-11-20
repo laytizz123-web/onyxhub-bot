@@ -129,11 +129,29 @@ for _, egg in ipairs(Config.Eggs) do
 end
 
 -- Zones
+-- Le monde : 8 iles flottantes reliees par des ponts, dans l'ordre de progression.
+-- egg = oeuf vendu dans la zone (nil = zone de farm sans oeuf).
 Config.Zones = {
-	{ id = &quot;Village&quot;, name = &quot;Starter Village&quot;, icon = &quot;🏡&quot;, price = 0, center = Vector3.new(0, 0, 0), size = 220, coinValue = 5, coinCount = 40, ground = Color3.fromRGB(110, 200, 90), chestValue = 400 },
-	{ id = &quot;Foret&quot;, name = &quot;Forest&quot;, icon = &quot;🌲&quot;, price = 2500, center = Vector3.new(0, 0, -300), size = 220, coinValue = 30, coinCount = 40, ground = Color3.fromRGB(60, 150, 70), chestValue = 3000 },
-	{ id = &quot;Desert&quot;, name = &quot;Desert&quot;, icon = &quot;🏜️&quot;, price = 25000, center = Vector3.new(0, 0, -600), size = 220, coinValue = 150, coinCount = 40, ground = Color3.fromRGB(230, 200, 130), chestValue = 20000 },
+	{ id = &quot;Village&quot;, name = &quot;Starter Village&quot;, icon = &quot;🏡&quot;, price = 0, center = Vector3.new(0, 0, 0), size = 400, coinValue = 5, coinCount = 60, ground = Color3.fromRGB(110, 200, 90), chestValue = 400, egg = &quot;Village&quot; },
+	{ id = &quot;Foret&quot;, name = &quot;Forest&quot;, icon = &quot;🌲&quot;, price = 2500, center = Vector3.new(0, 0, -470), size = 320, coinValue = 30, coinCount = 50, ground = Color3.fromRGB(60, 150, 70), chestValue = 3000, egg = &quot;Foret&quot; },
+	{ id = &quot;Desert&quot;, name = &quot;Desert&quot;, icon = &quot;🏜️&quot;, price = 25000, center = Vector3.new(-470, 0, -470), size = 320, coinValue = 150, coinCount = 50, ground = Color3.fromRGB(230, 200, 130), chestValue = 20000, egg = &quot;Desert&quot; },
+	{ id = &quot;Plage&quot;, name = &quot;Beach&quot;, icon = &quot;🏖️&quot;, price = 150000, center = Vector3.new(-470, 0, 0), size = 320, coinValue = 500, coinCount = 50, ground = Color3.fromRGB(255, 225, 160), chestValue = 70000 },
+	{ id = &quot;Bonbons&quot;, name = &quot;Candy Land&quot;, icon = &quot;🍭&quot;, price = 600000, center = Vector3.new(-470, 0, 470), size = 320, coinValue = 1500, coinCount = 50, ground = Color3.fromRGB(255, 160, 210), chestValue = 200000 },
+	{ id = &quot;Neige&quot;, name = &quot;Snow Peaks&quot;, icon = &quot;❄️&quot;, price = 2500000, center = Vector3.new(0, 0, 470), size = 320, coinValue = 5000, coinCount = 50, ground = Color3.fromRGB(200, 230, 255), chestValue = 700000 },
+	{ id = &quot;Mystique&quot;, name = &quot;Mystic Zone&quot;, icon = &quot;🔮&quot;, price = 10000000, center = Vector3.new(470, 0, 470), size = 320, coinValue = 15000, coinCount = 50, ground = Color3.fromRGB(150, 100, 230), chestValue = 2000000 },
+	{ id = &quot;Royaume&quot;, name = &quot;Pet Kingdom&quot;, icon = &quot;👑&quot;, price = 40000000, center = Vector3.new(470, 0, 0), size = 340, coinValue = 50000, coinCount = 55, ground = Color3.fromRGB(255, 205, 80), chestValue = 7000000 },
 }
+-- point d'arrivee de chaque zone (teleportation) : cote du pont qui vient de la zone precedente
+for i, zone in ipairs(Config.Zones) do
+	local prev = Config.Zones[i - 1]
+	if prev then
+		local d = prev.center - zone.center
+		local dir = math.abs(d.X) &gt; math.abs(d.Z) and Vector3.new(math.sign(d.X), 0, 0) or Vector3.new(0, 0, math.sign(d.Z))
+		zone.entry = zone.center + dir * (zone.size / 2 - 22) + Vector3.new(0, 4, 0)
+	else
+		zone.entry = Vector3.new(0, 4, 150)
+	end
+end
 Config.ZoneById = {}
 for _, zone in ipairs(Config.Zones) do
 	Config.ZoneById[zone.id] = zone
@@ -163,7 +181,7 @@ Config.Breakables = {
 		{ id = &quot;Gift&quot;, name = &quot;Cadeau geant&quot;, hp = 450, reward = 95, weight = 13 },
 	},
 	-- multiplicateur de PV / gains par zone
-	ZoneMult = { Village = 1, Foret = 6, Desert = 30 },
+	ZoneMult = { Village = 1, Foret = 6, Desert = 30, Plage = 100, Bonbons = 300, Neige = 1000, Mystique = 3000, Royaume = 10000 },
 }
 
 Config.Daily = {
@@ -184,7 +202,7 @@ Config.Race = {
 }
 
 Config.Map = {
-	SpawnPosition = Vector3.new(0, 3, 70),
+	SpawnPosition = Vector3.new(0, 3, 150),
 	KillHeight = -40,
 }
 
@@ -2153,7 +2171,7 @@ for _, name in ipairs(NAMES) do
 end
 
 return Remotes
-</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000014"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX00000013"><Properties><string name="Name">Server</string></Properties><Item class="Script" referent="RBX0000000B"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree serveur de PET RUSH.
+</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000016"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX00000015"><Properties><string name="Name">Server</string></Properties><Item class="Script" referent="RBX0000000B"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree serveur de PET RUSH.
 
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
 
@@ -2178,7 +2196,7 @@ start(&quot;BreakableService&quot;)
 start(&quot;RaceService&quot;)
 
 print(&quot;[PetRush] Serveur pret.&quot;)
-</ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000012"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">BreakableService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Objets a casser (tirelires, cristaux, cadeaux geants) : nouvelle facon de gagner des coins.
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000014"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">BreakableService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Objets a casser (tirelires, cristaux, cadeaux geants) : nouvelle facon de gagner des coins.
 -- Le joueur clique sur un objet : ses pets equipes vont l'attaquer (animation cote client).
 -- Les degats dependent du nombre et de la puissance des pets. A la casse, chaque joueur qui a
 -- participe recoit des coins en proportion de ses degats.
@@ -2607,11 +2625,6 @@ local function spawnCoin(zone, position)
 	coin.CanQuery = false
 	coin:SetAttribute(&quot;Value&quot;, zone.coinValue)
 	coin.Parent = coinsFolder
-	local light = Instance.new(&quot;PointLight&quot;)
-	light.Color = Config.Colors.Gold
-	light.Range = 8
-	light.Brightness = 1
-	light.Parent = coin
 	coins[coin] = { zone = zone, value = zone.coinValue }
 	return coin
 end
@@ -2879,24 +2892,853 @@ function DataService.Init()
 end
 
 return DataService
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">MapBuilder</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Map de PET RUSH : iles flottantes cartoon (plastique lisse), ponts, cascades, nuages, props.
--- 3 zones (Village, Foret, Desert), arches de passage, stands, piste de course, classement.
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">MapBuilder</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Monde de PET RUSH : 8 iles flottantes cartoon reliees par des ponts en boucle.
+-- Starter Village (grand village de depart), puis Forest, Desert, Beach, Candy Land, Snow Peaks,
+-- Mystic Zone et Pet Kingdom. Chaque passage est ferme par une porte magique payante (tag Gate).
+-- Decor d'arriere-plan : iles lointaines, montgolfieres, nuages, mer.
 
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
 local CollectionService = game:GetService(&quot;CollectionService&quot;)
-local TweenService = game:GetService(&quot;TweenService&quot;)
 local Lighting = game:GetService(&quot;Lighting&quot;)
 local Players = game:GetService(&quot;Players&quot;)
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Kit = require(script.Parent.MapKit)
+local MapZones = require(script.Parent.MapZones)
 
 local MapBuilder = {}
 
 local Terrain = workspace.Terrain
+local rng, R = Kit.rng, Kit.R
+local part, wedge, ballPart, cylinder, sign, stand = Kit.part, Kit.wedge, Kit.ball, Kit.cylinder, Kit.sign, Kit.stand
+local avoidCircle = Kit.avoidCircle
+local WHITE = Color3.new(1, 1, 1)
+
+-- Eclairage ------------------------------------------------------------------------------
+
+local function buildLighting()
+	Lighting.ClockTime = 14
+	Lighting.GeographicLatitude = 30
+	Lighting.Brightness = 2.4
+	Lighting.Ambient = Color3.fromRGB(140, 140, 160)
+	Lighting.OutdoorAmbient = Color3.fromRGB(165, 165, 185)
+	Lighting.EnvironmentDiffuseScale = 0.6
+	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.ShadowSoftness = 0.5
+	Lighting.GlobalShadows = true
+	Lighting.FogEnd = 100000
+	for _, child in ipairs(Lighting:GetChildren()) do
+		if child:IsA(&quot;PostEffect&quot;) or child:IsA(&quot;Atmosphere&quot;) or child:IsA(&quot;Sky&quot;) then
+			child:Destroy()
+		end
+	end
+	local atmosphere = Instance.new(&quot;Atmosphere&quot;)
+	atmosphere.Density = 0.18
+	atmosphere.Offset = 0
+	atmosphere.Color = Color3.fromRGB(170, 215, 255)
+	atmosphere.Decay = Color3.fromRGB(120, 180, 255)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 0
+	atmosphere.Parent = Lighting
+	local sky = Instance.new(&quot;Sky&quot;)
+	sky.SunAngularSize = 12
+	sky.Parent = Lighting
+	local bloom = Instance.new(&quot;BloomEffect&quot;)
+	bloom.Intensity = 0.25
+	bloom.Size = 18
+	bloom.Threshold = 1.8
+	bloom.Parent = Lighting
+	local cc = Instance.new(&quot;ColorCorrectionEffect&quot;)
+	cc.Name = &quot;PetColor&quot;
+	cc.Saturation = 0.22
+	cc.Contrast = 0.05
+	cc.Brightness = 0.03
+	cc.Parent = Lighting
+	local clouds = Terrain:FindFirstChildOfClass(&quot;Clouds&quot;) or Instance.new(&quot;Clouds&quot;)
+	clouds.Cover = 0.45
+	clouds.Density = 0.5
+	clouds.Color = Color3.new(1, 1, 1)
+	clouds.Parent = Terrain
+end
+
+
+-- Iles --------------------------------------------------------------------------------------
+
+local PALETTES = {
+	Village = { top = Color3.fromRGB(125, 215, 85), drip = Color3.fromRGB(105, 195, 70), dirt = Color3.fromRGB(165, 110, 65), dirt2 = Color3.fromRGB(135, 88, 52), path = Color3.fromRGB(245, 225, 175) },
+	Foret = { top = Color3.fromRGB(85, 180, 80), drip = Color3.fromRGB(65, 155, 65), dirt = Color3.fromRGB(130, 92, 62), dirt2 = Color3.fromRGB(105, 74, 50), path = Color3.fromRGB(205, 165, 110) },
+	Desert = { top = Color3.fromRGB(252, 222, 150), drip = Color3.fromRGB(240, 200, 120), dirt = Color3.fromRGB(225, 155, 90), dirt2 = Color3.fromRGB(195, 128, 75), path = Color3.fromRGB(235, 185, 115) },
+	Plage = { top = Color3.fromRGB(255, 228, 165), drip = Color3.fromRGB(245, 212, 140), dirt = Color3.fromRGB(225, 170, 110), dirt2 = Color3.fromRGB(200, 145, 90), path = Color3.fromRGB(255, 242, 210) },
+	Bonbons = { top = Color3.fromRGB(255, 175, 215), drip = Color3.fromRGB(255, 145, 200), dirt = Color3.fromRGB(165, 100, 70), dirt2 = Color3.fromRGB(135, 78, 52), path = Color3.fromRGB(255, 245, 250) },
+	Neige = { top = Color3.fromRGB(245, 250, 255), drip = Color3.fromRGB(225, 238, 255), dirt = Color3.fromRGB(150, 175, 210), dirt2 = Color3.fromRGB(120, 145, 185), path = Color3.fromRGB(200, 222, 245) },
+	Mystique = { top = Color3.fromRGB(150, 110, 230), drip = Color3.fromRGB(125, 90, 210), dirt = Color3.fromRGB(85, 65, 125), dirt2 = Color3.fromRGB(65, 50, 100), path = Color3.fromRGB(205, 175, 255) },
+	Royaume = { top = Color3.fromRGB(130, 215, 95), drip = Color3.fromRGB(110, 195, 80), dirt = Color3.fromRGB(220, 205, 180), dirt2 = Color3.fromRGB(190, 172, 145), path = Color3.fromRGB(250, 238, 200) },
+}
+
+-- direction (axe X ou Z) d'une zone vers une autre
+local function dirTo(a, b)
+	local d = b.center - a.center
+	if math.abs(d.X) &gt; math.abs(d.Z) then
+		return Vector3.new(math.sign(d.X), 0, 0)
+	end
+	return Vector3.new(0, 0, math.sign(d.Z))
+end
+
+-- sorties d'une zone : liste de directions vers ses voisines (precedente / suivante)
+local function exitsOf(index)
+	local zone = Config.Zones[index]
+	local list = {}
+	for _, j in ipairs({ index - 1, index + 1 }) do
+		local other = Config.Zones[j]
+		if other then
+			table.insert(list, { dir = dirTo(zone, other), zone = other, next = j &gt; index })
+		end
+	end
+	return list
+end
+
+local function waterfall(parent, edgePoint, outward)
+	local inward = -outward
+	local cf = CFrame.lookAt(edgePoint, edgePoint + outward)
+	local stream = part({ Size = Vector3.new(9, 0.3, 26), CFrame = cf * CFrame.new(0, 0.14, 13), Color = Kit.WATER, Material = Enum.Material.Glass, Transparency = 0.1, CanCollide = false }, parent)
+	stream.Reflectance = 0.15
+	part({ Size = Vector3.new(9, 90, 1.5), CFrame = cf * CFrame.new(0, -45, -1), Color = Color3.fromRGB(150, 215, 255), Material = Enum.Material.Glass, Transparency = 0.15, CanCollide = false }, parent)
+	local foam = part({ Size = Vector3.new(9, 2, 2), CFrame = cf * CFrame.new(0, 0, -1), Transparency = 1, CanCollide = false }, parent)
+	local spray = Instance.new(&quot;ParticleEmitter&quot;)
+	spray.Rate = 40
+	spray.Lifetime = NumberRange.new(0.6, 1)
+	spray.Speed = NumberRange.new(4, 8)
+	spray.SpreadAngle = Vector2.new(60, 60)
+	spray.Acceleration = Vector3.new(0, -20, 0)
+	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1.4) })
+	spray.Transparency = NumberSequence.new(0.2, 1)
+	spray.Color = ColorSequence.new(WHITE)
+	spray.Parent = foam
+	Kit.avoidSegment(edgePoint, edgePoint + inward * 28, 8)
+end
+
+-- Ile : dessus d'herbe, bord festonne, falaises en escalier, rochers suspendus, collines, chemins
+local function island(parent, zone, index)
+	local pal = PALETTES[zone.id]
+	local c = zone.center
+	local s = zone.size
+	local half = s / 2
+	part({ Name = &quot;Ground&quot;, Size = Vector3.new(s, 4, s), CFrame = CFrame.new(c + Vector3.new(0, -2, 0)), Color = pal.top }, parent)
+	for t = -half, half, 9 do
+		for _, edge in ipairs({ Vector3.new(t, -2.6, half), Vector3.new(t, -2.6, -half), Vector3.new(half, -2.6, t), Vector3.new(-half, -2.6, t) }) do
+			local drip = ballPart(CFrame.new(c + edge), R(5.5, 7.5), pal.drip, parent)
+			drip.CanCollide = false
+		end
+	end
+	local y = -4
+	local layers = { { s - 2, 9, pal.dirt }, { s - 20, 11, pal.dirt2 }, { s - 52, 13, pal.dirt }, { s - 100, 14, pal.dirt2 }, { s - 160, 12, pal.dirt }, { s - 220, 10, pal.dirt2 } }
+	for _, L in ipairs(layers) do
+		if L[1] &gt; 20 then
+			part({ Name = &quot;Cliff&quot;, Size = Vector3.new(L[1], L[2], L[1]), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] / 2, 0)), Color = L[3] }, parent)
+			part({ Name = &quot;CliffBand&quot;, Size = Vector3.new(L[1] + 0.4, 1.2, L[1] + 0.4), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] * 0.35, 0)), Color = L[3]:Lerp(WHITE, 0.15), CanCollide = false }, parent)
+			y -= L[2]
+		end
+	end
+	for k = 1, 12 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = R(20, half - 50)
+		ballPart(CFrame.new(c + Vector3.new(math.cos(a) * r, y - R(0, 10), math.sin(a) * r)), R(8, 18), pal.dirt2, parent)
+	end
+	-- chemins : de chaque sortie jusqu'a la place centrale de la zone
+	local exits = exitsOf(index)
+	if index == 1 then
+		table.insert(exits, { dir = Vector3.new(0, 0, 1) }) -- avenue du spawn
+	end
+	for _, e in ipairs(exits) do
+		local a = c + e.dir * half
+		local mid = (a + c) / 2
+		local cf = CFrame.lookAt(mid + Vector3.new(0, 0.1, 0), c + Vector3.new(0, 0.1, 0))
+		part({ Name = &quot;Path&quot;, Size = Vector3.new(16, 0.2, half), CFrame = cf, Color = pal.path, CanCollide = false }, parent)
+		for _, x in ipairs({ -8.6, 8.6 }) do
+			part({ Name = &quot;PathEdge&quot;, Size = Vector3.new(1.2, 0.35, half), CFrame = cf * CFrame.new(x, 0.05, 0), Color = pal.path:Lerp(Color3.new(0, 0, 0), 0.12), CanCollide = false }, parent)
+		end
+		for t = 6, half - 6, 7 do
+			part({ Name = &quot;PathStone&quot;, Size = Vector3.new(R(2.5, 4), 0.25, R(2, 3)), CFrame = cf * CFrame.new(R(-5, 5), 0.08, -half / 2 + t) * CFrame.Angles(0, R(0, 3), 0), Color = pal.path:Lerp(WHITE, 0.35), CanCollide = false }, parent)
+		end
+		Kit.avoidSegment(a, c, 11)
+	end
+	-- place centrale ronde
+	local plaza = cylinder(CFrame.new(c + Vector3.new(0, 0.12, 0)), 0.25, 26, pal.path, parent)
+	plaza.CanCollide = false
+	local ring = cylinder(CFrame.new(c + Vector3.new(0, 0.1, 0)), 0.25, 27.5, pal.path:Lerp(Color3.new(0, 0, 0), 0.12), parent)
+	ring.CanCollide = false
+	avoidCircle(c, 30)
+	-- cascade sur un cote sans pont
+	local used = {}
+	for _, e in ipairs(exits) do
+		used[tostring(e.dir)] = true
+	end
+	for _, d in ipairs({ Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }) do
+		if not used[tostring(d)] then
+			local side = Vector3.new(d.Z, 0, d.X)
+			waterfall(parent, c + d * half + side * (index == 1 and 70 or R(-60, 60)), d)
+			break
+		end
+	end
+end
+
+-- Collines douces posees apres le decor, sur les espaces encore libres
+local function hills(parent, zone)
+	local pal = PALETTES[zone.id]
+	local c = zone.center
+	local half = zone.size / 2
+	for k = 1, 8 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = R(60, half - 22)
+		local pos = c + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		local size = R(18, 30)
+		if Kit.isFree(pos, size / 2) then
+			local mound = ballPart(CFrame.new(pos), size, pal.top:Lerp(Color3.new(0, 0, 0), 0.05), parent)
+			local mesh = Instance.new(&quot;SpecialMesh&quot;)
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Scale = Vector3.new(1, 0.3, 1)
+			mesh.Parent = mound
+			avoidCircle(pos, size / 2 + 2)
+		end
+	end
+end
+
+-- Pont entre deux iles (planches, cordes, lanternes)
+local function bridge(parent, a, b)
+	local len = (b - a).Magnitude
+	local cf = CFrame.lookAt((a + b) / 2, b)
+	local count = math.floor(len / 2.2)
+	for k = 0, count do
+		local z = -len / 2 + 1.1 + k * (len / (count + 1))
+		part({ Name = &quot;Plank&quot;, Size = Vector3.new(16, 0.8, 2), CFrame = cf * CFrame.new(0, -0.4, z) * CFrame.Angles(0, math.rad(R(-1.5, 1.5)), 0), Color = (k % 2 == 0) and Color3.fromRGB(205, 145, 85) or Color3.fromRGB(185, 125, 70) }, parent)
+	end
+	for _, x in ipairs({ -6.5, 6.5 }) do
+		part({ Name = &quot;Beam&quot;, Size = Vector3.new(1, 1, len), CFrame = cf * CFrame.new(x, -1.2, 0), Color = Color3.fromRGB(140, 90, 55) }, parent)
+	end
+	for _, x in ipairs({ -8.3, 8.3 }) do
+		for z = -len / 2, len / 2, 12 do
+			part({ Name = &quot;Post&quot;, Size = Vector3.new(0.9, 4.5, 0.9), CFrame = cf * CFrame.new(x, 1.8, z), Color = Color3.fromRGB(150, 100, 60) }, parent)
+			local bulb = ballPart(cf * CFrame.new(x, 4.4, z), 1.3, Color3.fromRGB(255, 215, 120), parent, Enum.Material.Neon)
+			if math.floor(z) % 24 == 0 then
+				local l = Instance.new(&quot;PointLight&quot;)
+				l.Range = 10
+				l.Color = Color3.fromRGB(255, 210, 140)
+				l.Parent = bulb
+			end
+		end
+		part({ Name = &quot;Rope&quot;, Size = Vector3.new(0.35, 0.35, len), CFrame = cf * CFrame.new(x, 3.6, 0), Color = Color3.fromRGB(240, 220, 180), CanCollide = false }, parent)
+	end
+	-- petits fanions colores
+	local flags = { Color3.fromRGB(255, 90, 120), Color3.fromRGB(255, 210, 60), Color3.fromRGB(90, 190, 255), Color3.fromRGB(130, 220, 100) }
+	for k, z in ipairs({ -len / 4, len / 4 }) do
+		for i = -7, 7, 2 do
+			wedge({ Size = Vector3.new(0.1, 1.4, 1.2), CFrame = cf * CFrame.new(i, 9 - math.abs(i) * 0.15, z) * CFrame.Angles(math.rad(180), math.rad(90), 0), Color = flags[((i + 9) % #flags) + 1], CanCollide = false }, parent)
+		end
+		for _, x in ipairs({ -8.3, 8.3 }) do
+			part({ Size = Vector3.new(0.5, 10, 0.5), CFrame = cf * CFrame.new(x, 5, z), Color = Color3.fromRGB(150, 100, 60) }, parent)
+		end
+		part({ Size = Vector3.new(16.6, 0.15, 0.15), CFrame = cf * CFrame.new(0, 9.6, z), Color = WHITE, CanCollide = false }, parent)
+	end
+end
+
+-- Arche de pierre + barriere magique (tag Gate), orientee vers la zone suivante
+local function gateArch(parent, pos, dir, nextZone)
+	local cf = CFrame.lookAt(pos, pos + dir)
+	local stone = Color3.fromRGB(175, 170, 180)
+	for _, x in ipairs({ -12, 12 }) do
+		part({ Size = Vector3.new(5, 20, 5), CFrame = cf * CFrame.new(x, 10, 0), Color = stone, Material = Enum.Material.Cobblestone }, parent)
+		part({ Size = Vector3.new(6.4, 1.6, 6.4), CFrame = cf * CFrame.new(x, 0.8, 0), Color = stone:Lerp(Color3.new(0, 0, 0), 0.15), Material = Enum.Material.Cobblestone }, parent)
+		ballPart(cf * CFrame.new(x, 21.6, 0), 3.2, Config.Colors.Gold, parent, Enum.Material.Neon)
+	end
+	part({ Size = Vector3.new(30, 4, 6), CFrame = cf * CFrame.new(0, 21, 0), Color = stone, Material = Enum.Material.Cobblestone }, parent)
+	sign(parent, cf * CFrame.new(0, 21, 3.3), Vector3.new(22, 3, 0.4), nextZone.icon .. &quot; &quot; .. string.upper(nextZone.name), Config.Colors.Gold, Color3.fromRGB(60, 50, 80))
+	local barrier = part({ Name = &quot;Gate&quot;, Size = Vector3.new(19, 19, 1), CFrame = cf * CFrame.new(0, 9.5, 0), Color = Color3.fromRGB(120, 200, 255), Material = Enum.Material.ForceField, Transparency = 0.2 }, parent)
+	barrier:SetAttribute(&quot;ZoneId&quot;, nextZone.id)
+	CollectionService:AddTag(barrier, &quot;Gate&quot;)
+	local prompt = Instance.new(&quot;ProximityPrompt&quot;)
+	prompt.ActionText = &quot;Debloquer (&quot; .. nextZone.price .. &quot;)&quot;
+	prompt.ObjectText = nextZone.name
+	prompt.HoldDuration = 0.5
+	prompt.MaxActivationDistance = 16
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = barrier
+	Kit.avoidSegment(pos, pos - dir * 20, 14)
+end
+
+-- Murs invisibles autour de l'ile avec ouvertures vers les ponts
+local function walls(parent, zone, index)
+	local c = zone.center
+	local half = zone.size / 2
+	local h = 80
+	local openings = {}
+	for _, e in ipairs(exitsOf(index)) do
+		openings[tostring(e.dir)] = e
+	end
+	for _, d in ipairs({ Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }) do
+		local center = c + d * half + Vector3.new(0, h / 2, 0)
+		local cf = CFrame.lookAt(center, center + d)
+		if openings[tostring(d)] then
+			local seg = (zone.size - 26) / 2
+			part({ Size = Vector3.new(seg, h, 2), CFrame = cf * CFrame.new(-(13 + seg / 2), 0, 0), Transparency = 1 }, parent)
+			part({ Size = Vector3.new(seg, h, 2), CFrame = cf * CFrame.new(13 + seg / 2, 0, 0), Transparency = 1 }, parent)
+			local e = openings[tostring(d)]
+			if e.next then
+				-- couloir le long du pont
+				local other = e.zone
+				local b = other.center - d * (other.size / 2)
+				local a = c + d * half
+				local mid = (a + b) / 2 + Vector3.new(0, h / 2, 0)
+				local ccf = CFrame.lookAt(mid, mid + (b - a))
+				for _, x in ipairs({ -13, 13 }) do
+					part({ Size = Vector3.new(2, h, (b - a).Magnitude), CFrame = ccf * CFrame.new(x, 0, 0), Transparency = 1 }, parent)
+				end
+			end
+		else
+			part({ Size = Vector3.new(zone.size, h, 2), CFrame = cf, Transparency = 1 }, parent)
+		end
+	end
+end
+
+local coinSpots = {}
+
+local function computeCoinSpots(zone)
+	local half = zone.size / 2
+	coinSpots[zone.id] = {}
+	local tries = 0
+	while #coinSpots[zone.id] &lt; zone.coinCount and tries &lt; 4000 do
+		tries += 1
+		local pos = zone.center + Vector3.new(R(-half + 22, half - 22), 2.2, R(-half + 22, half - 22))
+		if Kit.isFree(pos, 2) then
+			table.insert(coinSpots[zone.id], pos)
+			avoidCircle(pos, 3) -- pas de decor pose sur un coin
+		end
+	end
+end
+
+-- Starter Village ------------------------------------------------------------------------------
+
+local raceWaypoints = {}
+
+local function buildRaceTrack(root, center)
+	local rx, rz = 36, 22
+	local n = 28
+	for i = 0, n - 1 do
+		local a = (i / n) * math.pi * 2
+		table.insert(raceWaypoints, center + Vector3.new(math.cos(a) * rx, 1.2, math.sin(a) * rz))
+	end
+	for i = 1, n do
+		local p1 = raceWaypoints[i] - Vector3.new(0, 1.2, 0)
+		local p2 = raceWaypoints[(i % n) + 1] - Vector3.new(0, 1.2, 0)
+		local len = (p2 - p1).Magnitude + 1.2
+		local cf = CFrame.lookAt((p1 + p2) / 2 + Vector3.new(0, 0.15, 0), p2 + Vector3.new(0, 0.15, 0))
+		part({ Name = &quot;Track&quot;, Size = Vector3.new(11, 0.3, len), CFrame = cf, Color = Color3.fromRGB(215, 110, 70), Material = Enum.Material.Sand, CanCollide = false }, root)
+		for _, x in ipairs({ -5.8, 5.8 }) do
+			part({ Name = &quot;TrackEdge&quot;, Size = Vector3.new(0.6, 0.6, len), CFrame = cf * CFrame.new(x, 0.15, 0), Color = (i % 2 == 0) and Color3.fromRGB(240, 60, 60) or Color3.new(1, 1, 1), CanCollide = false }, root)
+		end
+	end
+	-- Ligne d'arrivee en damier
+	local start = raceWaypoints[1] - Vector3.new(0, 1.2, 0)
+	for row = 0, 1 do
+		for col = 0, 5 do
+			part({ Size = Vector3.new(1.8, 0.35, 1.8), CFrame = CFrame.new(start + Vector3.new(-1.8 + row * 1.8 + 0.9, 0.2, -5 + col * 1.8 + 0.9)), Color = ((row + col) % 2 == 0) and Color3.new(1, 1, 1) or Color3.fromRGB(25, 25, 30), CanCollide = false }, root)
+		end
+	end
+	for _, z in ipairs({ -7, 7 }) do
+		part({ Size = Vector3.new(1.2, 10, 1.2), CFrame = CFrame.new(start + Vector3.new(0, 5, z)), Color = Color3.new(1, 1, 1), Material = Enum.Material.Metal }, root)
+	end
+	sign(root, CFrame.new(start + Vector3.new(0, 10.5, 0)) * CFrame.Angles(0, math.pi / 2, 0), Vector3.new(15, 2.8, 0.5), &quot;ARRIVEE&quot;, Color3.new(1, 1, 1), Color3.fromRGB(230, 60, 60))
+	-- Tribunes
+	for k = 0, 2 do
+		part({ Size = Vector3.new(34, 1.4 + k * 1.4, 3.2), CFrame = CFrame.new(center + Vector3.new(0, 0.7 + k * 0.7, rz + 12 + k * 3.2)), Color = (k % 2 == 0) and Color3.fromRGB(70, 150, 255) or Color3.new(1, 1, 1) }, root)
+	end
+	for _, x in ipairs({ -30, -10, 10, 30 }) do
+		local flag = part({ Size = Vector3.new(0.3, 8, 0.3), CFrame = CFrame.new(center + Vector3.new(x, 4, rz + 22)), Color = Color3.new(1, 1, 1) }, root)
+		part({ Size = Vector3.new(0.1, 2, 3), CFrame = CFrame.new(center + Vector3.new(x, 7, rz + 23.5)), Color = Color3.fromRGB(255, 200, 40), CanCollide = false }, root)
+	end
+	stand(root, center + Vector3.new(0, 0, -rz - 14), center + Vector3.new(0, 0, -rz - 40), &quot;COURSES&quot;, Color3.fromRGB(240, 60, 60), &quot;RaceStand&quot;, {}, &quot;Courses&quot;)
+	avoidCircle(center, rx + 10)
+end
+
+
+local function buildVillage(folder, zone)
+	local c = zone.center
+	local spawnPos = Config.Map.SpawnPosition
+	local pal = PALETTES.Village
+
+	-- Spawn
+	local existing = workspace:FindFirstChildOfClass(&quot;SpawnLocation&quot;)
+	if existing then
+		existing:Destroy()
+	end
+	local spawn = Instance.new(&quot;SpawnLocation&quot;)
+	spawn.Name = &quot;MainSpawn&quot;
+	spawn.Shape = Enum.PartType.Cylinder
+	spawn.Size = Vector3.new(0.6, 16, 16)
+	spawn.CFrame = CFrame.new(spawnPos.X, 0.3, spawnPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+	spawn.Anchored = true
+	spawn.Material = Enum.Material.SmoothPlastic
+	spawn.Color = Color3.fromRGB(120, 210, 255)
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Parent = folder
+	local ring = cylinder(CFrame.new(spawnPos.X, 0.4, spawnPos.Z), 0.4, 8.5, WHITE, folder, Enum.Material.Neon)
+	ring.CanCollide = false
+	ring.Transparency = 0.4
+	-- place du spawn pavee + fleurs
+	cylinder(CFrame.new(spawnPos.X, 0.1, spawnPos.Z), 0.2, 24, pal.path, folder).CanCollide = false
+	avoidCircle(Vector3.new(spawnPos.X, 0, spawnPos.Z), 26)
+	for _, x in ipairs({ -1, 1 }) do
+		Kit.flowerBed(folder, Vector3.new(spawnPos.X + x * 30, 0, spawnPos.Z + 6), 6)
+		Kit.statue(folder, Vector3.new(spawnPos.X + x * 22, 0, spawnPos.Z - 26), x &gt; 0 and &quot;egg&quot; or &quot;paw&quot;)
+	end
+
+	-- Grande entree : arche &quot;PET RUSH&quot; sur l'avenue
+	Kit.archway(folder, CFrame.new(c + Vector3.new(0, 0, 112)) * CFrame.Angles(0, math.pi, 0), 30, 16, Color3.fromRGB(250, 245, 255), &quot;PET RUSH&quot;, Color3.fromRGB(255, 210, 60))
+	for _, x in ipairs({ -1, 1 }) do
+		Kit.hedge(folder, c + Vector3.new(x * 19, 0, 112), c + Vector3.new(x * 60, 0, 112), 3.4)
+		Kit.lantern(folder, c + Vector3.new(x * 20, 0, 104))
+	end
+
+	-- Avenue : lanternes + echoppes du marche
+	for z = 20, 190, 20 do
+		for _, x in ipairs({ -11, 11 }) do
+			if math.abs(z - 112) &gt; 8 then
+				Kit.lantern(folder, c + Vector3.new(x, 0, z))
+			end
+		end
+	end
+	for z = -180, -40, 20 do
+		for _, x in ipairs({ -11, 11 }) do
+			Kit.lantern(folder, c + Vector3.new(x, 0, z))
+		end
+	end
+	local k = 0
+	for _, z in ipairs({ 58, 76, 94 }) do
+		for _, x in ipairs({ -1, 1 }) do
+			k += 1
+			Kit.stall(folder, CFrame.lookAt(c + Vector3.new(x * 22, 0, z), c + Vector3.new(0, 0, z)), k)
+		end
+	end
+
+	-- Grande place centrale : fontaine monumentale, parterres, bancs, panneau des zones
+	local plaza = cylinder(CFrame.new(c + Vector3.new(0, 0.14, 0)), 0.25, 44, Color3.fromRGB(240, 232, 215), folder)
+	plaza.CanCollide = false
+	for r = 12, 40, 14 do
+		local band = cylinder(CFrame.new(c + Vector3.new(0, 0.16, 0)), 0.25, r, (r % 28 == 12) and Color3.fromRGB(225, 205, 170) or Color3.fromRGB(245, 238, 222), folder)
+		band.CanCollide = false
+	end
+	cylinder(CFrame.new(c + Vector3.new(0, 1, 0)), 2, 14, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
+	local water = cylinder(CFrame.new(c + Vector3.new(0, 1.8, 0)), 0.6, 13, Kit.WATER, folder, Enum.Material.Glass)
+	water.Transparency = 0.25
+	water.CanCollide = false
+	cylinder(CFrame.new(c + Vector3.new(0, 4.5, 0)), 6, 2.2, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
+	cylinder(CFrame.new(c + Vector3.new(0, 7.8, 0)), 0.8, 6.5, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
+	local w2 = cylinder(CFrame.new(c + Vector3.new(0, 8.3, 0)), 0.4, 6, Kit.WATER, folder, Enum.Material.Glass)
+	w2.Transparency = 0.25
+	w2.CanCollide = false
+	-- oeuf dore geant au sommet
+	local egg = ballPart(CFrame.new(c + Vector3.new(0, 13, 0)), 7, Config.Colors.Gold, folder, Enum.Material.Metal)
+	egg.Reflectance = 0.3
+	local em = Instance.new(&quot;SpecialMesh&quot;)
+	em.MeshType = Enum.MeshType.Sphere
+	em.Scale = Vector3.new(1, 1.3, 1)
+	em.Parent = egg
+	local sp = Instance.new(&quot;Sparkles&quot;)
+	sp.SparkleColor = Config.Colors.Gold
+	sp.Parent = egg
+	local jet = part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(c + Vector3.new(0, 9, 0)), Transparency = 1, CanCollide = false }, folder)
+	local spray = Instance.new(&quot;ParticleEmitter&quot;)
+	spray.Rate = 70
+	spray.Lifetime = NumberRange.new(1, 1.4)
+	spray.Speed = NumberRange.new(12, 16)
+	spray.SpreadAngle = Vector2.new(35, 35)
+	spray.Acceleration = Vector3.new(0, -40, 0)
+	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0.9) })
+	spray.Transparency = NumberSequence.new(0.2, 1)
+	spray.Color = ColorSequence.new(Color3.fromRGB(200, 235, 255))
+	spray.Parent = jet
+	avoidCircle(c, 46)
+	for i = 0, 3 do
+		local a = math.rad(45 + i * 90)
+		Kit.flowerBed(folder, c + Vector3.new(math.cos(a) * 28, 0, math.sin(a) * 28), 5)
+		Kit.bench(folder, CFrame.lookAt(c + Vector3.new(math.cos(a) * 20, 0, math.sin(a) * 20), c))
+	end
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2 + 0.26
+		Kit.lantern(folder, c + Vector3.new(math.cos(a) * 41, 0, math.sin(a) * 41))
+	end
+	local entries = {}
+	for _, z in ipairs(Config.Zones) do
+		if z.id ~= &quot;Village&quot; then
+			table.insert(entries, { text = z.icon .. &quot; &quot; .. z.name, dir = z.center - c, color = z.ground:Lerp(Color3.new(0, 0, 0), 0.25) })
+		end
+	end
+	Kit.signpost(folder, c + Vector3.new(14, 0, 36), { entries[1], entries[2], entries[3], entries[4] })
+	Kit.signpost(folder, c + Vector3.new(-14, 0, 36), { entries[5], entries[6], entries[7] })
+
+	-- Rue est-ouest vers les belvederes (vue sur Beach et Pet Kingdom)
+	for _, sx in ipairs({ -1, 1 }) do
+		local a = c + Vector3.new(sx * 44, 0, 0)
+		local b = c + Vector3.new(sx * 186, 0, 0)
+		local cf = CFrame.lookAt((a + b) / 2 + Vector3.new(0, 0.11, 0), b + Vector3.new(0, 0.11, 0))
+		part({ Name = &quot;Path&quot;, Size = Vector3.new(12, 0.2, (b - a).Magnitude), CFrame = cf, Color = pal.path, CanCollide = false }, folder)
+		Kit.avoidSegment(a, b, 9)
+		for x = 60, 170, 22 do
+			Kit.lantern(folder, c + Vector3.new(sx * x, 0, 9))
+		end
+		-- belvedere sureleve au bord de l'ile
+		local top = Kit.plateau(folder, c + Vector3.new(sx * 172, 0, 0), 14, 5, Color3.fromRGB(235, 225, 205), Color3.fromRGB(190, 175, 150), Vector3.new(-sx, 0, 0))
+		for _, z in ipairs({ -6, 6 }) do
+			Kit.bench(folder, CFrame.lookAt(top + Vector3.new(0, 0, z), top + Vector3.new(sx * 10, 0, z)))
+		end
+		-- longue-vue
+		cylinder(CFrame.new(top + Vector3.new(sx * 6, 1.5, 0)), 3, 0.3, Color3.fromRGB(60, 60, 70), folder, Enum.Material.Metal)
+		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 0.9, 0.9), CFrame = CFrame.new(top + Vector3.new(sx * 6, 3.3, 0)) * CFrame.Angles(0, 0, math.rad(sx * 15)), Color = Config.Colors.Gold, Material = Enum.Material.Metal }, folder)
+		Kit.fenceLine(folder, top + Vector3.new(sx * 12, 0, -6), top + Vector3.new(sx * 12, 0, 6))
+	end
+
+	-- Zone des oeufs (ouest de la place)
+	local eggDef = Config.EggById[zone.egg]
+	local eggPos = c + Vector3.new(-70, 0, -40)
+	stand(folder, eggPos, c, string.upper(eggDef.name), eggDef.color:Lerp(Color3.fromRGB(150, 80, 255), 0.45), &quot;EggStand&quot;, { EggId = eggDef.id }, &quot;Ouvrir un oeuf&quot;)
+	Kit.eggDisplay(folder, eggPos + Vector3.new(-9, 0, -9), eggDef.color)
+	Kit.eggDisplay(folder, eggPos + Vector3.new(9, 0, 9), eggDef.color:Lerp(Color3.fromRGB(255, 200, 255), 0.5))
+	Kit.archway(folder, CFrame.lookAt(eggPos + Vector3.new(-14, 0, -14), c) , 22, 12, Color3.fromRGB(255, 235, 250), &quot;ECLOSERIE&quot;, Color3.new(1, 1, 1))
+	Kit.avoidSegment(eggPos, c, 10)
+
+	-- Cadeau du jour + classement (est de la place)
+	stand(folder, c + Vector3.new(66, 0, 34), c, &quot;CADEAU&quot;, Color3.fromRGB(255, 170, 30), &quot;DailyStand&quot;, {}, &quot;Recuperer&quot;)
+	-- Classement
+	local boardPos = c + Vector3.new(48, 0, -42)
+	local board = part({ Name = &quot;Leaderboard&quot;, Size = Vector3.new(20, 16, 1), CFrame = CFrame.lookAt(boardPos + Vector3.new(0, 10, 0), Vector3.new(c.X, 10, c.Z)), Color = Color3.fromRGB(40, 45, 90) }, folder)
+	part({ Size = Vector3.new(21.6, 17.6, 0.8), CFrame = board.CFrame * CFrame.new(0, 0, 0.3), Color = Config.Colors.Gold, Material = Enum.Material.Metal }, folder)
+	for _, x in ipairs({ -8, 8 }) do
+		part({ Size = Vector3.new(1, 3, 1), CFrame = board.CFrame * CFrame.new(x, -9.5, 0.3), Color = Config.Colors.Gold, Material = Enum.Material.Metal }, folder)
+	end
+	local gui = Instance.new(&quot;SurfaceGui&quot;)
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 30
+	gui.LightInfluence = 0
+	local head = Instance.new(&quot;TextLabel&quot;)
+	head.Size = UDim2.new(1, 0, 0.16, 0)
+	head.BackgroundTransparency = 1
+	head.Text = &quot;TOP COINS&quot;
+	head.TextColor3 = Config.Colors.Gold
+	head.Font = Enum.Font.FredokaOne
+	head.TextScaled = true
+	head.Parent = gui
+	local st = Instance.new(&quot;UIStroke&quot;)
+	st.Color = Color3.fromRGB(22, 24, 52)
+	st.Thickness = 4
+	st.Parent = head
+	local list = Instance.new(&quot;TextLabel&quot;)
+	list.Size = UDim2.new(1, -30, 0.8, 0)
+	list.Position = UDim2.new(0, 15, 0.18, 0)
+	list.BackgroundTransparency = 1
+	list.Text = &quot;Chargement...&quot;
+	list.TextColor3 = Color3.new(1, 1, 1)
+	list.Font = Enum.Font.FredokaOne
+	list.TextScaled = true
+	list.TextXAlignment = Enum.TextXAlignment.Left
+	list.TextYAlignment = Enum.TextYAlignment.Top
+	list.Parent = gui
+	gui.Parent = board
+	MapBuilder.LeaderboardLabel = list
+	avoidCircle(boardPos, 12)
+
+
+	-- Piste de course (nord-est)
+	buildRaceTrack(folder, c + Vector3.new(110, 0, -110))
+
+	-- Maisons autour de la place, tournees vers le centre
+	local houses = {
+		Vector3.new(-120, 0, 60), Vector3.new(-150, 0, 20), Vector3.new(-95, 0, 105), Vector3.new(-140, 0, -80),
+		Vector3.new(-160, 0, 150), Vector3.new(120, 0, 60), Vector3.new(95, 0, 105), Vector3.new(150, 0, 30), Vector3.new(60, 0, 150),
+	}
+	for i, p in ipairs(houses) do
+		local pos = c + p
+		if Kit.isFree(pos, 6) then
+			Kit.house(folder, CFrame.lookAt(pos, Vector3.new(c.X, 0, c.Z)), i)
+			avoidCircle(pos, 15)
+			Kit.lantern(folder, pos + (c - pos).Unit * 12 + Vector3.new(4, 0, 0))
+		end
+	end
+
+	-- Etang, ruisseau et cascade a l'ouest, petite colline avec kiosque
+	Kit.pond(folder, c + Vector3.new(-110, 0, -150), 20, Color3.fromRGB(250, 230, 170))
+	Kit.footbridge(folder, c + Vector3.new(-110, 0, -150), Vector3.new(1, 0, 0), 6, 44)
+	local top = Kit.plateau(folder, c + Vector3.new(-160, 0, -40), 18, 7, pal.top, pal.dirt, Vector3.new(1, 0, 0))
+	Kit.gazebo(folder, top + Vector3.new(0, -0.5, 0), Color3.fromRGB(255, 140, 180))
+	Kit.windmill(folder, c + Vector3.new(160, 0, 150), Vector3.new(-1, 0, -1))
+	-- champ de fleurs en rangees pres du moulin
+	local flowerCols = { Color3.fromRGB(255, 110, 160), Color3.fromRGB(255, 225, 70), Color3.fromRGB(150, 130, 255) }
+	for row = 0, 4 do
+		for t = 0, 9 do
+			local p = c + Vector3.new(120 + t * 4, 0, 112 + row * 5)
+			if Kit.isFree(p) then
+				ballPart(CFrame.new(p + Vector3.new(0, 0.9, 0)), 1.4, Kit.LEAF_COLORS[1], folder, Enum.Material.Grass)
+				ballPart(CFrame.new(p + Vector3.new(0, 1.6, 0)), 0.9, flowerCols[row % 3 + 1], folder)
+			end
+		end
+	end
+	Kit.avoidSegment(c + Vector3.new(118, 0, 114), c + Vector3.new(158, 0, 134), 6)
+
+	-- Vegetation repartie
+	Kit.scatter(zone, 55, 30, 300, function(pos)
+		Kit.roundTree(folder, pos, R(0.8, 1.3))
+		avoidCircle(pos, 5)
+	end, 4)
+	Kit.scatter(zone, 14, 60, 300, function(pos)
+		Kit.pineTree(folder, pos, R(1, 1.4))
+		avoidCircle(pos, 4)
+	end, 3)
+	Kit.scatter(zone, 45, 20, 300, function(pos)
+		if rng:NextNumber() &lt; 0.5 then
+			Kit.bush(folder, pos, R(0.8, 1.2), rng:NextNumber() &lt; 0.6 and Color3.fromRGB(255, 120, 170) or nil)
+		else
+			Kit.flowerPatch(folder, pos)
+		end
+		avoidCircle(pos, 2.5)
+	end, 1)
+	Kit.scatter(zone, 12, 40, 300, function(pos)
+		Kit.rock(folder, pos, R(0.7, 1.3))
+		avoidCircle(pos, 3)
+	end)
+	Kit.scatter(zone, 8, 50, 300, function(pos)
+		Kit.bench(folder, CFrame.new(pos) * CFrame.Angles(0, R(0, 6.28), 0))
+	end, 3)
+end
+
+-- Autres zones : stand a oeuf eventuel, panneau d'entree, decor thematique
+local function buildZone(root, zone, index)
+	local folder = Instance.new(&quot;Folder&quot;)
+	folder.Name = &quot;Zone_&quot; .. zone.id
+	folder:SetAttribute(&quot;ZoneId&quot;, zone.id)
+	folder.Parent = root
+	local c = zone.center
+	local half = zone.size / 2
+	island(root:FindFirstChild(&quot;World&quot;), zone, index)
+	walls(folder, zone, index)
+	for _, e in ipairs(exitsOf(index)) do
+		if e.next then
+			gateArch(folder, c + e.dir * half, e.dir, e.zone)
+		else
+			-- panneau de bienvenue a l'entree de la zone
+			local p = c + e.dir * (half - 16)
+			local side = Vector3.new(e.dir.Z, 0, e.dir.X)
+			local cf = CFrame.lookAt(p + side * 18 + Vector3.new(0, 6, 0), p + side * 18 + Vector3.new(0, 6, 0) + e.dir)
+			sign(folder, cf, Vector3.new(18, 4, 0.6), zone.icon .. &quot; &quot; .. string.upper(zone.name), Config.Colors.Gold, Color3.fromRGB(150, 100, 60))
+			for _, x in ipairs({ -6, 6 }) do
+				part({ Size = Vector3.new(0.8, 6, 0.8), CFrame = cf * CFrame.new(x, -3, 0), Color = Color3.fromRGB(130, 85, 50), Material = Enum.Material.Wood }, folder)
+			end
+			avoidCircle(p + side * 18, 10)
+			for _, s in ipairs({ -1, 1 }) do
+				Kit.lantern(folder, p + side * s * 11 - e.dir * 6)
+			end
+		end
+	end
+	if index == 1 then
+		buildVillage(folder, zone)
+	else
+		if zone.egg then
+			local egg = Config.EggById[zone.egg]
+			-- stand a oeuf a cote de la place centrale
+			local d = exitsOf(index)[1].dir
+			local side = Vector3.new(d.Z, 0, d.X)
+			local eggPos = c + side * 48 + d * 16
+			stand(folder, eggPos, c, string.upper(egg.name), egg.color:Lerp(Color3.fromRGB(150, 80, 255), 0.45), &quot;EggStand&quot;, { EggId = egg.id }, &quot;Ouvrir un oeuf&quot;)
+			Kit.eggDisplay(folder, eggPos + side * 9 + d * 9, egg.color)
+			Kit.eggDisplay(folder, eggPos + side * 9 - d * 9, egg.color:Lerp(Color3.fromRGB(255, 200, 255), 0.5))
+			Kit.avoidSegment(eggPos, c, 10)
+		end
+		-- lanternes autour de la place
+		for i = 0, 7 do
+			local a = i / 8 * math.pi * 2 + 0.39
+			Kit.lantern(folder, c + Vector3.new(math.cos(a) * 30, 0, math.sin(a) * 30))
+		end
+		MapZones[zone.id](folder, zone)
+	end
+	hills(root:FindFirstChild(&quot;World&quot;), zone)
+	computeCoinSpots(zone)
+end
+
+-- Arriere-plan : iles lointaines, montgolfieres, nuages, mer -----------------------------------
+
+local function buildBackdrop(world)
+	part({ Name = &quot;Sea&quot;, Size = Vector3.new(4000, 2, 4000), CFrame = CFrame.new(0, -190, 0), Color = Color3.fromRGB(70, 170, 245), Reflectance = 0.1, CanCollide = false, CanQuery = false }, world)
+	local far = Instance.new(&quot;Folder&quot;)
+	far.Name = &quot;Backdrop&quot;
+	far.Parent = world
+	local spots = {
+		{ Vector3.new(-900, 40, -800), 90, &quot;castle&quot; }, { Vector3.new(0, 70, -1000), 120, &quot;trees&quot; }, { Vector3.new(900, 30, -700), 80, &quot;pine&quot; },
+		{ Vector3.new(1050, 60, 300), 100, &quot;trees&quot; }, { Vector3.new(950, 20, 1000), 90, &quot;candy&quot; }, { Vector3.new(0, 50, 1100), 110, &quot;pine&quot; },
+		{ Vector3.new(-950, 35, 900), 90, &quot;palm&quot; }, { Vector3.new(-1100, 70, 100), 100, &quot;castle&quot; }, { Vector3.new(-300, -60, -900), 60, &quot;trees&quot; },
+		{ Vector3.new(400, -50, 900), 60, &quot;trees&quot; }, { Vector3.new(-720, 120, -300), 50, &quot;trees&quot; }, { Vector3.new(760, 110, -260), 50, &quot;candy&quot; },
+	}
+	for _, s in ipairs(spots) do
+		local pos, size, kind = s[1], s[2], s[3]
+		local top = kind == &quot;candy&quot; and Color3.fromRGB(255, 175, 215) or (kind == &quot;palm&quot; and Color3.fromRGB(255, 228, 165) or Color3.fromRGB(125, 215, 85))
+		Kit.farIsland(far, pos, size, top, Color3.fromRGB(165, 110, 65), function(p)
+			for i = 1, math.floor(size / 12) do
+				local q = p + Vector3.new(R(-size * 0.35, size * 0.35), 0, R(-size * 0.35, size * 0.35))
+				if kind == &quot;pine&quot; then
+					Kit.pineTree(far, q, R(2, 3))
+				elseif kind == &quot;palm&quot; then
+					Kit.palmTree(far, q, R(2, 3))
+				elseif kind == &quot;candy&quot; then
+					local col = Color3.fromHSV(R(0, 1), 0.5, 1)
+					cylinder(CFrame.new(q + Vector3.new(0, 10, 0)), 20, 0.8, WHITE, far)
+					part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(2, 14, 14), CFrame = CFrame.new(q + Vector3.new(0, 26, 0)) * CFrame.Angles(0, R(0, 3), 0), Color = col, CanCollide = false }, far)
+				else
+					Kit.roundTree(far, q, R(2, 3))
+				end
+			end
+			if kind == &quot;castle&quot; then
+				for _, o in ipairs({ Vector3.new(-14, 0, 0), Vector3.new(14, 0, 0), Vector3.new(0, 0, -10) }) do
+					cylinder(CFrame.new(p + o + Vector3.new(0, 18, 0)), 36, 6, Color3.fromRGB(235, 230, 245), far)
+					local roofBall = ballPart(CFrame.new(p + o + Vector3.new(0, 38, 0)), 13, Color3.fromRGB(70, 90, 220), far)
+					roofBall.CanCollide = false
+				end
+				part({ Size = Vector3.new(30, 20, 14), CFrame = CFrame.new(p + Vector3.new(0, 10, 0)), Color = Color3.fromRGB(235, 230, 245), CanCollide = false }, far)
+			end
+		end)
+	end
+	-- arc-en-ciel au-dessus du monde
+	local rainbow = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 160, 60), Color3.fromRGB(255, 230, 70), Color3.fromRGB(110, 220, 90), Color3.fromRGB(80, 170, 255), Color3.fromRGB(160, 100, 255) }
+	local center = Vector3.new(-200, -40, -1150)
+	for b, col in ipairs(rainbow) do
+		local r = 520 - b * 14
+		for i = 0, 40 do
+			local a = math.pi * i / 40
+			local seg = part({ Size = Vector3.new(14, 40, 4), CFrame = CFrame.new(center + Vector3.new(math.cos(a) * r, math.sin(a) * r, 0)) * CFrame.Angles(0, 0, a), Color = col, Material = Enum.Material.Neon, Transparency = 0.45, CanCollide = false, CanQuery = false }, far)
+			seg.CastShadow = false
+		end
+	end
+	-- montgolfieres
+	local balloonCols = { Color3.fromRGB(255, 90, 120), Color3.fromRGB(90, 180, 255), Color3.fromRGB(255, 200, 60), Color3.fromRGB(140, 220, 100), Color3.fromRGB(190, 120, 255) }
+	for k = 1, 9 do
+		local a = k / 9 * math.pi * 2
+		Kit.balloon(far, Vector3.new(math.cos(a) * R(650, 850), R(70, 150), math.sin(a) * R(650, 850)), balloonCols[(k % #balloonCols) + 1])
+	end
+	for k = 1, 40 do
+		local a = R(0, math.pi * 2)
+		local r = R(700, 1300)
+		Kit.cloudPuff(far, Vector3.new(math.cos(a) * r, R(-90, 60), math.sin(a) * r), R(1, 2.2))
+	end
+	for k = 1, 18 do
+		Kit.cloudPuff(far, Vector3.new(R(-700, 700), R(110, 170), R(-700, 700)), R(1.2, 2.2))
+	end
+end
+
+-- Construction ------------------------------------------------------------------------------
+
+function MapBuilder.Build()
+	for _, name in ipairs({ &quot;PetRush&quot;, &quot;Baseplate&quot; }) do
+		local old = workspace:FindFirstChild(name)
+		if old then
+			old:Destroy()
+		end
+	end
+	Terrain:Clear()
+	local root = Instance.new(&quot;Folder&quot;)
+	root.Name = &quot;PetRush&quot;
+	root.Parent = workspace
+	local world = Instance.new(&quot;Folder&quot;)
+	world.Name = &quot;World&quot;
+	world.Parent = root
+	buildLighting()
+	-- ponts d'abord (reservent leurs couloirs), puis chaque zone
+	for i, zone in ipairs(Config.Zones) do
+		local nextZone = Config.Zones[i + 1]
+		if nextZone then
+			local d = dirTo(zone, nextZone)
+			bridge(world, zone.center + d * (zone.size / 2), nextZone.center - d * (nextZone.size / 2))
+		end
+	end
+	for i, zone in ipairs(Config.Zones) do
+		local ok, err = pcall(buildZone, root, zone, i)
+		if not ok then
+			warn(&quot;[PetRush] Decor de &quot; .. zone.id .. &quot; : &quot; .. tostring(err))
+			if not coinSpots[zone.id] then
+				computeCoinSpots(zone)
+			end
+		end
+	end
+	buildBackdrop(world)
+	for _, name in ipairs({ &quot;Coins&quot;, &quot;Racers&quot; }) do
+		if not workspace:FindFirstChild(name) then
+			local f = Instance.new(&quot;Folder&quot;)
+			f.Name = name
+			f.Parent = workspace
+		end
+	end
+	Players.RespawnTime = 2
+	return root
+end
+
+function MapBuilder.GetCoinSpots(zoneId)
+	return coinSpots[zoneId] or {}
+end
+
+function MapBuilder.GetRaceWaypoints()
+	return raceWaypoints
+end
+
+function MapBuilder.ZoneAt(position)
+	for _, zone in ipairs(Config.Zones) do
+		local half = zone.size / 2 + 50
+		if math.abs(position.X - zone.center.X) &lt;= half and math.abs(position.Z - zone.center.Z) &lt;= half then
+			return zone
+		end
+	end
+	return nil
+end
+
+return MapBuilder
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">MapKit</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Boite a outils du decor de PET RUSH : pieces de base, props (arbres, maisons, lanternes...),
+-- structures (stands, plateformes, escaliers, ponts) et gestion des emplacements libres.
+-- Utilisee par MapBuilder (monde, village) et MapZones (decor de chaque zone).
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local Kit = {}
+
 local rng = Random.new(42) -- decor identique a chaque lancement
+Kit.rng = rng
 
 local function R(a, b)
 	return rng:NextNumber(a, b)
+end
+Kit.R = R
+
+-- Emplacements reserves (pas de coins / props dessus)
+local avoid = {}
+Kit.avoid = avoid
+local function avoidCircle(pos, radius)
+	table.insert(avoid, { pos = pos, radius = radius })
+end
+Kit.avoidCircle = avoidCircle
+function Kit.avoidSegment(a, b, radius)
+	local d = (b - a)
+	local n = math.max(1, math.ceil(d.Magnitude / (radius * 0.8)))
+	for i = 0, n do
+		avoidCircle(a + d * (i / n), radius)
+	end
+end
+function Kit.isFree(pos, margin)
+	margin = margin or 0
+	for _, av in ipairs(avoid) do
+		local dx, dz = pos.X - av.pos.X, pos.Z - av.pos.Z
+		if dx * dx + dz * dz &lt; (av.radius + margin) ^ 2 then
+			return false
+		end
+	end
+	return true
 end
 
 local KEEP_MATERIAL = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
@@ -2966,66 +3808,6 @@ local function sign(parent, cf, size, text, textColor, bg)
 	return board
 end
 
--- Eclairage ------------------------------------------------------------------------------
-
-local function buildLighting()
-	Lighting.ClockTime = 14
-	Lighting.GeographicLatitude = 30
-	Lighting.Brightness = 2.4
-	Lighting.Ambient = Color3.fromRGB(140, 140, 160)
-	Lighting.OutdoorAmbient = Color3.fromRGB(165, 165, 185)
-	Lighting.EnvironmentDiffuseScale = 0.6
-	Lighting.EnvironmentSpecularScale = 0.4
-	Lighting.ShadowSoftness = 0.5
-	Lighting.GlobalShadows = true
-	Lighting.FogEnd = 100000
-	for _, child in ipairs(Lighting:GetChildren()) do
-		if child:IsA(&quot;PostEffect&quot;) or child:IsA(&quot;Atmosphere&quot;) or child:IsA(&quot;Sky&quot;) then
-			child:Destroy()
-		end
-	end
-	local atmosphere = Instance.new(&quot;Atmosphere&quot;)
-	atmosphere.Density = 0.18
-	atmosphere.Offset = 0
-	atmosphere.Color = Color3.fromRGB(170, 215, 255)
-	atmosphere.Decay = Color3.fromRGB(120, 180, 255)
-	atmosphere.Glare = 0
-	atmosphere.Haze = 0
-	atmosphere.Parent = Lighting
-	local sky = Instance.new(&quot;Sky&quot;)
-	sky.SunAngularSize = 12
-	sky.Parent = Lighting
-	local bloom = Instance.new(&quot;BloomEffect&quot;)
-	bloom.Intensity = 0.25
-	bloom.Size = 18
-	bloom.Threshold = 1.8
-	bloom.Parent = Lighting
-	local cc = Instance.new(&quot;ColorCorrectionEffect&quot;)
-	cc.Name = &quot;PetColor&quot;
-	cc.Saturation = 0.22
-	cc.Contrast = 0.05
-	cc.Brightness = 0.03
-	cc.Parent = Lighting
-	local clouds = Terrain:FindFirstChildOfClass(&quot;Clouds&quot;) or Instance.new(&quot;Clouds&quot;)
-	clouds.Cover = 0.45
-	clouds.Density = 0.5
-	clouds.Color = Color3.new(1, 1, 1)
-	clouds.Parent = Terrain
-end
-
--- Iles flottantes ----------------------------------------------------------------------
-
-local avoid = {} -- zones ou les coins ne doivent pas apparaitre { pos, radius }
-
-local function avoidCircle(pos, radius)
-	table.insert(avoid, { pos = pos, radius = radius })
-end
-
-local PALETTES = {
-	Village = { top = Color3.fromRGB(125, 215, 85), drip = Color3.fromRGB(105, 195, 70), dirt = Color3.fromRGB(165, 110, 65), dirt2 = Color3.fromRGB(135, 88, 52), path = Color3.fromRGB(245, 225, 175) },
-	Foret = { top = Color3.fromRGB(85, 180, 80), drip = Color3.fromRGB(65, 155, 65), dirt = Color3.fromRGB(130, 92, 62), dirt2 = Color3.fromRGB(105, 74, 50), path = Color3.fromRGB(205, 165, 110) },
-	Desert = { top = Color3.fromRGB(252, 222, 150), drip = Color3.fromRGB(240, 200, 120), dirt = Color3.fromRGB(225, 155, 90), dirt2 = Color3.fromRGB(195, 128, 75), path = Color3.fromRGB(235, 185, 115) },
-}
 
 local WATER = Color3.fromRGB(80, 190, 255)
 
@@ -3047,24 +3829,6 @@ local function pond(parent, center, radius, rimColor)
 	avoidCircle(center, radius + 6)
 end
 
-local function waterfall(parent, edgePoint)
-	-- ruisseau qui coule vers le bord puis cascade dans le vide
-	local stream = part({ Size = Vector3.new(26, 0.3, 9), CFrame = CFrame.new(edgePoint + Vector3.new(-13, 0.14, 0)), Color = WATER, Material = Enum.Material.Glass, Transparency = 0.1, CanCollide = false }, parent)
-	stream.Reflectance = 0.15
-	local fall = part({ Size = Vector3.new(1.5, 90, 9), CFrame = CFrame.new(edgePoint + Vector3.new(1, -45, 0)), Color = Color3.fromRGB(150, 215, 255), Material = Enum.Material.Glass, Transparency = 0.15, CanCollide = false }, parent)
-	local foam = part({ Size = Vector3.new(2, 2, 9), CFrame = CFrame.new(edgePoint + Vector3.new(1, 0, 0)), Transparency = 1, CanCollide = false }, parent)
-	local spray = Instance.new(&quot;ParticleEmitter&quot;)
-	spray.Rate = 40
-	spray.Lifetime = NumberRange.new(0.6, 1)
-	spray.Speed = NumberRange.new(4, 8)
-	spray.SpreadAngle = Vector2.new(60, 60)
-	spray.Acceleration = Vector3.new(0, -20, 0)
-	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1.4) })
-	spray.Transparency = NumberSequence.new(0.2, 1)
-	spray.Color = ColorSequence.new(Color3.new(1, 1, 1))
-	spray.Parent = foam
-	avoidCircle(edgePoint + Vector3.new(-13, 0, 0), 10)
-end
 
 local function cloudPuff(parent, pos, scale)
 	local puffs = {}
@@ -3080,105 +3844,6 @@ local function cloudPuff(parent, pos, scale)
 	end
 end
 
--- Ile : dessus d'herbe, bord festonne, falaises de terre en escalier, rochers suspendus
-local function island(parent, zone)
-	local pal = PALETTES[zone.id]
-	local c = zone.center
-	local s = zone.size
-	part({ Name = &quot;Ground&quot;, Size = Vector3.new(s, 4, s), CFrame = CFrame.new(c + Vector3.new(0, -2, 0)), Color = pal.top }, parent)
-	-- bord d'herbe arrondi qui deborde
-	local half = s / 2
-	for t = -half, half, 9 do
-		for _, edge in ipairs({ Vector3.new(t, -2.6, half), Vector3.new(t, -2.6, -half), Vector3.new(half, -2.6, t), Vector3.new(-half, -2.6, t) }) do
-			local drip = ballPart(CFrame.new(c + edge), R(5.5, 7.5), pal.drip, parent)
-			drip.CanCollide = false
-		end
-	end
-	-- falaises
-	local y = -4
-	local layers = { { s - 2, 9, pal.dirt }, { s - 18, 11, pal.dirt2 }, { s - 46, 13, pal.dirt }, { s - 90, 14, pal.dirt2 }, { s - 140, 12, pal.dirt } }
-	for _, L in ipairs(layers) do
-		part({ Name = &quot;Cliff&quot;, Size = Vector3.new(L[1], L[2], L[1]), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] / 2, 0)), Color = L[3] }, parent)
-		-- bandes de couleur sur les falaises
-		part({ Name = &quot;CliffBand&quot;, Size = Vector3.new(L[1] + 0.4, 1.2, L[1] + 0.4), CFrame = CFrame.new(c + Vector3.new(0, y - L[2] * 0.35, 0)), Color = L[3]:Lerp(Color3.new(1, 1, 1), 0.15), CanCollide = false }, parent)
-		y -= L[2]
-	end
-	-- rochers suspendus sous l'ile
-	for k = 1, 10 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = R(20, s / 2 - 50)
-		ballPart(CFrame.new(c + Vector3.new(math.cos(a) * r, y - R(0, 8), math.sin(a) * r)), R(8, 16), pal.dirt2, parent)
-	end
-	-- petites collines decoratives
-	for k = 1, 6 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = R(55, half - 18)
-		local pos = c + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-		if math.abs(pos.X) &gt; 24 then
-			local mound = ballPart(CFrame.new(pos), R(16, 26), pal.top:Lerp(Color3.new(0, 0, 0), 0.05), parent)
-			local mesh = Instance.new(&quot;SpecialMesh&quot;)
-			mesh.MeshType = Enum.MeshType.Sphere
-			mesh.Scale = Vector3.new(1, 0.35, 1)
-			mesh.Parent = mound
-			avoidCircle(pos, mound.Size.X / 2 + 2)
-		end
-	end
-	-- allee centrale
-	part({ Name = &quot;Path&quot;, Size = Vector3.new(14, 0.2, s), CFrame = CFrame.new(c + Vector3.new(0, 0.1, 0)), Color = pal.path, CanCollide = false }, parent)
-	for z = -half + 6, half - 6, 7 do
-		part({ Name = &quot;PathStone&quot;, Size = Vector3.new(R(2.5, 4), 0.25, R(2, 3)), CFrame = CFrame.new(c + Vector3.new(R(-5, 5), 0.18, z)) * CFrame.Angles(0, R(0, 3), 0), Color = pal.path:Lerp(Color3.new(1, 1, 1), 0.35), CanCollide = false }, parent)
-	end
-end
-
--- Pont en bois entre deux iles
-local function bridge(parent, z0, z1)
-	local len = math.abs(z0 - z1)
-	local count = math.floor(len / 2.2)
-	for k = 0, count do
-		local z = z1 + 1.1 + k * (len / (count + 1))
-		part({ Name = &quot;Plank&quot;, Size = Vector3.new(15, 0.8, 2), CFrame = CFrame.new(0, -0.4, z) * CFrame.Angles(0, math.rad(R(-1.5, 1.5)), 0), Color = (k % 2 == 0) and Color3.fromRGB(205, 145, 85) or Color3.fromRGB(185, 125, 70) }, parent)
-	end
-	for _, x in ipairs({ -6, 6 }) do
-		part({ Name = &quot;Beam&quot;, Size = Vector3.new(1, 1, len), CFrame = CFrame.new(x, -1.2, (z0 + z1) / 2), Color = Color3.fromRGB(140, 90, 55) }, parent)
-	end
-	for _, x in ipairs({ -7.8, 7.8 }) do
-		for z = z1, z0, 10 do
-			part({ Name = &quot;Post&quot;, Size = Vector3.new(0.9, 4.5, 0.9), CFrame = CFrame.new(x, 1.8, z), Color = Color3.fromRGB(150, 100, 60) }, parent)
-			ballPart(CFrame.new(x, 4.3, z), 1.2, Color3.fromRGB(255, 205, 70), parent)
-		end
-		part({ Name = &quot;Rope&quot;, Size = Vector3.new(0.35, 0.35, len), CFrame = CFrame.new(x, 3.6, (z0 + z1) / 2), Color = Color3.fromRGB(240, 220, 180), CanCollide = false }, parent)
-	end
-end
-
-local function buildWorld(root)
-	Terrain:Clear()
-	local world = Instance.new(&quot;Folder&quot;)
-	world.Name = &quot;World&quot;
-	world.Parent = root
-	for i, zone in ipairs(Config.Zones) do
-		island(world, zone)
-		local nextZone = Config.Zones[i + 1]
-		if nextZone then
-			bridge(world, zone.center.Z - zone.size / 2, nextZone.center.Z + nextZone.size / 2)
-		end
-		waterfall(world, zone.center + Vector3.new(zone.size / 2, 0, R(-40, 40)))
-	end
-	pond(world, Config.ZoneById.Village.center + Vector3.new(-62, 0, -55), 18, Color3.fromRGB(250, 230, 170))
-	pond(world, Config.ZoneById.Foret.center + Vector3.new(55, 0, 40), 16, Color3.fromRGB(150, 110, 75))
-	pond(world, Config.ZoneById.Desert.center + Vector3.new(-50, 0, -40), 16, Color3.fromRGB(120, 210, 90))
-	-- mer tres loin en dessous + nuages autour des iles
-	part({ Name = &quot;Sea&quot;, Size = Vector3.new(2000, 2, 2000), CFrame = CFrame.new(0, -160, -300), Color = Color3.fromRGB(70, 170, 245), Reflectance = 0.1, CanCollide = false, CanQuery = false }, world)
-	for k = 1, 26 do
-		local z = R(-800, 200)
-		local x = (k % 2 == 0 and 1 or -1) * R(150, 420)
-		cloudPuff(world, Vector3.new(x, R(-70, 40), z), R(0.8, 1.6))
-	end
-	for k = 1, 12 do
-		cloudPuff(world, Vector3.new(R(-400, 400), R(70, 120), R(-800, 250)), R(1.2, 2))
-	end
-end
-
--- Props ---------------------------------------------------------------------------------
 
 local LEAF_COLORS = { Color3.fromRGB(95, 200, 75), Color3.fromRGB(120, 220, 85), Color3.fromRGB(75, 180, 70) }
 
@@ -3389,452 +4054,1254 @@ local function eggDisplay(parent, pos, color)
 	TweenService:Create(egg, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = egg.CFrame * CFrame.new(0, 1.2, 0) * CFrame.Angles(0, math.pi, 0) }):Play()
 end
 
--- Arche de pierre + barriere magique (tag Gate)
-local function gateArch(parent, pos, nextZone)
-	local stone = Color3.fromRGB(175, 170, 180)
-	for _, x in ipairs({ -12, 12 }) do
-		part({ Size = Vector3.new(5, 20, 5), CFrame = CFrame.new(pos + Vector3.new(x, 10, 0)), Color = stone, Material = Enum.Material.Cobblestone }, parent)
-		part({ Size = Vector3.new(6.4, 1.6, 6.4), CFrame = CFrame.new(pos + Vector3.new(x, 0.8, 0)), Color = stone:Lerp(Color3.new(0, 0, 0), 0.15), Material = Enum.Material.Cobblestone }, parent)
-		ballPart(CFrame.new(pos + Vector3.new(x, 21.6, 0)), 3.2, Config.Colors.Gold, parent, Enum.Material.Neon)
+-- Nouveaux props ------------------------------------------------------------------------------
+
+local WOOD = Color3.fromRGB(165, 110, 65)
+local WOOD_DARK = Color3.fromRGB(125, 82, 48)
+local STONE = Color3.fromRGB(205, 200, 210)
+local WHITE = Color3.new(1, 1, 1)
+
+-- Banc en bois oriente (face = -Z de cf)
+local function bench(parent, cf)
+	for _, z in ipairs({ -0.5, 0.5 }) do
+		part({ Size = Vector3.new(6, 0.35, 0.9), CFrame = cf * CFrame.new(0, 1.6, z), Color = WOOD }, parent)
 	end
-	part({ Size = Vector3.new(30, 4, 6), CFrame = CFrame.new(pos + Vector3.new(0, 21, 0)), Color = stone, Material = Enum.Material.Cobblestone }, parent)
-	sign(parent, CFrame.new(pos + Vector3.new(0, 21, -3.3)), Vector3.new(20, 3, 0.4), string.upper(nextZone.name), Config.Colors.Gold, Color3.fromRGB(60, 50, 80))
-	local barrier = part({ Name = &quot;Gate&quot;, Size = Vector3.new(19, 19, 1), CFrame = CFrame.new(pos + Vector3.new(0, 9.5, 0)), Color = Color3.fromRGB(120, 200, 255), Material = Enum.Material.ForceField, Transparency = 0.2 }, parent)
-	barrier:SetAttribute(&quot;ZoneId&quot;, nextZone.id)
-	CollectionService:AddTag(barrier, &quot;Gate&quot;)
-	local prompt = Instance.new(&quot;ProximityPrompt&quot;)
-	prompt.ActionText = &quot;Debloquer (&quot; .. nextZone.price .. &quot;)&quot;
-	prompt.ObjectText = nextZone.name
-	prompt.HoldDuration = 0.5
-	prompt.MaxActivationDistance = 16
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = barrier
+	for k = 0, 2 do
+		part({ Size = Vector3.new(6, 0.6, 0.25), CFrame = cf * CFrame.new(0, 2.4 + k * 0.75, 1.05) * CFrame.Angles(math.rad(-10), 0, 0), Color = WOOD }, parent)
+	end
+	for _, x in ipairs({ -2.6, 2.6 }) do
+		part({ Size = Vector3.new(0.4, 1.6, 2.2), CFrame = cf * CFrame.new(x, 0.8, 0.1), Color = Color3.fromRGB(60, 60, 70), Material = Enum.Material.Metal }, parent)
+	end
+	avoidCircle(cf.Position, 4)
 end
 
--- Murs invisibles avec ouverture pour les couloirs
-local function walls(parent, zone, index)
-	local c = zone.center
-	local half = zone.size / 2
-	local hasNorth = Config.Zones[index + 1] ~= nil
-	local hasSouth = index &gt; 1
-	local h = 60
-	part({ Size = Vector3.new(2, h, zone.size), CFrame = CFrame.new(c + Vector3.new(half, h / 2, 0)), Transparency = 1 }, parent)
-	part({ Size = Vector3.new(2, h, zone.size), CFrame = CFrame.new(c + Vector3.new(-half, h / 2, 0)), Transparency = 1 }, parent)
-	for _, side in ipairs({ { -1, hasNorth }, { 1, hasSouth } }) do
-		local z = side[1] * half
-		if side[2] then
-			local seg = (zone.size - 24) / 2
-			part({ Size = Vector3.new(seg, h, 2), CFrame = CFrame.new(c + Vector3.new(-(12 + seg / 2), h / 2, z)), Transparency = 1 }, parent)
-			part({ Size = Vector3.new(seg, h, 2), CFrame = CFrame.new(c + Vector3.new(12 + seg / 2, h / 2, z)), Transparency = 1 }, parent)
-		else
-			part({ Size = Vector3.new(zone.size, h, 2), CFrame = CFrame.new(c + Vector3.new(0, h / 2, z)), Transparency = 1 }, parent)
-		end
+-- Lanterne sur poteau (style jardin), couleur de lumiere au choix
+local function lantern(parent, pos, color)
+	color = color or Color3.fromRGB(255, 210, 140)
+	cylinder(CFrame.new(pos + Vector3.new(0, 2.5, 0)), 5, 0.35, WOOD_DARK, parent, Enum.Material.Wood)
+	part({ Size = Vector3.new(1.6, 0.3, 1.6), CFrame = CFrame.new(pos + Vector3.new(0, 5.1, 0)), Color = WOOD_DARK }, parent)
+	local glass = part({ Size = Vector3.new(1.2, 1.5, 1.2), CFrame = CFrame.new(pos + Vector3.new(0, 6, 0)), Color = color, Material = Enum.Material.Neon, Transparency = 0.1, CanCollide = false }, parent)
+	wedge({ Size = Vector3.new(1.9, 0.8, 0.95), CFrame = CFrame.new(pos + Vector3.new(0, 7.1, -0.475)), Color = Color3.fromRGB(200, 70, 60) }, parent)
+	wedge({ Size = Vector3.new(1.9, 0.8, 0.95), CFrame = CFrame.new(pos + Vector3.new(0, 7.1, 0.475)) * CFrame.Angles(0, math.pi, 0), Color = Color3.fromRGB(200, 70, 60) }, parent)
+	local light = Instance.new(&quot;PointLight&quot;)
+	light.Color = color
+	light.Range = 14
+	light.Brightness = 1.2
+	light.Parent = glass
+	avoidCircle(pos, 2)
+end
+
+-- Parterre de fleurs rond avec bordure
+local FLOWER_COLORS = { Color3.fromRGB(255, 110, 160), Color3.fromRGB(255, 225, 70), Color3.fromRGB(150, 130, 255), Color3.fromRGB(255, 150, 80), WHITE }
+local function flowerBed(parent, pos, radius, palette)
+	palette = palette or FLOWER_COLORS
+	local rim = cylinder(CFrame.new(pos + Vector3.new(0, 0.5, 0)), 1, radius + 0.8, STONE, parent, Enum.Material.Cobblestone)
+	rim.CanCollide = true
+	cylinder(CFrame.new(pos + Vector3.new(0, 0.75, 0)), 1, radius, Color3.fromRGB(120, 80, 50), parent)
+	local n = math.floor(radius * radius * 0.9)
+	for k = 1, n do
+		local a = R(0, math.pi * 2)
+		local r = math.sqrt(R(0, 1)) * (radius - 0.6)
+		local p = pos + Vector3.new(math.cos(a) * r, 1.3, math.sin(a) * r)
+		ballPart(CFrame.new(p), R(0.7, 1.1), palette[rng:NextInteger(1, #palette)], parent)
 	end
-	if hasNorth then
-		local nextZone = Config.Zones[index + 1]
-		local z0 = c.Z - half
-		local z1 = nextZone.center.Z + nextZone.size / 2
-		for _, x in ipairs({ -12, 12 }) do
-			part({ Size = Vector3.new(2, h, math.abs(z0 - z1)), CFrame = CFrame.new(x, h / 2, (z0 + z1) / 2), Transparency = 1 }, parent)
-		end
+	for k = 1, math.max(2, math.floor(radius)) do
+		local a = R(0, math.pi * 2)
+		ballPart(CFrame.new(pos + Vector3.new(math.cos(a) * radius * 0.5, 1.4, math.sin(a) * radius * 0.5)), R(1.4, 2), LEAF_COLORS[rng:NextInteger(1, 3)], parent, Enum.Material.Grass)
+	end
+	avoidCircle(pos, radius + 2)
+end
+
+-- Haie taillee entre deux points
+local function hedge(parent, a, b, height, color)
+	height = height or 3
+	local d = b - a
+	local cf = CFrame.lookAt((a + b) / 2 + Vector3.new(0, height / 2, 0), b + Vector3.new(0, height / 2, 0))
+	part({ Size = Vector3.new(2.6, height, d.Magnitude), CFrame = cf, Color = color or Color3.fromRGB(70, 170, 70), Material = Enum.Material.Grass }, parent)
+	for t = 0, d.Magnitude, 3 do
+		ballPart(CFrame.new(a + d.Unit * t + Vector3.new(0, height, 0)), 2.8, color or Color3.fromRGB(80, 185, 75), parent, Enum.Material.Grass)
 	end
 end
 
--- Zones -----------------------------------------------------------------------------------
+-- Panneau indicateur avec fleches (vers les zones)
+local function signpost(parent, pos, entries)
+	cylinder(CFrame.new(pos + Vector3.new(0, 5, 0)), 10, 0.45, WOOD_DARK, parent, Enum.Material.Wood)
+	for i, e in ipairs(entries) do
+		local dir = Vector3.new(e.dir.X, 0, e.dir.Z).Unit
+		local cf = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(0, math.rad(90), 0)
+		local y = 9.5 - i * 1.9
+		sign(parent, CFrame.new(pos + Vector3.new(0, y, 0)) * cf.Rotation * CFrame.new(3.4, 0, 0), Vector3.new(6.5, 1.5, 0.3), e.text, WHITE, e.color or WOOD)
+		part({ Size = Vector3.new(1.08, 1.08, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, y, 0)) * cf.Rotation * CFrame.new(6.65, 0, 0) * CFrame.Angles(0, 0, math.rad(45)), Color = e.color or WOOD }, parent)
+	end
+	avoidCircle(pos, 3)
+end
 
-local coinSpots = {}
+-- Plateau rond sureleve (colline douce) avec escalier vers dir ; renvoie le dessus
+local function plateau(parent, pos, radius, height, topColor, sideColor, stairDir)
+	cylinder(CFrame.new(pos + Vector3.new(0, height / 2, 0)), height, radius, sideColor, parent)
+	cylinder(CFrame.new(pos + Vector3.new(0, height + 0.25, 0)), 0.5, radius + 0.6, topColor, parent)
+	for k = 1, math.floor(radius * 1.2) do
+		local a = (k / math.floor(radius * 1.2)) * math.pi * 2
+		local drip = ballPart(CFrame.new(pos + Vector3.new(math.cos(a) * (radius + 0.4), height - 0.2, math.sin(a) * (radius + 0.4))), R(2.4, 3.4), topColor, parent)
+		drip.CanCollide = false
+	end
+	if stairDir then
+		local dir = Vector3.new(stairDir.X, 0, stairDir.Z).Unit
+		local steps = math.ceil(height / 1)
+		local cf = CFrame.lookAt(pos, pos + dir)
+		for s = 1, steps do
+			local h = height * (1 - (s - 1) / steps)
+			part({ Name = &quot;Step&quot;, Size = Vector3.new(8, h, 2), CFrame = cf * CFrame.new(0, h / 2, -(radius - 1 + s * 2)), Color = (s % 2 == 0) and STONE or STONE:Lerp(Color3.new(0, 0, 0), 0.08), Material = Enum.Material.Cobblestone }, parent)
+		end
+		for _, x in ipairs({ -4.6, 4.6 }) do
+			lantern(parent, (cf * CFrame.new(x, 0, -(radius + steps * 2 + 1))).Position)
+		end
+		Kit.avoidSegment(pos, pos + dir * (radius + steps * 2 + 2), 6)
+	end
+	avoidCircle(pos, radius + 3)
+	return pos + Vector3.new(0, height + 0.5, 0)
+end
 
-local function scatter(zone, count, minR, maxR, fn)
-	local half = zone.size / 2
-	for k = 1, count do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = R(minR or 20, maxR or (half - 12))
-		local pos = zone.center + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-		local blocked = math.abs(pos.X) &lt; 14 -- allee centrale
-		for _, av in ipairs(avoid) do
-			if (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(av.pos.X, 0, av.pos.Z)).Magnitude &lt; av.radius then
-				blocked = true
+-- Kiosque / gloriette
+local function gazebo(parent, pos, roofColor)
+	cylinder(CFrame.new(pos + Vector3.new(0, 0.5, 0)), 1, 9, STONE, parent, Enum.Material.Marble)
+	for k = 1, 6 do
+		local a = k / 6 * math.pi * 2
+		cylinder(CFrame.new(pos + Vector3.new(math.cos(a) * 7.5, 5, math.sin(a) * 7.5)), 8, 0.5, WHITE, parent, Enum.Material.Marble)
+	end
+	local roof = part({ Shape = Enum.PartType.Ball, Size = Vector3.new(20, 20, 20), CFrame = CFrame.new(pos + Vector3.new(0, 9, 0)), Color = roofColor or Color3.fromRGB(120, 190, 255), CanCollide = false }, parent)
+	local m = Instance.new(&quot;SpecialMesh&quot;)
+	m.MeshType = Enum.MeshType.Sphere
+	m.Scale = Vector3.new(1, 0.45, 1)
+	m.Parent = roof
+	ballPart(CFrame.new(pos + Vector3.new(0, 13.8, 0)), 1.8, Config.Colors.Gold, parent, Enum.Material.Neon)
+	bench(parent, CFrame.new(pos + Vector3.new(0, 1, 3)) * CFrame.Angles(0, math.pi, 0))
+	avoidCircle(pos, 11)
+end
+
+-- Moulin a vent avec pales qui tournent
+local function windmill(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	cylinder(cf * CFrame.new(0, 9, 0), 18, 5, Color3.fromRGB(250, 240, 220), parent)
+	local roof = part({ Shape = Enum.PartType.Ball, Size = Vector3.new(11, 11, 11), CFrame = cf * CFrame.new(0, 18, 0), Color = Color3.fromRGB(220, 75, 65) }, parent)
+	part({ Size = Vector3.new(3, 5, 0.4), CFrame = cf * CFrame.new(0, 2.5, -5), Color = WOOD_DARK, Material = Enum.Material.WoodPlanks }, parent)
+	local hub = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.5, 2, 2), CFrame = cf * CFrame.new(0, 15, -5.6) * CFrame.Angles(0, math.rad(90), 0), Color = WOOD_DARK, CanCollide = false }, parent)
+	local blades = {}
+	for k = 0, 3 do
+		local b = part({ Size = Vector3.new(2.4, 11, 0.3), CFrame = hub.CFrame * CFrame.Angles(math.rad(k * 90), 0, 0) * CFrame.new(0, 6, 0) * CFrame.Angles(0, math.rad(90), 0), Color = (k % 2 == 0) and WHITE or Color3.fromRGB(255, 200, 200), CanCollide = false }, parent)
+		b.Anchored = false
+		local w = Instance.new(&quot;WeldConstraint&quot;)
+		w.Part0 = hub
+		w.Part1 = b
+		w.Parent = b
+		table.insert(blades, b)
+	end
+	TweenService:Create(hub, TweenInfo.new(8, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { CFrame = hub.CFrame * CFrame.Angles(math.rad(-359), 0, 0) }):Play()
+	avoidCircle(pos, 8)
+end
+
+-- Echoppe de marche decorative (auvent raye + caisses de fruits)
+local STALL_COLORS = { Color3.fromRGB(255, 100, 120), Color3.fromRGB(80, 170, 255), Color3.fromRGB(255, 190, 40), Color3.fromRGB(130, 210, 90) }
+local function stall(parent, cf, k)
+	local color = STALL_COLORS[(k % #STALL_COLORS) + 1]
+	part({ Size = Vector3.new(8, 3, 3.5), CFrame = cf * CFrame.new(0, 1.5, 0), Color = WOOD, Material = Enum.Material.WoodPlanks }, parent)
+	for _, x in ipairs({ -3.8, 3.8 }) do
+		part({ Size = Vector3.new(0.5, 7, 0.5), CFrame = cf * CFrame.new(x, 3.5, 1.4), Color = WOOD_DARK }, parent)
+	end
+	for s = 0, 4 do
+		wedge({ Size = Vector3.new(1.6, 1.4, 4.5), CFrame = cf * CFrame.new(-3.2 + s * 1.6, 7.4, -0.3) * CFrame.Angles(0, math.pi, 0), Color = (s % 2 == 0) and color or WHITE, CanCollide = false }, parent)
+	end
+	local fruit = { Color3.fromRGB(255, 70, 70), Color3.fromRGB(255, 170, 40), Color3.fromRGB(120, 220, 80), Color3.fromRGB(170, 90, 220) }
+	for i = 0, 2 do
+		part({ Size = Vector3.new(2.2, 0.8, 1.8), CFrame = cf * CFrame.new(-2.6 + i * 2.6, 3.4, -0.4), Color = WOOD_DARK }, parent)
+		for j = 1, 4 do
+			ballPart(cf * CFrame.new(-2.6 + i * 2.6 + R(-0.6, 0.6), 4, -0.4 + R(-0.5, 0.5)), 0.7, fruit[((k + i) % #fruit) + 1], parent)
+		end
+	end
+	avoidCircle(cf.Position, 6)
+end
+
+-- Statue doree de pet (patte geante sur socle) ou d'oeuf
+local function statue(parent, pos, kind, color)
+	color = color or Config.Colors.Gold
+	local top
+	part({ Size = Vector3.new(7, 3, 7), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)), Color = STONE, Material = Enum.Material.Marble }, parent)
+	part({ Size = Vector3.new(7.8, 0.6, 7.8), CFrame = CFrame.new(pos + Vector3.new(0, 3.2, 0)), Color = WHITE, Material = Enum.Material.Marble }, parent)
+	if kind == &quot;egg&quot; then
+		local e = ballPart(CFrame.new(pos + Vector3.new(0, 7.5, 0)), 6, color, parent, Enum.Material.Metal)
+		local m = Instance.new(&quot;SpecialMesh&quot;)
+		m.MeshType = Enum.MeshType.Sphere
+		m.Scale = Vector3.new(1, 1.3, 1)
+		m.Parent = e
+		e.Reflectance = 0.25
+		top = e
+	else
+		local pad = ballPart(CFrame.new(pos + Vector3.new(0, 6, 0)), 5, color, parent, Enum.Material.Metal)
+		pad.Reflectance = 0.25
+		top = pad
+		for k = -1.5, 1.5 do
+			local toe = ballPart(CFrame.new(pos + Vector3.new(k * 1.6, 9.2 - math.abs(k) * 0.6, 0)), 2.4, color, parent, Enum.Material.Metal)
+			toe.Reflectance = 0.25
+		end
+	end
+	local sp = Instance.new(&quot;Sparkles&quot;)
+	sp.SparkleColor = color
+	sp.Parent = top
+	avoidCircle(pos, 6)
+end
+
+-- Arche decorative (entree, jardin)
+local function archway(parent, cf, width, height, color, text, textColor)
+	local stone = color or STONE
+	for _, x in ipairs({ -width / 2, width / 2 }) do
+		part({ Size = Vector3.new(4, height, 4), CFrame = cf * CFrame.new(x, height / 2, 0), Color = stone, Material = Enum.Material.Marble }, parent)
+		part({ Size = Vector3.new(5, 1.5, 5), CFrame = cf * CFrame.new(x, 0.75, 0), Color = stone:Lerp(Color3.new(0, 0, 0), 0.1), Material = Enum.Material.Marble }, parent)
+		ballPart(cf * CFrame.new(x, height + 2.5, 0), 3, Config.Colors.Gold, parent, Enum.Material.Neon)
+	end
+	-- arc en segments
+	local n = 9
+	for i = 0, n do
+		local a = math.pi * i / n
+		local x = math.cos(a) * width / 2
+		local y = height + math.sin(a) * width * 0.28
+		part({ Size = Vector3.new(width / n + 1.2, 3, 4.4), CFrame = cf * CFrame.new(x, y, 0) * CFrame.Angles(0, 0, a + math.pi / 2), Color = stone, Material = Enum.Material.Marble, CanCollide = false }, parent)
+	end
+	if text then
+		sign(parent, cf * CFrame.new(0, height + width * 0.28 - 0.5, -2.4) * CFrame.Angles(0, math.pi, 0), Vector3.new(width * 0.8, 4, 0.5), text, textColor or Config.Colors.Gold, Color3.fromRGB(120, 70, 200))
+	end
+end
+
+-- Montgolfiere qui flotte au loin
+local function balloon(parent, pos, color)
+	local env = ballPart(CFrame.new(pos), 16, color, parent)
+	env.CanCollide = false
+	local stripes = ballPart(CFrame.new(pos), 16.3, WHITE, parent)
+	stripes.CanCollide = false
+	local m = Instance.new(&quot;SpecialMesh&quot;)
+	m.MeshType = Enum.MeshType.Sphere
+	m.Scale = Vector3.new(0.35, 1, 1)
+	m.Parent = stripes
+	local basket = part({ Size = Vector3.new(4, 3, 4), CFrame = CFrame.new(pos + Vector3.new(0, -12, 0)), Color = WOOD, Material = Enum.Material.WoodPlanks, CanCollide = false }, parent)
+	local parts = { env, stripes, basket }
+	for _, o in ipairs({ Vector3.new(1.8, 0, 1.8), Vector3.new(-1.8, 0, 1.8), Vector3.new(1.8, 0, -1.8), Vector3.new(-1.8, 0, -1.8) }) do
+		table.insert(parts, part({ Size = Vector3.new(0.2, 6, 0.2), CFrame = CFrame.new(pos + o + Vector3.new(0, -8, 0)), Color = WOOD_DARK, CanCollide = false }, parent))
+	end
+	local rise = Vector3.new(0, R(6, 12), 0)
+	for _, p in ipairs(parts) do
+		TweenService:Create(p, TweenInfo.new(R(6, 10), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = p.CFrame + rise }):Play()
+	end
+end
+
+-- Petite ile decorative lointaine (profondeur du decor)
+local function farIsland(parent, pos, size, top, dirt, decorate)
+	part({ Size = Vector3.new(size, 3, size), CFrame = CFrame.new(pos + Vector3.new(0, -1.5, 0)), Color = top, CanCollide = false }, parent)
+	local y = -3
+	for k, s in ipairs({ size * 0.9, size * 0.6, size * 0.3 }) do
+		part({ Size = Vector3.new(s, size * 0.18, s), CFrame = CFrame.new(pos + Vector3.new(0, y - size * 0.09, 0)), Color = (k % 2 == 0) and dirt:Lerp(Color3.new(0, 0, 0), 0.15) or dirt, CanCollide = false }, parent)
+		y -= size * 0.18
+	end
+	for t = -size / 2, size / 2, 8 do
+		for _, e in ipairs({ Vector3.new(t, -2, size / 2), Vector3.new(t, -2, -size / 2), Vector3.new(size / 2, -2, t), Vector3.new(-size / 2, -2, t) }) do
+			local b = ballPart(CFrame.new(pos + e), 6, top, parent)
+			b.CanCollide = false
+		end
+	end
+	if decorate then
+		decorate(pos)
+	end
+end
+
+-- Riviere (bande d'eau avec berges) entre deux points
+local function river(parent, a, b, width, bankColor)
+	local d = b - a
+	local cf = CFrame.lookAt((a + b) / 2, b)
+	part({ Name = &quot;RiverBank&quot;, Size = Vector3.new(width + 4, 0.3, d.Magnitude), CFrame = cf * CFrame.new(0, 0.08, 0), Color = bankColor or Color3.fromRGB(230, 210, 160), CanCollide = false }, parent)
+	local w = part({ Name = &quot;River&quot;, Size = Vector3.new(width, 0.3, d.Magnitude), CFrame = cf * CFrame.new(0, 0.16, 0), Color = WATER, Material = Enum.Material.Glass, Transparency = 0.1, CanCollide = false }, parent)
+	w.Reflectance = 0.15
+	for t = 0, d.Magnitude, 9 do
+		for _, x in ipairs({ -width / 2 - 1.6, width / 2 + 1.6 }) do
+			if rng:NextNumber() &lt; 0.6 then
+				local r = part({ Size = Vector3.new(R(1.5, 2.6), R(0.8, 1.4), R(1.5, 2.6)), CFrame = cf * CFrame.new(x, 0.4, -d.Magnitude / 2 + t) * CFrame.Angles(0, R(0, 3), 0), Color = Color3.fromRGB(160, 160, 175), Material = Enum.Material.Slate }, parent)
+				r.CanCollide = false
 			end
 		end
-		if not blocked then
-			fn(pos, k)
+	end
+	Kit.avoidSegment(a, b, width / 2 + 3)
+end
+
+-- Petit pont de planches (praticable) en travers d'une riviere
+local function footbridge(parent, pos, dir, width, len)
+	local cf = CFrame.lookAt(pos, pos + dir)
+	local n = math.floor(len / 1.6)
+	for i = 0, n do
+		local t = i / n
+		local y = 0.3 + math.sin(t * math.pi) * 1.4
+		part({ Size = Vector3.new(width, 0.5, 1.7), CFrame = cf * CFrame.new(0, y, -len / 2 + t * len), Color = (i % 2 == 0) and WOOD or WOOD_DARK, Material = Enum.Material.WoodPlanks }, parent)
+	end
+	for _, x in ipairs({ -width / 2, width / 2 }) do
+		for i = 0, 2 do
+			local t = i / 2
+			part({ Size = Vector3.new(0.5, 3, 0.5), CFrame = cf * CFrame.new(x, 1.8 + math.sin(t * math.pi) * 1.4, -len / 2 + t * len), Color = WOOD_DARK }, parent)
 		end
 	end
 end
 
-local function buildVillage(folder, zone)
-	local c = zone.center
-	-- Place centrale avec fontaine
-	local plaza = cylinder(CFrame.new(c + Vector3.new(0, 0.15, 20)), 0.3, 22, Color3.fromRGB(245, 225, 175), folder)
-	plaza.CanCollide = false
-	local plazaRing = cylinder(CFrame.new(c + Vector3.new(0, 0.12, 20)), 0.3, 23.5, Color3.fromRGB(215, 190, 140), folder)
-	plazaRing.CanCollide = false
-	avoidCircle(c + Vector3.new(0, 0, 20), 14)
-	local fc = c + Vector3.new(0, 0, 20)
-	cylinder(CFrame.new(fc + Vector3.new(0, 1, 0)), 2, 9, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
-	local water = cylinder(CFrame.new(fc + Vector3.new(0, 1.8, 0)), 0.6, 8, Color3.fromRGB(80, 180, 255), folder, Enum.Material.Glass)
-	water.Transparency = 0.25
-	water.CanCollide = false
-	cylinder(CFrame.new(fc + Vector3.new(0, 4, 0)), 5, 1.2, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
-	cylinder(CFrame.new(fc + Vector3.new(0, 6.6, 0)), 0.8, 3.6, Color3.fromRGB(235, 235, 240), folder, Enum.Material.Marble)
-	local jet = part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(fc + Vector3.new(0, 7.2, 0)), Transparency = 1, CanCollide = false }, folder)
-	local spray = Instance.new(&quot;ParticleEmitter&quot;)
-	spray.Rate = 60
-	spray.Lifetime = NumberRange.new(1, 1.3)
-	spray.Speed = NumberRange.new(14, 18)
-	spray.SpreadAngle = Vector2.new(14, 14)
-	spray.Acceleration = Vector3.new(0, -40, 0)
-	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0.9) })
-	spray.Transparency = NumberSequence.new(0.2, 1)
-	spray.Color = ColorSequence.new(Color3.fromRGB(200, 235, 255))
-	spray.Parent = jet
+-- Exports -------------------------------------------------------------------------------------
 
-	-- Maisons
-	local spots = {
-		{ Vector3.new(-75, 0, 70), 0.6 }, { Vector3.new(-80, 0, 20), 1.2 }, { Vector3.new(80, 0, 75), -0.6 },
-		{ Vector3.new(-30, 0, 92), math.pi }, { Vector3.new(85, 0, -85), -2.3 }, { Vector3.new(-85, 0, -95), 2.3 },
-	}
-	for k, s in ipairs(spots) do
-		local pos = c + s[1]
-		house(folder, CFrame.new(pos) * CFrame.Angles(0, s[2], 0) * CFrame.Angles(0, math.pi, 0), k)
-		avoidCircle(pos, 14)
+Kit.part = part
+Kit.wedge = wedge
+Kit.ball = ballPart
+Kit.cylinder = cylinder
+Kit.sign = sign
+Kit.WATER = WATER
+Kit.pond = pond
+Kit.cloudPuff = cloudPuff
+Kit.LEAF_COLORS = LEAF_COLORS
+Kit.roundTree = roundTree
+Kit.pineTree = pineTree
+Kit.palmTree = palmTree
+Kit.bush = bush
+Kit.flowerPatch = flowerPatch
+Kit.rock = rock
+Kit.mushroom = mushroom
+Kit.lamp = lamp
+Kit.fenceLine = fenceLine
+Kit.house = house
+Kit.stand = stand
+Kit.eggDisplay = eggDisplay
+Kit.bench = bench
+Kit.lantern = lantern
+Kit.flowerBed = flowerBed
+Kit.hedge = hedge
+Kit.signpost = signpost
+Kit.plateau = plateau
+Kit.gazebo = gazebo
+Kit.windmill = windmill
+Kit.stall = stall
+Kit.statue = statue
+Kit.archway = archway
+Kit.balloon = balloon
+Kit.farIsland = farIsland
+Kit.river = river
+Kit.footbridge = footbridge
+Kit.WOOD = WOOD
+Kit.WOOD_DARK = WOOD_DARK
+Kit.STONE = STONE
+
+-- Repartit count props au hasard dans la zone (hors emplacements reserves)
+function Kit.scatter(zone, count, minR, maxR, fn, margin)
+	local half = zone.size / 2
+	local placed = 0
+	for k = 1, count * 3 do
+		if placed &gt;= count then
+			break
+		end
+		local pos = zone.center + Vector3.new(R(-half + 14, half - 14), 0, R(-half + 14, half - 14))
+		local r = (pos - zone.center).Magnitude
+		if r &gt;= (minR or 0) and r &lt;= (maxR or half * 1.5) and Kit.isFree(pos, margin or 0) then
+			placed += 1
+			fn(pos, placed)
+		end
 	end
-	-- Lampadaires le long de l'allee
-	for z = -90, 90, 30 do
-		lamp(folder, c + Vector3.new(-10, 0, z))
-		lamp(folder, c + Vector3.new(10, 0, z))
+end
+
+return Kit
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">MapZones</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Decor propre a chaque zone (hors Starter Village, construit par MapBuilder).
+-- Chaque zone a son style : couleurs, vegetation, batiments, effets d'ambiance.
+
+local TweenService = game:GetService(&quot;TweenService&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Kit = require(script.Parent.MapKit)
+
+local part, wedge, ball, cylinder, sign = Kit.part, Kit.wedge, Kit.ball, Kit.cylinder, Kit.sign
+local R, rng = Kit.R, Kit.rng
+local avoidCircle = Kit.avoidCircle
+local WHITE = Color3.new(1, 1, 1)
+
+local MapZones = {}
+
+local function sphereMesh(p, scale)
+	local m = Instance.new(&quot;SpecialMesh&quot;)
+	m.MeshType = Enum.MeshType.Sphere
+	m.Scale = scale
+	m.Parent = p
+	return p
+end
+
+local function cone(parent, pos, height, radius, color, material)
+	-- cone en anneaux empiles (toits de tours, sapins, cornets)
+	local n = 6
+	for i = 0, n - 1 do
+		local r = radius * (1 - i / n)
+		local c = cylinder(CFrame.new(pos + Vector3.new(0, (i + 0.5) * height / n, 0)), height / n + 0.05, r, color, parent, material)
+		c.CanCollide = i == 0
 	end
-	-- Barrieres decoratives autour de l'etang
-	fenceLine(folder, c + Vector3.new(-90, 0, -30), c + Vector3.new(-40, 0, -30))
-	scatter(zone, 30, 20, 100, function(pos)
-		roundTree(folder, pos, R(0.8, 1.2))
+	ball(CFrame.new(pos + Vector3.new(0, height, 0)), radius * 0.35, color, parent, material)
+end
+
+local function ambient(folder, zone, props)
+	-- particules d'ambiance sur toute la zone
+	local box = part({ Size = Vector3.new(zone.size, props.height or 14, zone.size), CFrame = CFrame.new(zone.center + Vector3.new(0, (props.height or 14) / 2 + (props.y or 1), 0)), Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false }, folder)
+	local e = Instance.new(&quot;ParticleEmitter&quot;)
+	e.Rate = props.rate or 30
+	e.Lifetime = props.life or NumberRange.new(4, 7)
+	e.Speed = props.speed or NumberRange.new(0.5, 1.5)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Size = props.size or NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.4, 0.35), NumberSequenceKeypoint.new(1, 0) })
+	e.LightEmission = props.light or 1
+	e.Color = ColorSequence.new(props.color)
+	e.Acceleration = props.accel or Vector3.zero
+	e.EmissionDirection = props.dir or Enum.NormalId.Top
+	e.Transparency = props.transparency or NumberSequence.new(0)
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	e.Parent = box
+end
+
+local function bob(p, height, time)
+	TweenService:Create(p, TweenInfo.new(time or R(2.5, 4), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = p.CFrame + Vector3.new(0, height, 0) }):Play()
+end
+
+local function spin(p, time)
+	TweenService:Create(p, TweenInfo.new(time, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { CFrame = p.CFrame * CFrame.Angles(0, math.rad(-359), 0) }):Play()
+end
+
+-- FORET ----------------------------------------------------------------------------------------
+
+local function bigOak(parent, pos, scale)
+	cylinder(CFrame.new(pos + Vector3.new(0, 6 * scale, 0)), 12 * scale, 1.8 * scale, Color3.fromRGB(110, 72, 42), parent, Enum.Material.Wood)
+	for k = 1, 3 do
+		local a = k * 2.1
+		part({ Size = Vector3.new(1.2, 5, 1.2) * scale, CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * 2 * scale, 1.5 * scale, math.sin(a) * 2 * scale)) * CFrame.Angles(math.sin(a) * 0.7, 0, -math.cos(a) * 0.7), Color = Color3.fromRGB(110, 72, 42), Material = Enum.Material.Wood }, parent)
+	end
+	local top = pos + Vector3.new(0, 14 * scale, 0)
+	ball(CFrame.new(top), 14 * scale, Color3.fromRGB(70, 165, 65), parent, Enum.Material.Grass)
+	for k = 1, 6 do
+		local a = k * 1.05
+		ball(CFrame.new(top + Vector3.new(math.cos(a) * 5.5 * scale, R(-2, 2.5) * scale, math.sin(a) * 5.5 * scale)), R(7, 10) * scale, Kit.LEAF_COLORS[rng:NextInteger(1, 3)], parent, Enum.Material.Grass)
+	end
+	avoidCircle(pos, 8 * scale)
+end
+
+local function cabin(parent, cf)
+	local logC = Color3.fromRGB(150, 98, 58)
+	for i = 0, 6 do
+		for _, z in ipairs({ -5, 5 }) do
+			part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1.3, 1.3), CFrame = cf * CFrame.new(0, 0.65 + i * 1.2, z), Color = (i % 2 == 0) and logC or logC:Lerp(Color3.new(0, 0, 0), 0.12), Material = Enum.Material.Wood }, parent)
+		end
+		for _, x in ipairs({ -6.4, 6.4 }) do
+			part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(11, 1.3, 1.3), CFrame = cf * CFrame.new(x, 1.25 + i * 1.2, 0) * CFrame.Angles(0, math.rad(90), 0), Color = logC, Material = Enum.Material.Wood }, parent)
+		end
+	end
+	part({ Size = Vector3.new(12, 8, 9), CFrame = cf * CFrame.new(0, 4, 0), Color = Color3.fromRGB(210, 170, 120) }, parent)
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(16, 5, 7), CFrame = cf * CFrame.new(0, 10.8, s * 3.5) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = Color3.fromRGB(90, 140, 70) }, parent)
+	end
+	part({ Size = Vector3.new(3, 5, 0.4), CFrame = cf * CFrame.new(0, 2.5, -5.8), Color = Color3.fromRGB(110, 70, 40), Material = Enum.Material.WoodPlanks }, parent)
+	part({ Size = Vector3.new(2.5, 2.5, 0.3), CFrame = cf * CFrame.new(-4, 4.5, -5.8), Color = Color3.fromRGB(255, 220, 140), Material = Enum.Material.Neon }, parent)
+	avoidCircle(cf.Position, 12)
+end
+
+local function campfire(parent, pos)
+	for k = 1, 8 do
+		local a = k / 8 * math.pi * 2
+		Kit.rock(parent, pos + Vector3.new(math.cos(a) * 2.6, -0.4, math.sin(a) * 2.6), 0.4, Color3.fromRGB(130, 130, 140))
+	end
+	for k = 1, 3 do
+		part({ Size = Vector3.new(0.7, 0.7, 4), CFrame = CFrame.new(pos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, k * 1.05, math.rad(10)), Color = Color3.fromRGB(110, 70, 40), Material = Enum.Material.Wood }, parent)
+	end
+	local fireBase = part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)), Transparency = 1, CanCollide = false }, parent)
+	local fire = Instance.new(&quot;Fire&quot;)
+	fire.Size = 5
+	fire.Heat = 8
+	fire.Parent = fireBase
+	local light = Instance.new(&quot;PointLight&quot;)
+	light.Color = Color3.fromRGB(255, 160, 70)
+	light.Range = 20
+	light.Brightness = 2
+	light.Parent = fireBase
+	for k = 1, 3 do
+		local a = k * 2.1 + 0.5
+		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(5, 1.4, 1.4), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * 6, 0.7, math.sin(a) * 6)) * CFrame.Angles(0, -a + math.pi / 2, 0), Color = Color3.fromRGB(130, 85, 50), Material = Enum.Material.Wood }, parent)
+	end
+	avoidCircle(pos, 9)
+end
+
+local function tent(parent, cf, color)
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(7, 6, 4), CFrame = cf * CFrame.new(0, 3, s * 2) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = color }, parent)
+	end
+	part({ Size = Vector3.new(2, 4, 0.2), CFrame = cf * CFrame.new(0, 2, -3.6), Color = color:Lerp(Color3.new(0, 0, 0), 0.4) }, parent)
+	avoidCircle(cf.Position, 6)
+end
+
+local function treehouse(parent, pos)
+	bigOak(parent, pos, 1.3)
+	local deck = pos + Vector3.new(0, 11, 0)
+	cylinder(CFrame.new(deck), 1, 8, Color3.fromRGB(170, 115, 70), parent, Enum.Material.WoodPlanks)
+	part({ Size = Vector3.new(7, 5, 7), CFrame = CFrame.new(deck + Vector3.new(0, 3, 0)), Color = Color3.fromRGB(200, 140, 85), Material = Enum.Material.WoodPlanks }, parent)
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(9, 3, 4.5), CFrame = CFrame.new(deck + Vector3.new(0, 7, s * 2.25)) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = Color3.fromRGB(220, 75, 65) }, parent)
+	end
+	for y = 1, 10 do
+		part({ Size = Vector3.new(2.4, 0.3, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, y, -9)), Color = Color3.fromRGB(140, 95, 55) }, parent)
+	end
+	for _, x in ipairs({ -1.2, 1.2 }) do
+		part({ Size = Vector3.new(0.3, 11, 0.3), CFrame = CFrame.new(pos + Vector3.new(x, 5.5, -9)), Color = Color3.fromRGB(140, 95, 55) }, parent)
+	end
+end
+
+function MapZones.Foret(folder, zone)
+	local c = zone.center
+	treehouse(folder, c + Vector3.new(95, 0, 70))
+	cabin(folder, CFrame.new(c + Vector3.new(-100, 0, 80)) * CFrame.Angles(0, math.rad(40), 0))
+	campfire(folder, c + Vector3.new(-70, 0, -40))
+	for k, col in ipairs({ Color3.fromRGB(240, 120, 60), Color3.fromRGB(80, 160, 230), Color3.fromRGB(240, 200, 70) }) do
+		local a = k * 2.1
+		tent(folder, CFrame.lookAt(c + Vector3.new(-70 + math.cos(a) * 15, 0, -40 + math.sin(a) * 15), c + Vector3.new(-70, 0, -40)), col)
+	end
+	Kit.river(folder, c + Vector3.new(60, 0, -150), c + Vector3.new(120, 0, 150), 12, Color3.fromRGB(150, 120, 80))
+	for k = 1, 5 do
+		Kit.bench(folder, CFrame.new(c + Vector3.new(R(-110, -30), 0, R(-120, 120))) * CFrame.Angles(0, R(0, 6.28), 0))
+	end
+	Kit.scatter(zone, 12, 30, 200, function(pos)
+		bigOak(folder, pos, R(0.8, 1.15))
+	end, 6)
+	Kit.scatter(zone, 70, 15, 200, function(pos)
+		if rng:NextNumber() &lt; 0.7 then
+			Kit.pineTree(folder, pos, R(0.9, 1.7))
+		else
+			Kit.roundTree(folder, pos, R(0.9, 1.3))
+		end
+		avoidCircle(pos, 4.5)
+	end, 3)
+	Kit.scatter(zone, 40, 10, 200, function(pos)
+		Kit.mushroom(folder, pos, R(0.6, 1.5))
+	end)
+	Kit.scatter(zone, 30, 10, 200, function(pos)
+		Kit.bush(folder, pos, R(0.8, 1.3), rng:NextNumber() &lt; 0.5 and Color3.fromRGB(150, 140, 255) or nil)
+	end)
+	Kit.scatter(zone, 18, 20, 200, function(pos)
+		Kit.rock(folder, pos, R(0.8, 2), Color3.fromRGB(120, 125, 135))
+	end)
+	Kit.scatter(zone, 8, 30, 200, function(pos)
+		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(R(6, 9), 2.2, 2.2), CFrame = CFrame.new(pos + Vector3.new(0, 1.1, 0)) * CFrame.Angles(0, R(0, 6.28), 0), Color = Color3.fromRGB(120, 80, 45), Material = Enum.Material.Wood }, folder)
 		avoidCircle(pos, 5)
 	end)
-	scatter(zone, 26, 15, 100, function(pos)
-		if rng:NextNumber() &lt; 0.5 then
-			bush(folder, pos, R(0.8, 1.2), rng:NextNumber() &lt; 0.6 and Color3.fromRGB(255, 120, 170) or nil)
-		else
-			flowerPatch(folder, pos)
-		end
-	end)
-	scatter(zone, 10, 30, 100, function(pos)
-		rock(folder, pos, R(0.7, 1.3))
-	end)
+	ambient(folder, zone, { color = Color3.fromRGB(230, 255, 130), rate = 45 })
 end
 
-local function buildForest(folder, zone)
+-- DESERT ---------------------------------------------------------------------------------------
+
+local function pyramid(parent, pos, size)
+	local steps = 7
+	for s = 0, steps - 1 do
+		local w = size * (1 - s / steps)
+		part({ Size = Vector3.new(w, size / steps, w), CFrame = CFrame.new(pos + Vector3.new(0, (s + 0.5) * size / steps, 0)), Color = Color3.fromRGB(225, 185, 115):Lerp(Color3.fromRGB(245, 215, 150), s / steps) }, parent)
+	end
+	ball(CFrame.new(pos + Vector3.new(0, size + 1, 0)), 3, Config.Colors.Gold, parent, Enum.Material.Neon)
+	part({ Size = Vector3.new(5, 7, 1), CFrame = CFrame.new(pos + Vector3.new(0, 3.5, -size / 2 - 0.2)), Color = Color3.fromRGB(90, 60, 40) }, parent)
+	avoidCircle(pos, size * 0.75 + 4)
+end
+
+local function cactus(parent, pos)
+	local h = R(5, 9)
+	local g = Color3.fromRGB(80, 175, 90)
+	cylinder(CFrame.new(pos + Vector3.new(0, h / 2, 0)), h, 1, g, parent)
+	ball(CFrame.new(pos + Vector3.new(0, h, 0)), 2, g, parent)
+	for _, side in ipairs({ -1, 1 }) do
+		local ah = R(2, 3.5)
+		part({ Size = Vector3.new(2.2, 1.4, 1.4), CFrame = CFrame.new(pos + Vector3.new(side * 1.3, h * 0.45, 0)), Color = g }, parent)
+		cylinder(CFrame.new(pos + Vector3.new(side * 2.2, h * 0.45 + ah / 2, 0)), ah, 0.7, g, parent)
+		ball(CFrame.new(pos + Vector3.new(side * 2.2, h * 0.45 + ah, 0)), 1.4, g, parent)
+	end
+	ball(CFrame.new(pos + Vector3.new(0, h + 1, 0)), 0.9, Color3.fromRGB(255, 120, 170), parent)
+	avoidCircle(pos, 4)
+end
+
+local function obelisk(parent, pos)
+	part({ Size = Vector3.new(5, 1.5, 5), CFrame = CFrame.new(pos + Vector3.new(0, 0.75, 0)), Color = Color3.fromRGB(210, 170, 110) }, parent)
+	part({ Size = Vector3.new(3, 16, 3), CFrame = CFrame.new(pos + Vector3.new(0, 9.5, 0)), Color = Color3.fromRGB(235, 200, 135) }, parent)
+	wedge({ Size = Vector3.new(3, 2.5, 1.5), CFrame = CFrame.new(pos + Vector3.new(0, 18.75, -0.75)), Color = Config.Colors.Gold }, parent)
+	wedge({ Size = Vector3.new(3, 2.5, 1.5), CFrame = CFrame.new(pos + Vector3.new(0, 18.75, 0.75)) * CFrame.Angles(0, math.pi, 0), Color = Config.Colors.Gold }, parent)
+	for y = 4, 14, 3 do
+		part({ Size = Vector3.new(1.2, 1.2, 0.2), CFrame = CFrame.new(pos + Vector3.new(0, y, -1.55)), Color = Color3.fromRGB(40, 90, 190) }, parent)
+	end
+	avoidCircle(pos, 4)
+end
+
+local function ruins(parent, pos)
+	for k = 1, 6 do
+		local a = k / 6 * math.pi * 2
+		local h = (k % 3 == 0) and 3 or R(6, 12)
+		local p = pos + Vector3.new(math.cos(a) * 9, 0, math.sin(a) * 9)
+		cylinder(CFrame.new(p + Vector3.new(0, h / 2, 0)), h, 1.3, Color3.fromRGB(240, 220, 175), parent)
+		part({ Size = Vector3.new(3.4, 0.8, 3.4), CFrame = CFrame.new(p + Vector3.new(0, h + 0.4, 0)), Color = Color3.fromRGB(225, 200, 150) }, parent)
+	end
+	part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(7, 2.4, 2.4), CFrame = CFrame.new(pos + Vector3.new(2, 1.2, 3)) * CFrame.Angles(0, 0.6, 0), Color = Color3.fromRGB(240, 220, 175) }, parent)
+	avoidCircle(pos, 12)
+end
+
+local function sphinxStatue(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	local sand = Color3.fromRGB(230, 195, 125)
+	part({ Size = Vector3.new(14, 3, 26), CFrame = cf * CFrame.new(0, 1.5, 0), Color = Color3.fromRGB(205, 170, 110) }, parent)
+	part({ Size = Vector3.new(10, 7, 16), CFrame = cf * CFrame.new(0, 6.5, 3), Color = sand }, parent)
+	for _, x in ipairs({ -3, 3 }) do
+		part({ Size = Vector3.new(3, 2.5, 10), CFrame = cf * CFrame.new(x, 4.25, -8), Color = sand }, parent)
+	end
+	part({ Size = Vector3.new(7, 8, 6), CFrame = cf * CFrame.new(0, 13, -4), Color = sand }, parent)
+	part({ Size = Vector3.new(9, 9, 5), CFrame = cf * CFrame.new(0, 13.5, -2.5), Color = Color3.fromRGB(60, 110, 220) }, parent)
+	for y = 10, 17, 2 do
+		part({ Size = Vector3.new(9.2, 0.6, 5.2), CFrame = cf * CFrame.new(0, y, -2.5), Color = Config.Colors.Gold }, parent)
+	end
+	part({ Size = Vector3.new(5, 5, 1), CFrame = cf * CFrame.new(0, 13, -7.4), Color = sand }, parent)
+	avoidCircle(pos, 16)
+end
+
+function MapZones.Desert(folder, zone)
 	local c = zone.center
-	scatter(zone, 70, 15, 104, function(pos)
-		if rng:NextNumber() &lt; 0.75 then
-			pineTree(folder, pos, R(0.9, 1.6))
-		else
-			roundTree(folder, pos, R(0.9, 1.3))
-		end
-		avoidCircle(pos, 4)
-	end)
-	scatter(zone, 30, 12, 100, function(pos)
-		mushroom(folder, pos, R(0.6, 1.4))
-	end)
-	scatter(zone, 18, 20, 100, function(pos)
-		rock(folder, pos, R(0.8, 1.8), Color3.fromRGB(120, 125, 135))
-	end)
-	scatter(zone, 20, 12, 100, function(pos)
-		bush(folder, pos, R(0.8, 1.3), Color3.fromRGB(150, 140, 255))
-	end)
-	-- Rondins et pont
-	for k = 1, 5 do
-		local pos = c + Vector3.new(R(-70, 70), 0, R(-70, 70))
-		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(R(6, 9), 2.2, 2.2), CFrame = CFrame.new(pos + Vector3.new(0, 1.1, 0)) * CFrame.Angles(0, R(0, 6.28), 0), Color = Color3.fromRGB(120, 80, 45), Material = Enum.Material.Wood }, folder)
+	pyramid(folder, c + Vector3.new(90, 0, -90), 36)
+	pyramid(folder, c + Vector3.new(-110, 0, 100), 24)
+	pyramid(folder, c + Vector3.new(110, 0, 90), 18)
+	sphinxStatue(folder, c + Vector3.new(-100, 0, -95), Vector3.new(1, 0, 1))
+	ruins(folder, c + Vector3.new(50, 0, 40))
+	for _, p in ipairs({ Vector3.new(-26, 0, -100), Vector3.new(26, 0, -100), Vector3.new(-26, 0, 100), Vector3.new(26, 0, 100) }) do
+		obelisk(folder, c + p)
 	end
-	-- Lucioles
-	local zoneBox = part({ Size = Vector3.new(zone.size, 14, zone.size), CFrame = CFrame.new(c + Vector3.new(0, 8, 0)), Transparency = 1, CanCollide = false, CanQuery = false }, folder)
-	local flies = Instance.new(&quot;ParticleEmitter&quot;)
-	flies.Rate = 40
-	flies.Lifetime = NumberRange.new(4, 7)
-	flies.Speed = NumberRange.new(0.5, 1.5)
-	flies.SpreadAngle = Vector2.new(180, 180)
-	flies.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.4, 0.35), NumberSequenceKeypoint.new(1, 0) })
-	flies.LightEmission = 1
-	flies.Color = ColorSequence.new(Color3.fromRGB(230, 255, 130))
-	flies.Shape = Enum.ParticleEmitterShape.Box
-	flies.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
-	flies.Parent = zoneBox
+	-- oasis
+	local oasis = c + Vector3.new(-60, 0, 20)
+	Kit.pond(folder, oasis, 18, Color3.fromRGB(120, 210, 90))
+	for k = 1, 8 do
+		local a = (k / 8) * math.pi * 2
+		Kit.palmTree(folder, oasis + Vector3.new(math.cos(a) * 25, 0, math.sin(a) * 25), R(0.9, 1.3))
+	end
+	-- marche de tentes
+	local tentColors = { Color3.fromRGB(230, 70, 70), Color3.fromRGB(60, 120, 220), Color3.fromRGB(240, 180, 40), Color3.fromRGB(150, 80, 200) }
+	for k = 0, 3 do
+		tent(folder, CFrame.lookAt(c + Vector3.new(40 + k * 16, 0, -40), c + Vector3.new(40 + k * 16, 0, 0)), tentColors[k + 1])
+	end
+	Kit.scatter(zone, 34, 18, 200, cactus)
+	Kit.scatter(zone, 20, 20, 200, function(pos)
+		Kit.rock(folder, pos, R(0.8, 2.2), Color3.fromRGB(200, 150, 100))
+	end)
+	ambient(folder, zone, { color = Color3.fromRGB(250, 225, 170), rate = 25, speed = NumberRange.new(3, 6), dir = Enum.NormalId.Right, light = 0, height = 6, transparency = NumberSequence.new(0.4, 1) })
 end
 
-local function buildDesert(folder, zone)
-	local c = zone.center
-	-- Pyramides a degres
-	for k, def in ipairs({ { Vector3.new(70, 0, -60), 28 }, { Vector3.new(-80, 0, 70), 20 }, { Vector3.new(80, 0, 60), 16 } }) do
-		local pos = c + def[1]
-		local size = def[2]
-		local steps = 6
-		for s = 0, steps - 1 do
-			local w = size * (1 - s / steps)
-			part({ Size = Vector3.new(w, size / steps, w), CFrame = CFrame.new(pos + Vector3.new(0, (s + 0.5) * size / steps, 0)), Color = Color3.fromRGB(225, 185, 115):Lerp(Color3.fromRGB(245, 215, 150), s / steps), Material = Enum.Material.Sandstone }, folder)
-		end
-		ballPart(CFrame.new(pos + Vector3.new(0, size + 1, 0)), 2.4, Config.Colors.Gold, folder, Enum.Material.Neon)
-		avoidCircle(pos, size * 0.75 + 4)
+-- PLAGE ----------------------------------------------------------------------------------------
+
+local function umbrella(parent, pos, color)
+	cylinder(CFrame.new(pos + Vector3.new(0, 4, 0)), 8, 0.25, WHITE, parent)
+	for k = 0, 7 do
+		local w = part({ Size = Vector3.new(3.4, 0.3, 4.4), CFrame = CFrame.new(pos + Vector3.new(0, 8, 0)) * CFrame.Angles(0, k * math.pi / 4, 0) * CFrame.new(0, -0.6, -2) * CFrame.Angles(math.rad(-20), 0, 0), Color = (k % 2 == 0) and color or WHITE, CanCollide = false }, parent)
 	end
-	-- Oasis : palmiers autour de l'eau
-	local oasis = c + Vector3.new(-50, 0, -40)
-	for k = 1, 7 do
-		local a = (k / 7) * math.pi * 2
-		palmTree(folder, oasis + Vector3.new(math.cos(a) * 24, 0, math.sin(a) * 24), R(0.9, 1.3))
-	end
-	scatter(zone, 26, 18, 100, function(pos)
-		local h = R(5, 9)
-		local g = Color3.fromRGB(80, 175, 90)
-		cylinder(CFrame.new(pos + Vector3.new(0, h / 2, 0)), h, 1, g, folder)
-		ballPart(CFrame.new(pos + Vector3.new(0, h, 0)), 2, g, folder)
-		for _, side in ipairs({ -1, 1 }) do
-			local ah = R(2, 3.5)
-			part({ Size = Vector3.new(2.2, 1.4, 1.4), CFrame = CFrame.new(pos + Vector3.new(side * 1.3, h * 0.45, 0)), Color = g }, folder)
-			cylinder(CFrame.new(pos + Vector3.new(side * 2.2, h * 0.45 + ah / 2, 0)), ah, 0.7, g, folder)
-			ballPart(CFrame.new(pos + Vector3.new(side * 2.2, h * 0.45 + ah, 0)), 1.4, g, folder)
-		end
-		ballPart(CFrame.new(pos + Vector3.new(0, h + 1, 0)), 0.9, Color3.fromRGB(255, 120, 170), folder)
-		avoidCircle(pos, 4)
-	end)
-	scatter(zone, 16, 20, 100, function(pos)
-		rock(folder, pos, R(0.8, 2), Color3.fromRGB(200, 150, 100))
-	end)
-	-- Ossements et sable volant
-	local box = part({ Size = Vector3.new(zone.size, 6, zone.size), CFrame = CFrame.new(c + Vector3.new(0, 3, 0)), Transparency = 1, CanCollide = false, CanQuery = false }, folder)
-	local dust = Instance.new(&quot;ParticleEmitter&quot;)
-	dust.Rate = 25
-	dust.Lifetime = NumberRange.new(3, 5)
-	dust.Speed = NumberRange.new(3, 6)
-	dust.EmissionDirection = Enum.NormalId.Right
-	dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.4), NumberSequenceKeypoint.new(1, 0) })
-	dust.Transparency = NumberSequence.new(0.4, 1)
-	dust.Color = ColorSequence.new(Color3.fromRGB(250, 225, 170))
-	dust.Shape = Enum.ParticleEmitterShape.Box
-	dust.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
-	dust.Parent = box
+	ball(CFrame.new(pos + Vector3.new(0, 8.4, 0)), 0.8, color, parent)
+	local towel = part({ Size = Vector3.new(3.5, 0.12, 6.5), CFrame = CFrame.new(pos + Vector3.new(3, 0.07, 1)) * CFrame.Angles(0, R(-0.3, 0.3), 0), Color = color:Lerp(WHITE, 0.3), CanCollide = false }, parent)
+	part({ Size = Vector3.new(3.6, 0.13, 1), CFrame = towel.CFrame * CFrame.new(0, 0.01, 2.2), Color = WHITE, CanCollide = false }, parent)
+	avoidCircle(pos, 6)
 end
 
-local BUILDERS = { Village = buildVillage, Foret = buildForest, Desert = buildDesert }
+local function sandcastle(parent, pos)
+	local sand = Color3.fromRGB(240, 205, 140)
+	part({ Size = Vector3.new(9, 3, 9), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)), Color = sand }, parent)
+	for _, o in ipairs({ Vector3.new(-4, 0, -4), Vector3.new(4, 0, -4), Vector3.new(-4, 0, 4), Vector3.new(4, 0, 4) }) do
+		cylinder(CFrame.new(pos + o + Vector3.new(0, 2.5, 0)), 5, 1.6, sand, parent)
+		cone(parent, pos + o + Vector3.new(0, 5, 0), 2.5, 1.8, sand:Lerp(WHITE, 0.15))
+	end
+	cylinder(CFrame.new(pos + Vector3.new(0, 4.5, 0)), 3, 2.6, sand, parent)
+	part({ Size = Vector3.new(0.2, 3, 0.2), CFrame = CFrame.new(pos + Vector3.new(0, 7.5, 0)), Color = WHITE }, parent)
+	part({ Size = Vector3.new(0.1, 1, 1.6), CFrame = CFrame.new(pos + Vector3.new(0, 8.4, 0.8)), Color = Color3.fromRGB(255, 80, 80) }, parent)
+	avoidCircle(pos, 8)
+end
 
-local function buildZone(root, zone, index)
-	local folder = Instance.new(&quot;Folder&quot;)
-	folder.Name = &quot;Zone_&quot; .. zone.id
-	folder:SetAttribute(&quot;ZoneId&quot;, zone.id)
-	folder.Parent = root
+local function lighthouse(parent, pos)
+	part({ Size = Vector3.new(14, 3, 14), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)), Color = Color3.fromRGB(150, 150, 160), Material = Enum.Material.Slate }, parent)
+	for i = 0, 6 do
+		cylinder(CFrame.new(pos + Vector3.new(0, 3 + i * 4 + 2, 0)), 4, 4.6 - i * 0.3, (i % 2 == 0) and Color3.fromRGB(235, 60, 60) or WHITE, parent)
+	end
+	local lampY = 3 + 7 * 4
+	cylinder(CFrame.new(pos + Vector3.new(0, lampY + 0.5, 0)), 1, 4, Color3.fromRGB(60, 60, 70), parent, Enum.Material.Metal)
+	local glass = cylinder(CFrame.new(pos + Vector3.new(0, lampY + 3, 0)), 4, 2.6, Color3.fromRGB(255, 240, 160), parent, Enum.Material.Neon)
+	cone(parent, pos + Vector3.new(0, lampY + 5, 0), 3.5, 3.4, Color3.fromRGB(235, 60, 60))
+	local beam = part({ Size = Vector3.new(1.5, 1.5, 40), CFrame = CFrame.new(pos + Vector3.new(0, lampY + 3, 0)) * CFrame.new(0, 0, -20), Color = Color3.fromRGB(255, 245, 190), Material = Enum.Material.Neon, Transparency = 0.6, CanCollide = false }, parent)
+	local pivot = part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(pos + Vector3.new(0, lampY + 3, 0)), Transparency = 1, CanCollide = false }, parent)
+	beam.Anchored = false
+	local w = Instance.new(&quot;WeldConstraint&quot;)
+	w.Part0 = pivot
+	w.Part1 = beam
+	w.Parent = beam
+	spin(pivot, 6)
+	local light = Instance.new(&quot;PointLight&quot;)
+	light.Range = 30
+	light.Color = Color3.fromRGB(255, 240, 170)
+	light.Parent = glass
+	avoidCircle(pos, 10)
+end
+
+local function beachHut(parent, cf, color)
+	for _, x in ipairs({ -4, 4 }) do
+		for _, z in ipairs({ -3.5, 3.5 }) do
+			part({ Size = Vector3.new(0.8, 3, 0.8), CFrame = cf * CFrame.new(x, 1.5, z), Color = Kit.WOOD_DARK }, parent)
+		end
+	end
+	part({ Size = Vector3.new(10, 0.6, 9), CFrame = cf * CFrame.new(0, 3.2, 0), Color = Kit.WOOD, Material = Enum.Material.WoodPlanks }, parent)
+	part({ Size = Vector3.new(8, 6, 7), CFrame = cf * CFrame.new(0, 6.5, 0.5), Color = color }, parent)
+	for i = 0, 3 do
+		part({ Size = Vector3.new(8.1, 0.4, 7.1), CFrame = cf * CFrame.new(0, 4.5 + i * 1.5, 0.5), Color = WHITE }, parent)
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(11, 3.5, 5), CFrame = cf * CFrame.new(0, 11.2, 0.5 + s * 2.5) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = Color3.fromRGB(225, 190, 110) }, parent)
+	end
+	part({ Size = Vector3.new(2.6, 4, 0.3), CFrame = cf * CFrame.new(0, 5.5, -3.1), Color = Kit.WOOD_DARK }, parent)
+	for i = 0, 3 do
+		part({ Size = Vector3.new(3, 0.4, 1.2), CFrame = cf * CFrame.new(0, 0.6 + i * 0.75, -5.2 - i * -0.5 - 1.5 + i * 0), Color = Kit.WOOD }, parent)
+	end
+	avoidCircle(cf.Position, 9)
+end
+
+local function surfboard(parent, pos, color)
+	local b = part({ Size = Vector3.new(2, 7, 0.4), CFrame = CFrame.new(pos + Vector3.new(0, 3.3, 0)) * CFrame.Angles(math.rad(-10), R(0, 6.28), 0), Color = color }, parent)
+	sphereMesh(b, Vector3.new(1, 1, 1))
+	part({ Size = Vector3.new(0.4, 6.4, 0.45), CFrame = b.CFrame, Color = WHITE, CanCollide = false }, parent)
+end
+
+local function starfish(parent, pos, color)
+	for k = 0, 4 do
+		part({ Size = Vector3.new(0.6, 0.3, 1.4), CFrame = CFrame.new(pos + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, k * math.pi * 2 / 5, 0) * CFrame.new(0, 0, -0.7), Color = color, CanCollide = false }, parent)
+	end
+end
+
+function MapZones.Plage(folder, zone)
 	local c = zone.center
 	local half = zone.size / 2
-	walls(folder, zone, index)
-
-	-- Stand a oeuf (avant le decor pour reserver la place)
-	local egg = Config.Eggs[index]
-	local eggPos = c + Vector3.new(-45, 0, 30)
-	stand(folder, eggPos, c + Vector3.new(0, 0, 30), string.upper(egg.name), egg.color:Lerp(Color3.fromRGB(150, 80, 255), 0.45), &quot;EggStand&quot;, { EggId = egg.id }, &quot;Ouvrir un oeuf&quot;)
-	eggDisplay(folder, eggPos + Vector3.new(-8, 0, -8), egg.color)
-	eggDisplay(folder, eggPos + Vector3.new(8, 0, -8), egg.color:Lerp(Color3.fromRGB(255, 200, 255), 0.5))
-
-	-- Panneau d'entree de zone
-	sign(folder, CFrame.new(c + Vector3.new(20, 6, half - 8)) * CFrame.Angles(0, math.pi, 0), Vector3.new(18, 4, 0.6), string.upper(zone.name), Config.Colors.Gold, Color3.fromRGB(150, 100, 60))
-	part({ Size = Vector3.new(0.8, 6, 0.8), CFrame = CFrame.new(c + Vector3.new(14, 3, half - 8)), Color = Color3.fromRGB(130, 85, 50), Material = Enum.Material.Wood }, folder)
-	part({ Size = Vector3.new(0.8, 6, 0.8), CFrame = CFrame.new(c + Vector3.new(26, 3, half - 8)), Color = Color3.fromRGB(130, 85, 50), Material = Enum.Material.Wood }, folder)
-
-	if index == 1 then
-		MapBuilder._reserveVillage(folder, zone)
-	end
-
-	BUILDERS[zone.id](folder, zone)
-
-	local nextZone = Config.Zones[index + 1]
-	if nextZone then
-		gateArch(folder, c + Vector3.new(0, 0, -half), nextZone)
-	end
-
-	-- Points de spawn des coins (sur le sol libre)
-	coinSpots[zone.id] = {}
-	local tries = 0
-	while #coinSpots[zone.id] &lt; zone.coinCount and tries &lt; 2000 do
-		tries += 1
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = R(10, half - 22)
-		local pos = c + Vector3.new(math.cos(a) * r, 2.2, math.sin(a) * r)
-		local ok = true
-		for _, av in ipairs(avoid) do
-			if (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(av.pos.X, 0, av.pos.Z)).Magnitude &lt; av.radius then
-				ok = false
-				break
+	-- lagon cote ouest (pas de pont de ce cote) avec ponton
+	local lagoon = c + Vector3.new(-half + 60, 0, 30)
+	local water = cylinder(CFrame.new(lagoon + Vector3.new(0, 0.15, 0)), 0.3, 50, Color3.fromRGB(60, 210, 230), folder, Enum.Material.Glass)
+	water.Transparency = 0.15
+	water.CanCollide = false
+	water.Reflectance = 0.2
+	local shallow = cylinder(CFrame.new(lagoon + Vector3.new(0, 0.1, 0)), 0.3, 56, Color3.fromRGB(150, 235, 235), folder)
+	shallow.CanCollide = false
+	avoidCircle(lagoon, 56)
+	for i = 0, 14 do
+		part({ Size = Vector3.new(7, 0.6, 2.2), CFrame = CFrame.new(lagoon + Vector3.new(30 - i * 2.4, 1, -10)) * CFrame.Angles(0, math.rad(90), 0), Color = (i % 2 == 0) and Kit.WOOD or Kit.WOOD_DARK, Material = Enum.Material.WoodPlanks }, folder)
+		if i % 3 == 0 then
+			for _, z in ipairs({ -3.4, 3.4 }) do
+				part({ Size = Vector3.new(0.8, 3.5, 0.8), CFrame = CFrame.new(lagoon + Vector3.new(30 - i * 2.4, 0.5, -10 + z)), Color = Kit.WOOD_DARK }, folder)
 			end
 		end
-		if ok then
-			table.insert(coinSpots[zone.id], pos)
-		end
 	end
+	-- petit bateau amarre
+	local boat = lagoon + Vector3.new(-6, 0.8, -18)
+	part({ Size = Vector3.new(5, 1.6, 11), CFrame = CFrame.new(boat), Color = Color3.fromRGB(240, 240, 245) }, folder)
+	part({ Size = Vector3.new(5.2, 0.5, 11.2), CFrame = CFrame.new(boat + Vector3.new(0, 0.6, 0)), Color = Color3.fromRGB(60, 140, 230) }, folder)
+	part({ Size = Vector3.new(0.4, 9, 0.4), CFrame = CFrame.new(boat + Vector3.new(0, 5, 1)), Color = Kit.WOOD_DARK }, folder)
+	wedge({ Size = Vector3.new(0.2, 7, 5), CFrame = CFrame.new(boat + Vector3.new(0, 5.5, -1.5)), Color = WHITE, CanCollide = false }, folder)
+	lighthouse(folder, c + Vector3.new(-half + 25, 0, -half + 25))
+	local cols = { Color3.fromRGB(255, 90, 110), Color3.fromRGB(60, 170, 255), Color3.fromRGB(255, 200, 50), Color3.fromRGB(110, 220, 120) }
+	for k = 0, 3 do
+		beachHut(folder, CFrame.lookAt(c + Vector3.new(40 + k * 24, 0, 120), c + Vector3.new(40 + k * 24, 0, 0)), cols[k + 1])
+	end
+	sandcastle(folder, c + Vector3.new(60, 0, -60))
+	sandcastle(folder, c + Vector3.new(-40, 0, -100))
+	-- filet de volley
+	local net = c + Vector3.new(90, 0, -20)
+	for _, z in ipairs({ -10, 10 }) do
+		part({ Size = Vector3.new(0.6, 8, 0.6), CFrame = CFrame.new(net + Vector3.new(0, 4, z)), Color = WHITE }, folder)
+	end
+	part({ Size = Vector3.new(0.2, 2.5, 20), CFrame = CFrame.new(net + Vector3.new(0, 6.5, 0)), Color = Color3.fromRGB(250, 250, 250), Transparency = 0.3, CanCollide = false }, folder)
+	ball(CFrame.new(net + Vector3.new(5, 1.2, 3)), 2, Color3.fromRGB(255, 220, 80), folder)
+	avoidCircle(net, 14)
+	Kit.scatter(zone, 14, 20, 200, function(pos)
+		umbrella(folder, pos, cols[rng:NextInteger(1, #cols)])
+	end, 4)
+	Kit.scatter(zone, 26, 15, 200, function(pos)
+		Kit.palmTree(folder, pos, R(1, 1.5))
+		avoidCircle(pos, 4)
+	end, 3)
+	Kit.scatter(zone, 10, 20, 200, function(pos)
+		surfboard(folder, pos, cols[rng:NextInteger(1, #cols)])
+		avoidCircle(pos, 3)
+	end)
+	Kit.scatter(zone, 30, 10, 200, function(pos)
+		if rng:NextNumber() &lt; 0.5 then
+			starfish(folder, pos, Color3.fromRGB(255, 130, 90))
+		else
+			ball(CFrame.new(pos + Vector3.new(0, 0.3, 0)), R(0.8, 1.4), Color3.fromRGB(255, 220, 230), folder)
+		end
+	end)
+	ambient(folder, zone, { color = WHITE, rate = 10, light = 0.3 })
 end
 
--- Piste de course, spawn, classement, cadeau (Village) -------------------------------------
+-- CANDY LAND -----------------------------------------------------------------------------------
 
-local raceWaypoints = {}
+local CANDY = { Color3.fromRGB(255, 90, 160), Color3.fromRGB(120, 200, 255), Color3.fromRGB(255, 220, 80), Color3.fromRGB(150, 240, 140), Color3.fromRGB(190, 130, 255), Color3.fromRGB(255, 150, 90) }
 
-local function buildRaceTrack(root, center)
-	local rx, rz = 36, 22
-	local n = 28
+local function lollipop(parent, pos, scale)
+	local h = 9 * scale
+	cylinder(CFrame.new(pos + Vector3.new(0, h / 2, 0)), h, 0.35 * scale, WHITE, parent)
+	local col = CANDY[rng:NextInteger(1, #CANDY)]
+	local rot = R(0, 6.28)
+	local disc = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 7 * scale, 7 * scale), CFrame = CFrame.new(pos + Vector3.new(0, h + 3 * scale, 0)) * CFrame.Angles(0, rot, 0), Color = col }, parent)
+	for k = 1, 3 do
+		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.05, (7 - k * 1.8) * scale, (7 - k * 1.8) * scale), CFrame = disc.CFrame, Color = (k % 2 == 1) and WHITE or col, CanCollide = false }, parent)
+	end
+	avoidCircle(pos, 4 * scale)
+end
+
+local function candyCane(parent, pos, scale)
+	local h = 12 * scale
+	for i = 0, 7 do
+		cylinder(CFrame.new(pos + Vector3.new(0, (i + 0.5) * h / 8, 0)), h / 8, 0.9 * scale, (i % 2 == 0) and Color3.fromRGB(240, 50, 70) or WHITE, parent)
+	end
+	local rot = CFrame.Angles(0, R(0, 6.28), 0)
+	for i = 0, 6 do
+		local a = math.pi * i / 6
+		local p = CFrame.new(pos + Vector3.new(0, h, 0)) * rot * CFrame.new(-math.cos(a) * 2 * scale + 2 * scale, math.sin(a) * 2 * scale, 0)
+		ball(p, 1.9 * scale, (i % 2 == 0) and Color3.fromRGB(240, 50, 70) or WHITE, parent)
+	end
+	avoidCircle(pos, 4 * scale)
+end
+
+local function gumdrop(parent, pos, scale)
+	local g = ball(CFrame.new(pos), 8 * scale, CANDY[rng:NextInteger(1, #CANDY)], parent, Enum.Material.Glass)
+	g.Transparency = 0.1
+	g.CanCollide = true
+	sphereMesh(g, Vector3.new(1, 0.9, 1))
+	avoidCircle(pos, 5 * scale)
+end
+
+local function cupcakeHouse(parent, pos, k)
+	local base = CANDY[(k % #CANDY) + 1]
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		part({ Size = Vector3.new(4, 10, 1.6), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * 7.2, 5, math.sin(a) * 7.2)) * CFrame.Angles(0, -a + math.pi / 2, 0), Color = (i % 2 == 0) and base or base:Lerp(WHITE, 0.3) }, parent)
+	end
+	cylinder(CFrame.new(pos + Vector3.new(0, 5, 0)), 10, 7, base:Lerp(WHITE, 0.5), parent)
+	local frost = ball(CFrame.new(pos + Vector3.new(0, 11, 0)), 18, Color3.fromRGB(255, 245, 250), parent)
+	sphereMesh(frost, Vector3.new(1, 0.55, 1))
+	ball(CFrame.new(pos + Vector3.new(0, 14, 0)), 9, Color3.fromRGB(255, 220, 235), parent)
+	ball(CFrame.new(pos + Vector3.new(0, 18.5, 0)), 3.5, Color3.fromRGB(230, 30, 60), parent)
+	for i = 1, 14 do
+		local a = R(0, 6.28)
+		local sprinkle = part({ Size = Vector3.new(0.3, 0.3, 1.1), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * R(2, 7), R(12.5, 14.5), math.sin(a) * R(2, 7))) * CFrame.Angles(R(0, 3), R(0, 3), 0), Color = CANDY[rng:NextInteger(1, #CANDY)], CanCollide = false }, parent)
+	end
+	part({ Size = Vector3.new(3.2, 5, 0.4), CFrame = CFrame.new(pos + Vector3.new(0, 2.5, -7.9)), Color = Color3.fromRGB(130, 75, 45) }, parent)
+	avoidCircle(pos, 11)
+end
+
+local function iceCream(parent, pos)
+	for i = 0, 5 do
+		cylinder(CFrame.new(pos + Vector3.new(0, i * 1.6 + 0.8, 0)), 1.6, 0.6 + i * 0.45, Color3.fromRGB(225, 170, 100), parent)
+	end
+	ball(CFrame.new(pos + Vector3.new(0, 10.5, 0)), 6.5, CANDY[rng:NextInteger(1, #CANDY)], parent)
+	ball(CFrame.new(pos + Vector3.new(0, 14.5, 0)), 5.5, CANDY[rng:NextInteger(1, #CANDY)], parent)
+	ball(CFrame.new(pos + Vector3.new(0, 17.6, 0)), 1.6, Color3.fromRGB(230, 30, 60), parent)
+	avoidCircle(pos, 5)
+end
+
+local function donut(parent, pos, color)
+	local n = 14
 	for i = 0, n - 1 do
-		local a = (i / n) * math.pi * 2
-		table.insert(raceWaypoints, center + Vector3.new(math.cos(a) * rx, 1.2, math.sin(a) * rz))
+		local a = i / n * math.pi * 2
+		ball(CFrame.new(pos + Vector3.new(math.cos(a) * 4.5, 2.3, math.sin(a) * 4.5)), 4.8, Color3.fromRGB(225, 170, 100), parent)
+		ball(CFrame.new(pos + Vector3.new(math.cos(a) * 4.5, 3, math.sin(a) * 4.5)), 4.2, color, parent)
 	end
-	for i = 1, n do
-		local p1 = raceWaypoints[i] - Vector3.new(0, 1.2, 0)
-		local p2 = raceWaypoints[(i % n) + 1] - Vector3.new(0, 1.2, 0)
-		local len = (p2 - p1).Magnitude + 1.2
-		local cf = CFrame.lookAt((p1 + p2) / 2 + Vector3.new(0, 0.15, 0), p2 + Vector3.new(0, 0.15, 0))
-		part({ Name = &quot;Track&quot;, Size = Vector3.new(11, 0.3, len), CFrame = cf, Color = Color3.fromRGB(215, 110, 70), Material = Enum.Material.Sand, CanCollide = false }, root)
-		for _, x in ipairs({ -5.8, 5.8 }) do
-			part({ Name = &quot;TrackEdge&quot;, Size = Vector3.new(0.6, 0.6, len), CFrame = cf * CFrame.new(x, 0.15, 0), Color = (i % 2 == 0) and Color3.fromRGB(240, 60, 60) or Color3.new(1, 1, 1), CanCollide = false }, root)
-		end
-	end
-	-- Ligne d'arrivee en damier
-	local start = raceWaypoints[1] - Vector3.new(0, 1.2, 0)
-	for row = 0, 1 do
-		for col = 0, 5 do
-			part({ Size = Vector3.new(1.8, 0.35, 1.8), CFrame = CFrame.new(start + Vector3.new(-1.8 + row * 1.8 + 0.9, 0.2, -5 + col * 1.8 + 0.9)), Color = ((row + col) % 2 == 0) and Color3.new(1, 1, 1) or Color3.fromRGB(25, 25, 30), CanCollide = false }, root)
-		end
-	end
-	for _, z in ipairs({ -7, 7 }) do
-		part({ Size = Vector3.new(1.2, 10, 1.2), CFrame = CFrame.new(start + Vector3.new(0, 5, z)), Color = Color3.new(1, 1, 1), Material = Enum.Material.Metal }, root)
-	end
-	sign(root, CFrame.new(start + Vector3.new(0, 10.5, 0)) * CFrame.Angles(0, math.pi / 2, 0), Vector3.new(15, 2.8, 0.5), &quot;ARRIVEE&quot;, Color3.new(1, 1, 1), Color3.fromRGB(230, 60, 60))
-	-- Tribunes
-	for k = 0, 2 do
-		part({ Size = Vector3.new(34, 1.4 + k * 1.4, 3.2), CFrame = CFrame.new(center + Vector3.new(0, 0.7 + k * 0.7, rz + 12 + k * 3.2)), Color = (k % 2 == 0) and Color3.fromRGB(70, 150, 255) or Color3.new(1, 1, 1) }, root)
-	end
-	for _, x in ipairs({ -30, -10, 10, 30 }) do
-		local flag = part({ Size = Vector3.new(0.3, 8, 0.3), CFrame = CFrame.new(center + Vector3.new(x, 4, rz + 22)), Color = Color3.new(1, 1, 1) }, root)
-		part({ Size = Vector3.new(0.1, 2, 3), CFrame = CFrame.new(center + Vector3.new(x, 7, rz + 23.5)), Color = Color3.fromRGB(255, 200, 40), CanCollide = false }, root)
-	end
-	stand(root, center + Vector3.new(0, 0, -rz - 14), center + Vector3.new(0, 0, -rz - 40), &quot;COURSES&quot;, Color3.fromRGB(240, 60, 60), &quot;RaceStand&quot;, {}, &quot;Courses&quot;)
-	avoidCircle(center, rx + 10)
+	avoidCircle(pos, 8)
 end
 
-function MapBuilder._reserveVillage(folder, zone)
+local function cottonTree(parent, pos, scale)
+	cylinder(CFrame.new(pos + Vector3.new(0, 4 * scale, 0)), 8 * scale, 0.5 * scale, WHITE, parent)
+	local col = rng:NextNumber() &lt; 0.5 and Color3.fromRGB(255, 170, 220) or Color3.fromRGB(170, 215, 255)
+	for k = 1, 5 do
+		ball(CFrame.new(pos + Vector3.new(R(-2.5, 2.5), 9 + R(-1, 2), R(-2.5, 2.5)) * scale), R(5, 7) * scale, col, parent)
+	end
+	avoidCircle(pos, 4 * scale)
+end
+
+function MapZones.Bonbons(folder, zone)
 	local c = zone.center
-	local spawnPos = Config.Map.SpawnPosition
-	avoidCircle(Vector3.new(spawnPos.X, 0, spawnPos.Z), 16)
-	buildRaceTrack(folder, c + Vector3.new(55, 0, -45))
-
-	-- Spawn
-	local existing = workspace:FindFirstChildOfClass(&quot;SpawnLocation&quot;)
-	if existing then
-		existing:Destroy()
+	Kit.river(folder, c + Vector3.new(-150, 0, -60), c + Vector3.new(150, 0, -40), 12, Color3.fromRGB(255, 220, 235))
+	for _, r in ipairs(folder:GetChildren()) do
+		if r.Name == &quot;River&quot; then
+			r.Color = Color3.fromRGB(120, 70, 45)
+			r.Material = Enum.Material.SmoothPlastic
+			r.Transparency = 0
+		end
 	end
-	local spawn = Instance.new(&quot;SpawnLocation&quot;)
-	spawn.Name = &quot;MainSpawn&quot;
-	spawn.Shape = Enum.PartType.Cylinder
-	spawn.Size = Vector3.new(0.6, 14, 14)
-	spawn.CFrame = CFrame.new(spawnPos.X, 0.3, spawnPos.Z) * CFrame.Angles(0, 0, math.rad(90))
-	spawn.Anchored = true
-	spawn.Material = Enum.Material.SmoothPlastic
-	spawn.Color = Color3.fromRGB(120, 210, 255)
-	spawn.Neutral = true
-	spawn.Duration = 0
-	spawn.Parent = folder
-	local ring = cylinder(CFrame.new(spawnPos.X, 0.4, spawnPos.Z), 0.4, 7.5, Color3.new(1, 1, 1), folder, Enum.Material.Neon)
+	Kit.footbridge(folder, c + Vector3.new(0, 0, -51), Vector3.new(0, 0, 1), 14, 20)
+	for k, p in ipairs({ Vector3.new(-100, 0, 80), Vector3.new(-60, 0, 120), Vector3.new(80, 0, 100), Vector3.new(110, 0, 50), Vector3.new(-110, 0, -110) }) do
+		cupcakeHouse(folder, c + p, k)
+	end
+	for k, p in ipairs({ Vector3.new(60, 0, -110), Vector3.new(-40, 0, 40), Vector3.new(100, 0, -10) }) do
+		donut(folder, c + p, CANDY[k])
+	end
+	for _, p in ipairs({ Vector3.new(40, 0, 60), Vector3.new(-80, 0, -10), Vector3.new(120, 0, -120) }) do
+		iceCream(folder, c + p)
+	end
+	Kit.scatter(zone, 20, 20, 200, function(pos)
+		lollipop(folder, pos, R(0.8, 1.4))
+	end, 3)
+	Kit.scatter(zone, 16, 20, 200, function(pos)
+		candyCane(folder, pos, R(0.8, 1.3))
+	end, 3)
+	Kit.scatter(zone, 16, 20, 200, function(pos)
+		cottonTree(folder, pos, R(0.9, 1.4))
+	end, 3)
+	Kit.scatter(zone, 18, 15, 200, function(pos)
+		gumdrop(folder, pos, R(0.5, 1.2))
+	end, 2)
+	ambient(folder, zone, { color = Color3.fromRGB(255, 180, 230), rate = 35 })
+end
+
+-- NEIGE ----------------------------------------------------------------------------------------
+
+local SNOW = Color3.fromRGB(248, 252, 255)
+
+local function snowPine(parent, pos, scale)
+	Kit.pineTree(parent, pos, scale)
+	for k = 0, 3 do
+		local r = (5.5 - k * 1.2) * scale
+		local cap = cylinder(CFrame.new(pos + Vector3.new(0, (6.7 + k * 3) * scale, 0)), 0.6 * scale, r * 0.75, SNOW, parent)
+		cap.CanCollide = false
+	end
+	ball(CFrame.new(pos + Vector3.new(0, 17.3 * scale, 0)), 1.4 * scale, SNOW, parent)
+	avoidCircle(pos, 5 * scale)
+end
+
+local function snowman(parent, pos)
+	ball(CFrame.new(pos + Vector3.new(0, 2.6, 0)), 5.5, SNOW, parent)
+	ball(CFrame.new(pos + Vector3.new(0, 6.4, 0)), 4.2, SNOW, parent)
+	ball(CFrame.new(pos + Vector3.new(0, 9.4, 0)), 3.2, SNOW, parent)
+	for _, x in ipairs({ -0.55, 0.55 }) do
+		ball(CFrame.new(pos + Vector3.new(x, 9.8, -1.45)), 0.45, Color3.fromRGB(30, 30, 40), parent)
+	end
+	local nose = part({ Size = Vector3.new(0.4, 0.4, 1.8), CFrame = CFrame.new(pos + Vector3.new(0, 9.3, -2.2)), Color = Color3.fromRGB(255, 140, 40), CanCollide = false }, parent)
+	part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 4.4, 4.4), CFrame = CFrame.new(pos + Vector3.new(0, 8, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(230, 60, 60), CanCollide = false }, parent)
+	cylinder(CFrame.new(pos + Vector3.new(0, 11.3, 0)), 0.4, 2.2, Color3.fromRGB(40, 40, 50), parent)
+	cylinder(CFrame.new(pos + Vector3.new(0, 12.6, 0)), 2.4, 1.4, Color3.fromRGB(40, 40, 50), parent)
+	for _, s in ipairs({ -1, 1 }) do
+		part({ Size = Vector3.new(4, 0.3, 0.3), CFrame = CFrame.new(pos + Vector3.new(s * 3.4, 7, 0)) * CFrame.Angles(0, 0, math.rad(s * 25)), Color = Color3.fromRGB(110, 70, 40), CanCollide = false }, parent)
+	end
+	avoidCircle(pos, 4)
+end
+
+local function igloo(parent, pos, facing)
+	local dome = ball(CFrame.new(pos), 18, SNOW, parent)
+	sphereMesh(dome, Vector3.new(1, 1, 1))
+	local cf = CFrame.lookAt(pos, pos + facing)
+	part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(7, 6, 6), CFrame = cf * CFrame.new(0, 2.5, -9) * CFrame.Angles(0, math.rad(90), 0), Color = SNOW }, parent)
+	part({ Size = Vector3.new(3.4, 4, 0.4), CFrame = cf * CFrame.new(0, 2, -12.5), Color = Color3.fromRGB(70, 90, 130) }, parent)
+	for y = 2, 7, 2.5 do
+		cylinder(CFrame.new(pos + Vector3.new(0, y, 0)), 0.15, math.sqrt(math.max(81 - y * y, 1)) + 0.05, Color3.fromRGB(215, 230, 245), parent).CanCollide = false
+	end
+	avoidCircle(pos, 13)
+end
+
+local function iceCrystal(parent, pos, scale)
+	for k = 1, 4 do
+		local h = R(4, 9) * scale
+		part({ Size = Vector3.new(1.4, h, 1.4) * Vector3.new(scale, 1, scale), CFrame = CFrame.new(pos) * CFrame.Angles(R(-0.4, 0.4), R(0, 6.28), R(-0.4, 0.4)) * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(170, 230, 255), Material = Enum.Material.Glass, Transparency = 0.2, CanCollide = false }, parent)
+	end
+	avoidCircle(pos, 3 * scale)
+end
+
+local function present(parent, pos)
+	local col = CANDY[rng:NextInteger(1, #CANDY)]
+	local s = R(2, 3.4)
+	part({ Size = Vector3.new(s, s, s), CFrame = CFrame.new(pos + Vector3.new(0, s / 2, 0)) * CFrame.Angles(0, R(0, 3), 0), Color = col }, parent)
+	part({ Size = Vector3.new(s + 0.1, s + 0.1, 0.5), CFrame = CFrame.new(pos + Vector3.new(0, s / 2, 0)), Color = WHITE, CanCollide = false }, parent)
+end
+
+function MapZones.Neige(folder, zone)
+	local c = zone.center
+	-- lac gele + patineurs (bonhommes)
+	local lake = c + Vector3.new(70, 0, 60)
+	local ice = cylinder(CFrame.new(lake + Vector3.new(0, 0.15, 0)), 0.3, 34, Color3.fromRGB(190, 235, 255), folder, Enum.Material.Glass)
+	ice.Reflectance = 0.35
+	ice.Transparency = 0.1
+	cylinder(CFrame.new(lake + Vector3.new(0, 0.1, 0)), 0.3, 37, SNOW, folder)
+	avoidCircle(lake, 40)
+	igloo(folder, c + Vector3.new(-90, 0, 90), Vector3.new(1, 0, -1))
+	igloo(folder, c + Vector3.new(-120, 0, 40), Vector3.new(1, 0, 0))
+	-- chalet enneige
+	local chalet = CFrame.new(c + Vector3.new(100, 0, -90)) * CFrame.Angles(0, math.rad(-130), 0)
+	cabin(folder, chalet)
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(16.4, 1.2, 7.4), CFrame = chalet * CFrame.new(0, 13.6, s * 3.4) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = SNOW }, folder)
+	end
+	-- colline de neige avec escalier
+	Kit.plateau(folder, c + Vector3.new(-80, 0, -90), 22, 7, SNOW, Color3.fromRGB(205, 225, 245), Vector3.new(1, 0, 0.6))
+	snowman(folder, c + Vector3.new(-80, 7.5, -90))
+	Kit.scatter(zone, 50, 20, 200, function(pos)
+		snowPine(folder, pos, R(0.9, 1.6))
+	end, 3)
+	Kit.scatter(zone, 10, 20, 200, function(pos)
+		snowman(folder, pos)
+	end, 3)
+	Kit.scatter(zone, 16, 15, 200, function(pos)
+		iceCrystal(folder, pos, R(0.7, 1.4))
+	end, 2)
+	Kit.scatter(zone, 20, 10, 200, function(pos)
+		present(folder, pos)
+	end)
+	ambient(folder, zone, { color = WHITE, rate = 120, height = 40, y = 5, speed = NumberRange.new(2, 4), dir = Enum.NormalId.Bottom, light = 0.2, life = NumberRange.new(6, 9), size = NumberSequence.new(0.35) })
+end
+
+-- MYSTIQUE -------------------------------------------------------------------------------------
+
+local MYST = { Color3.fromRGB(190, 90, 255), Color3.fromRGB(80, 220, 255), Color3.fromRGB(255, 90, 210), Color3.fromRGB(120, 255, 200) }
+
+local function glowCrystal(parent, pos, scale, color)
+	for k = 1, 5 do
+		local h = R(4, 11) * scale
+		local w = R(1.2, 2.2) * scale
+		local cf = CFrame.new(pos) * CFrame.Angles(R(-0.45, 0.45), R(0, 6.28), R(-0.45, 0.45)) * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, math.rad(45), 0)
+		part({ Size = Vector3.new(w, h, w), CFrame = cf, Color = color, Material = Enum.Material.Neon, Transparency = 0.15, CanCollide = false }, parent)
+	end
+	local l = Instance.new(&quot;PointLight&quot;)
+	l.Color = color
+	l.Range = 16 * scale
+	l.Brightness = 1.5
+	l.Parent = parent:GetChildren()[#parent:GetChildren()]
+	avoidCircle(pos, 4 * scale)
+end
+
+local function glowMushroom(parent, pos, scale, color)
+	cylinder(CFrame.new(pos + Vector3.new(0, 3 * scale, 0)), 6 * scale, 0.9 * scale, Color3.fromRGB(230, 220, 255), parent)
+	local cap = ball(CFrame.new(pos + Vector3.new(0, 6.5 * scale, 0)), 8 * scale, color, parent, Enum.Material.Neon)
+	sphereMesh(cap, Vector3.new(1, 0.55, 1))
+	for k = 1, 5 do
+		local a = k * 1.25
+		ball(CFrame.new(pos + Vector3.new(math.cos(a) * 2.2 * scale, 7.8 * scale, math.sin(a) * 2.2 * scale)), 0.9 * scale, WHITE, parent, Enum.Material.Neon)
+	end
+	local l = Instance.new(&quot;PointLight&quot;)
+	l.Color = color
+	l.Range = 14 * scale
+	l.Parent = cap
+	avoidCircle(pos, 4 * scale)
+end
+
+local function magicTree(parent, pos, scale)
+	cylinder(CFrame.new(pos + Vector3.new(0, 5 * scale, 0)), 10 * scale, 1 * scale, Color3.fromRGB(70, 50, 100), parent)
+	local col = MYST[rng:NextInteger(1, #MYST)]
+	for k = 1, 5 do
+		ball(CFrame.new(pos + Vector3.new(R(-3, 3), 11 + R(-1.5, 2), R(-3, 3)) * scale), R(5, 7) * scale, col:Lerp(Color3.fromRGB(60, 30, 110), 0.45), parent, Enum.Material.Grass)
+	end
+	for k = 1, 4 do
+		ball(CFrame.new(pos + Vector3.new(R(-4, 4), 9 + R(-1, 3), R(-4, 4)) * scale), 0.9 * scale, col, parent, Enum.Material.Neon)
+	end
+	avoidCircle(pos, 5 * scale)
+end
+
+local function runeCircle(parent, pos)
+	local ring = cylinder(CFrame.new(pos + Vector3.new(0, 0.12, 0)), 0.2, 16, Color3.fromRGB(190, 120, 255), parent, Enum.Material.Neon)
 	ring.CanCollide = false
-	ring.Transparency = 0.4
-
-	-- Grand panneau titre
-	local title = sign(folder, CFrame.new(spawnPos.X, 13, spawnPos.Z + 20) * CFrame.Angles(0, math.pi, 0), Vector3.new(34, 8, 1), &quot;PET RUSH&quot;, Color3.fromRGB(255, 210, 60), Color3.fromRGB(120, 70, 200))
-	for _, x in ipairs({ -15, 15 }) do
-		part({ Size = Vector3.new(1.2, 13, 1.2), CFrame = CFrame.new(spawnPos.X + x, 6.5, spawnPos.Z + 20), Color = Color3.new(1, 1, 1), Material = Enum.Material.Wood }, folder)
+	cylinder(CFrame.new(pos + Vector3.new(0, 0.16, 0)), 0.2, 15, Color3.fromRGB(45, 25, 80), parent).CanCollide = false
+	cylinder(CFrame.new(pos + Vector3.new(0, 0.2, 0)), 0.2, 6, Color3.fromRGB(120, 230, 255), parent, Enum.Material.Neon).CanCollide = false
+	for k = 1, 8 do
+		local a = k / 8 * math.pi * 2
+		local p = pos + Vector3.new(math.cos(a) * 18, 0, math.sin(a) * 18)
+		part({ Size = Vector3.new(2.2, 7, 2.2), CFrame = CFrame.new(p + Vector3.new(0, 3.5, 0)) * CFrame.Angles(0, a, 0), Color = Color3.fromRGB(90, 80, 120), Material = Enum.Material.Slate }, parent)
+		part({ Size = Vector3.new(0.3, 2, 1.2), CFrame = CFrame.new(p + Vector3.new(0, 4.5, 0)) * CFrame.Angles(0, a, 0) * CFrame.new(-1.15, 0, 0), Color = MYST[(k % #MYST) + 1], Material = Enum.Material.Neon }, parent)
 	end
-
-	-- Classement
-	local boardPos = c + Vector3.new(-45, 0, 85)
-	local board = part({ Name = &quot;Leaderboard&quot;, Size = Vector3.new(20, 16, 1), CFrame = CFrame.lookAt(boardPos + Vector3.new(0, 10, 0), Vector3.new(spawnPos.X, 10, spawnPos.Z)), Color = Color3.fromRGB(40, 45, 90) }, folder)
-	part({ Size = Vector3.new(21.6, 17.6, 0.8), CFrame = board.CFrame * CFrame.new(0, 0, 0.3), Color = Config.Colors.Gold, Material = Enum.Material.Metal }, folder)
-	for _, x in ipairs({ -8, 8 }) do
-		part({ Size = Vector3.new(1, 3, 1), CFrame = board.CFrame * CFrame.new(x, -9.5, 0.3), Color = Config.Colors.Gold, Material = Enum.Material.Metal }, folder)
-	end
-	local gui = Instance.new(&quot;SurfaceGui&quot;)
-	gui.Face = Enum.NormalId.Front
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 30
-	gui.LightInfluence = 0
-	local head = Instance.new(&quot;TextLabel&quot;)
-	head.Size = UDim2.new(1, 0, 0.16, 0)
-	head.BackgroundTransparency = 1
-	head.Text = &quot;TOP COINS&quot;
-	head.TextColor3 = Config.Colors.Gold
-	head.Font = Enum.Font.FredokaOne
-	head.TextScaled = true
-	head.Parent = gui
-	local st = Instance.new(&quot;UIStroke&quot;)
-	st.Color = Color3.fromRGB(22, 24, 52)
-	st.Thickness = 4
-	st.Parent = head
-	local list = Instance.new(&quot;TextLabel&quot;)
-	list.Size = UDim2.new(1, -30, 0.8, 0)
-	list.Position = UDim2.new(0, 15, 0.18, 0)
-	list.BackgroundTransparency = 1
-	list.Text = &quot;Chargement...&quot;
-	list.TextColor3 = Color3.new(1, 1, 1)
-	list.Font = Enum.Font.FredokaOne
-	list.TextScaled = true
-	list.TextXAlignment = Enum.TextXAlignment.Left
-	list.TextYAlignment = Enum.TextYAlignment.Top
-	list.Parent = gui
-	gui.Parent = board
-	MapBuilder.LeaderboardLabel = list
-	avoidCircle(boardPos, 12)
-
-	-- Stand cadeau du jour
-	stand(folder, c + Vector3.new(45, 0, 88), Vector3.new(spawnPos.X, 0, spawnPos.Z), &quot;CADEAU&quot;, Color3.fromRGB(255, 170, 30), &quot;DailyStand&quot;, {}, &quot;Recuperer&quot;)
+	local orb = ball(CFrame.new(pos + Vector3.new(0, 7, 0)), 4, Color3.fromRGB(200, 140, 255), parent, Enum.Material.Neon)
+	orb.CanCollide = false
+	bob(orb, 2, 3)
+	local l = Instance.new(&quot;PointLight&quot;)
+	l.Color = Color3.fromRGB(200, 140, 255)
+	l.Range = 30
+	l.Brightness = 2
+	l.Parent = orb
+	avoidCircle(pos, 21)
 end
 
--- Construction ------------------------------------------------------------------------------
+local function portal(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	local n = 20
+	for i = 0, n - 1 do
+		local a = i / n * math.pi * 2
+		ball(cf * CFrame.new(math.cos(a) * 9, 10 + math.sin(a) * 9, 0), 2.6, Color3.fromRGB(110, 90, 150), parent)
+	end
+	local disk = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 17, 17), CFrame = cf * CFrame.new(0, 10, 0) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(180, 100, 255), Material = Enum.Material.ForceField, CanCollide = false }, parent)
+	local swirl = Instance.new(&quot;ParticleEmitter&quot;)
+	swirl.Rate = 30
+	swirl.Lifetime = NumberRange.new(1, 2)
+	swirl.Speed = NumberRange.new(1, 3)
+	swirl.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 0) })
+	swirl.LightEmission = 1
+	swirl.Color = ColorSequence.new(Color3.fromRGB(220, 160, 255), Color3.fromRGB(100, 220, 255))
+	swirl.Parent = disk
+	part({ Size = Vector3.new(24, 2, 8), CFrame = cf * CFrame.new(0, 1, 0), Color = Color3.fromRGB(90, 80, 120), Material = Enum.Material.Slate }, parent)
+	avoidCircle(pos, 14)
+end
 
-function MapBuilder.Build()
-	for _, name in ipairs({ &quot;PetRush&quot;, &quot;Baseplate&quot; }) do
-		local old = workspace:FindFirstChild(name)
-		if old then
-			old:Destroy()
+local function floatingRock(parent, pos, scale)
+	local r = part({ Size = Vector3.new(R(5, 9), R(3, 5), R(5, 9)) * scale, CFrame = CFrame.new(pos) * CFrame.Angles(R(-0.3, 0.3), R(0, 6), R(-0.3, 0.3)), Color = Color3.fromRGB(110, 95, 140), Material = Enum.Material.Slate, CanCollide = false }, parent)
+	local g = ball(CFrame.new(pos + Vector3.new(0, r.Size.Y / 2, 0)), r.Size.X * 0.9, Color3.fromRGB(150, 110, 230), parent, Enum.Material.Grass)
+	sphereMesh(g, Vector3.new(1, 0.25, 1))
+	g.CanCollide = false
+	for _, p in ipairs({ r, g }) do
+		bob(p, R(2, 4), R(3, 5))
+	end
+end
+
+function MapZones.Mystique(folder, zone)
+	local c = zone.center
+	runeCircle(folder, c + Vector3.new(0, 0, 0) + Vector3.new(70, 0, 40))
+	portal(folder, c + Vector3.new(110, 0, -100), Vector3.new(-1, 0, 1))
+	portal(folder, c + Vector3.new(-110, 0, 110), Vector3.new(1, 0, -1))
+	Kit.plateau(folder, c + Vector3.new(-90, 0, -80), 20, 8, Color3.fromRGB(150, 110, 230), Color3.fromRGB(90, 70, 130), Vector3.new(1, 0, 0.4))
+	glowCrystal(folder, c + Vector3.new(-90, 8.5, -80), 2, MYST[2])
+	for k = 1, 16 do
+		local a = k / 16 * math.pi * 2
+		floatingRock(folder, c + Vector3.new(math.cos(a) * R(100, 150), R(20, 45), math.sin(a) * R(100, 150)), R(0.8, 1.6))
+	end
+	Kit.scatter(zone, 26, 20, 200, function(pos)
+		magicTree(folder, pos, R(0.9, 1.4))
+	end, 3)
+	Kit.scatter(zone, 22, 15, 200, function(pos)
+		glowCrystal(folder, pos, R(0.7, 1.4), MYST[rng:NextInteger(1, #MYST)])
+	end, 2)
+	Kit.scatter(zone, 20, 15, 200, function(pos)
+		glowMushroom(folder, pos, R(0.6, 1.3), MYST[rng:NextInteger(1, #MYST)])
+	end, 2)
+	ambient(folder, zone, { color = Color3.fromRGB(210, 150, 255), rate = 60, height = 20 })
+end
+
+-- PET KINGDOM ----------------------------------------------------------------------------------
+
+local ROYAL = Color3.fromRGB(235, 230, 245)
+local ROYAL_ROOF = Color3.fromRGB(70, 90, 220)
+
+local function tower(parent, pos, radius, height, roof)
+	cylinder(CFrame.new(pos + Vector3.new(0, height / 2, 0)), height, radius, ROYAL, parent)
+	cylinder(CFrame.new(pos + Vector3.new(0, height + 0.5, 0)), 1, radius + 1, ROYAL:Lerp(Color3.new(0, 0, 0), 0.08), parent)
+	for k = 1, 8 do
+		local a = k / 8 * math.pi * 2
+		part({ Size = Vector3.new(1.8, 2, 1.8), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * radius, height + 2, math.sin(a) * radius)), Color = ROYAL }, parent)
+	end
+	cone(parent, pos + Vector3.new(0, height + 1, 0), radius * 2.2, radius + 0.6, roof or ROYAL_ROOF)
+	part({ Size = Vector3.new(0.3, 5, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, height + radius * 2.2 + 3, 0)), Color = Config.Colors.Gold }, parent)
+	local flag = part({ Size = Vector3.new(0.15, 1.8, 3), CFrame = CFrame.new(pos + Vector3.new(0, height + radius * 2.2 + 4.5, 1.5)), Color = Color3.fromRGB(230, 50, 70), CanCollide = false }, parent)
+	for y = height * 0.35, height * 0.8, height * 0.22 do
+		part({ Size = Vector3.new(1.6, 2.6, 0.4), CFrame = CFrame.new(pos + Vector3.new(0, y, -radius)), Color = Color3.fromRGB(255, 220, 120), Material = Enum.Material.Neon }, parent)
+	end
+end
+
+local function castle(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	local W, D, H = 60, 40, 22
+	-- remparts
+	for _, side in ipairs({ { 0, -D / 2, W, 0 }, { 0, D / 2, W, 0 }, { -W / 2, 0, D, 90 }, { W / 2, 0, D, 90 } }) do
+		local wcf = cf * CFrame.new(side[1], 0, side[2]) * CFrame.Angles(0, math.rad(side[4]), 0)
+		if side[2] == -D / 2 then
+			-- facade avec porte
+			for _, x in ipairs({ -W / 2 + (W / 2 - 7) / 2, W / 2 - (W / 2 - 7) / 2 }) do
+				part({ Size = Vector3.new(W / 2 - 7, H, 4), CFrame = wcf * CFrame.new(x, H / 2, 0), Color = ROYAL }, parent)
+			end
+			part({ Size = Vector3.new(14, H - 14, 4), CFrame = wcf * CFrame.new(0, 14 + (H - 14) / 2, 0), Color = ROYAL }, parent)
+			part({ Size = Vector3.new(12, 13, 1), CFrame = wcf * CFrame.new(0, 6.5, 1.5), Color = Color3.fromRGB(120, 75, 45), Material = Enum.Material.WoodPlanks }, parent)
+			sign(parent, wcf * CFrame.new(0, 17, -2.3) * CFrame.Angles(0, math.pi, 0), Vector3.new(26, 4, 0.5), &quot;PET KINGDOM&quot;, Config.Colors.Gold, Color3.fromRGB(120, 40, 160))
+		else
+			part({ Size = Vector3.new(side[3], H, 4), CFrame = wcf * CFrame.new(0, H / 2, 0), Color = ROYAL }, parent)
+		end
+		for t = -side[3] / 2 + 2, side[3] / 2 - 2, 4 do
+			part({ Size = Vector3.new(2, 2.4, 4.4), CFrame = wcf * CFrame.new(t, H + 1.2, 0), Color = ROYAL }, parent)
 		end
 	end
-	local root = Instance.new(&quot;Folder&quot;)
-	root.Name = &quot;PetRush&quot;
-	root.Parent = workspace
-	buildLighting()
-	buildWorld(root)
-	for i, zone in ipairs(Config.Zones) do
-		buildZone(root, zone, i)
+	for _, o in ipairs({ Vector3.new(-W / 2, 0, -D / 2), Vector3.new(W / 2, 0, -D / 2), Vector3.new(-W / 2, 0, D / 2), Vector3.new(W / 2, 0, D / 2) }) do
+		tower(parent, (cf * CFrame.new(o)).Position, 6, H + 10)
 	end
-	for _, name in ipairs({ &quot;Coins&quot;, &quot;Racers&quot; }) do
-		if not workspace:FindFirstChild(name) then
-			local f = Instance.new(&quot;Folder&quot;)
-			f.Name = name
-			f.Parent = workspace
+	-- donjon central
+	tower(parent, (cf * CFrame.new(0, 0, 4)).Position, 11, H + 26, Color3.fromRGB(230, 60, 90))
+	avoidCircle(pos, 46)
+end
+
+local function topiary(parent, pos)
+	part({ Size = Vector3.new(3, 2, 3), CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)), Color = Color3.fromRGB(220, 120, 80) }, parent)
+	cylinder(CFrame.new(pos + Vector3.new(0, 3.5, 0)), 3, 0.3, Kit.WOOD_DARK, parent)
+	ball(CFrame.new(pos + Vector3.new(0, 6, 0)), 4.5, Color3.fromRGB(70, 170, 70), parent, Enum.Material.Grass)
+	ball(CFrame.new(pos + Vector3.new(0, 9, 0)), 3, Color3.fromRGB(80, 185, 75), parent, Enum.Material.Grass)
+	avoidCircle(pos, 3)
+end
+
+local function banner(parent, pos, color)
+	cylinder(CFrame.new(pos + Vector3.new(0, 7, 0)), 14, 0.35, Config.Colors.Gold, parent, Enum.Material.Metal)
+	part({ Size = Vector3.new(4, 0.3, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, 13.5, 0)), Color = Config.Colors.Gold }, parent)
+	part({ Size = Vector3.new(3.6, 6, 0.2), CFrame = CFrame.new(pos + Vector3.new(0, 10.4, 0)), Color = color, CanCollide = false }, parent)
+	wedge({ Size = Vector3.new(0.2, 1.5, 1.8), CFrame = CFrame.new(pos + Vector3.new(-0.9, 6.65, 0)) * CFrame.Angles(math.rad(180), math.rad(90), 0), Color = color, CanCollide = false }, parent)
+	wedge({ Size = Vector3.new(0.2, 1.5, 1.8), CFrame = CFrame.new(pos + Vector3.new(0.9, 6.65, 0)) * CFrame.Angles(math.rad(180), math.rad(-90), 0), Color = color, CanCollide = false }, parent)
+	ball(CFrame.new(pos + Vector3.new(0, 10.6, -0.2)), 1.4, Config.Colors.Gold, parent, Enum.Material.Neon)
+	avoidCircle(pos, 2)
+end
+
+function MapZones.Royaume(folder, zone)
+	local c = zone.center
+	local half = zone.size / 2
+	-- on arrive par le sud (+Z) ; chateau au nord, tapis rouge jusqu'a sa porte
+	local castlePos = c + Vector3.new(0, 0, -105)
+	castle(folder, castlePos, Vector3.new(0, 0, 1))
+	local z0, z1 = half, -84
+	part({ Size = Vector3.new(10, 0.25, z0 - z1), CFrame = CFrame.new(c + Vector3.new(0, 0.15, (z0 + z1) / 2)), Color = Color3.fromRGB(210, 40, 60), CanCollide = false }, folder)
+	for _, x in ipairs({ -5.3, 5.3 }) do
+		part({ Size = Vector3.new(0.6, 0.3, z0 - z1), CFrame = CFrame.new(c + Vector3.new(x, 0.16, (z0 + z1) / 2)), Color = Config.Colors.Gold, CanCollide = false }, folder)
+	end
+	local n = 0
+	for z = half - 30, -70, -22 do
+		n += 1
+		for _, x in ipairs({ -12, 12 }) do
+			banner(folder, c + Vector3.new(x, 0, z), n % 2 == 0 and Color3.fromRGB(120, 60, 200) or Color3.fromRGB(220, 50, 80))
 		end
 	end
-	Players.RespawnTime = 2
-	return root
-end
-
-function MapBuilder.GetCoinSpots(zoneId)
-	return coinSpots[zoneId] or {}
-end
-
-function MapBuilder.GetRaceWaypoints()
-	return raceWaypoints
-end
-
-function MapBuilder.ZoneAt(position)
-	for _, zone in ipairs(Config.Zones) do
-		local half = zone.size / 2 + 50
-		if math.abs(position.X - zone.center.X) &lt;= half and math.abs(position.Z - zone.center.Z) &lt;= half then
-			return zone
-		end
+	-- statues dorees de pets
+	for k, p in ipairs({ Vector3.new(-40, 0, 40), Vector3.new(40, 0, 40), Vector3.new(-45, 0, -30), Vector3.new(45, 0, -30) }) do
+		Kit.statue(folder, c + p, k % 2 == 0 and &quot;egg&quot; or &quot;paw&quot;)
 	end
-	return nil
+	-- fontaine royale doree (le tapis passe autour)
+	local f = c + Vector3.new(0, 0, 10)
+	cylinder(CFrame.new(f + Vector3.new(0, 1, 0)), 2, 13, ROYAL, folder, Enum.Material.Marble)
+	local w = cylinder(CFrame.new(f + Vector3.new(0, 1.8, 0)), 0.6, 12, Kit.WATER, folder, Enum.Material.Glass)
+	w.Transparency = 0.2
+	w.CanCollide = false
+	cylinder(CFrame.new(f + Vector3.new(0, 5, 0)), 6, 2, Config.Colors.Gold, folder, Enum.Material.Metal)
+	cylinder(CFrame.new(f + Vector3.new(0, 8.3, 0)), 0.8, 6, Config.Colors.Gold, folder, Enum.Material.Metal)
+	local crown = f + Vector3.new(0, 9.5, 0)
+	cylinder(CFrame.new(crown + Vector3.new(0, 1, 0)), 2, 2.6, Config.Colors.Gold, folder, Enum.Material.Neon)
+	for k = 1, 5 do
+		local a = k / 5 * math.pi * 2
+		ball(CFrame.new(crown + Vector3.new(math.cos(a) * 2.4, 2.6, math.sin(a) * 2.4)), 1.2, Color3.fromRGB(255, 80, 120), folder, Enum.Material.Neon)
+	end
+	avoidCircle(f, 16)
+	-- jardins a la francaise de chaque cote
+	for _, sx in ipairs({ -1, 1 }) do
+		local g = c + Vector3.new(sx * 90, 0, 40)
+		Kit.hedge(folder, g + Vector3.new(-20, 0, -30), g + Vector3.new(-20, 0, 30))
+		Kit.hedge(folder, g + Vector3.new(20, 0, -30), g + Vector3.new(20, 0, 30))
+		Kit.hedge(folder, g + Vector3.new(-20, 0, -30), g + Vector3.new(20, 0, -30))
+		Kit.flowerBed(folder, g, 9)
+		for _, z in ipairs({ -20, 20 }) do
+			topiary(folder, g + Vector3.new(0, 0, z))
+		end
+		Kit.avoidSegment(g + Vector3.new(0, 0, -32), g + Vector3.new(0, 0, 32), 22)
+	end
+	Kit.scatter(zone, 16, 30, 200, function(pos)
+		topiary(folder, pos)
+	end, 3)
+	Kit.scatter(zone, 14, 30, 200, function(pos)
+		Kit.roundTree(folder, pos, R(1, 1.4))
+		avoidCircle(pos, 5)
+	end, 4)
+	Kit.scatter(zone, 14, 20, 200, function(pos)
+		Kit.flowerPatch(folder, pos)
+	end)
+	ambient(folder, zone, { color = Color3.fromRGB(255, 225, 120), rate = 30 })
 end
 
-return MapBuilder
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">PetService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Pets : eclosion, equipement, evolution, index, zones, cadeau du jour, classement.
+return MapZones
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">PetService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Pets : eclosion, equipement, evolution, index, zones, cadeau du jour, classement.
 
 local Players = game:GetService(&quot;Players&quot;)
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
@@ -4164,7 +5631,7 @@ local function teleport(player, zoneId)
 	local char = player.Character
 	local hrp = char and char:FindFirstChild(&quot;HumanoidRootPart&quot;)
 	if hrp then
-		hrp.CFrame = CFrame.new(zone.center + Vector3.new(0, 4, zone.size / 2 - 20))
+		hrp.CFrame = CFrame.new(zone.entry)
 		Remotes.FX:FireClient(player, &quot;Teleport&quot;, { zoneId = zoneId })
 	end
 end
@@ -4348,7 +5815,7 @@ function PetService.Init()
 end
 
 return PetService
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">RaceService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Courses de pets : lobby, compte a rebours, simulation avec Speed / Stamina / Luck, recompenses.
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">RaceService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Courses de pets : lobby, compte a rebours, simulation avec Speed / Stamina / Luck, recompenses.
 
 local Players = game:GetService(&quot;Players&quot;)
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
@@ -4612,7 +6079,7 @@ function RaceService.Init()
 end
 
 return RaceService
-</ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000001F"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000001E"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX0000001D"><Properties><string name="Name">Client</string></Properties><Item class="LocalScript" referent="RBX00000015"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree client de PET RUSH.
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000021"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000020"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX0000001F"><Properties><string name="Name">Client</string></Properties><Item class="LocalScript" referent="RBX00000017"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree client de PET RUSH.
 -- Chaque module demarre separement : une erreur dans l'un n'empeche plus les autres de fonctionner.
 
 local Modules = script.Parent.Modules
@@ -4633,7 +6100,7 @@ start(&quot;HUD&quot;)
 start(&quot;Effects&quot;, HUD)
 start(&quot;PetFollow&quot;)
 task.spawn(start, &quot;WorldIcons&quot;)
-</ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000001C"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">Effects</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Effets : coins qui tournent, collecte, coffres, eclosion, evolution, courses, teleportation, sons.
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000001E"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">Effects</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Effets : coins qui tournent, collecte, coffres, eclosion, evolution, courses, teleportation, sons.
 
 local Players = game:GetService(&quot;Players&quot;)
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
@@ -4957,7 +6424,7 @@ function Effects.Init(hudModule)
 end
 
 return Effects
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">HUD</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Interface PET RUSH, style simulateur : vraies icones, portraits 3D, panneaux degrades, texte epais.
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">HUD</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Interface PET RUSH, style simulateur : vraies icones, portraits 3D, panneaux degrades, texte epais.
 
 local Players = game:GetService(&quot;Players&quot;)
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
@@ -5560,13 +7027,20 @@ function HUD.currentZoneEgg()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild(&quot;HumanoidRootPart&quot;)
 	if hrp then
-		for i, zone in ipairs(Config.Zones) do
-			if math.abs(hrp.Position.X - zone.center.X) &lt;= zone.size / 2 + 50 and math.abs(hrp.Position.Z - zone.center.Z) &lt;= zone.size / 2 + 50 then
-				return Config.Eggs[i].id
+		for _, zone in ipairs(Config.Zones) do
+			if zone.egg and math.abs(hrp.Position.X - zone.center.X) &lt;= zone.size / 2 + 50 and math.abs(hrp.Position.Z - zone.center.Z) &lt;= zone.size / 2 + 50 then
+				return zone.egg
 			end
 		end
 	end
-	return &quot;Village&quot;
+	-- zone sans oeuf : le meilleur oeuf deja debloque
+	local best = &quot;Village&quot;
+	for _, egg in ipairs(Config.Eggs) do
+		if State.data.zones and State.data.zones[egg.zone] then
+			best = egg.id
+		end
+	end
+	return best
 end
 
 local function equippedLuck()
@@ -5626,9 +7100,14 @@ local function rebuildWorlds()
 		stroke(row, DARK, 4)
 		text({ Size = UDim2.new(0.6, 0, 0, 44), Position = UDim2.fromOffset(20, 12), Text = zone.name, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row, DARK, 4)
 		Icons.Image(&quot;coin&quot;, row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(18, 64), ZIndex = 13 })
-		text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(58, 67), Text = zone.coinValue .. &quot; / piece&quot;, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
-		Icons.Image(&quot;egg&quot;, row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(200, 64), ZIndex = 13, ImageColor3 = Config.Eggs[i].color })
-		text({ Size = UDim2.fromOffset(140, 28), Position = UDim2.fromOffset(240, 67), Text = fmt(Config.Eggs[i].price), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(58, 67), Text = fmt(zone.coinValue) .. &quot; / piece&quot;, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		local egg = zone.egg and Config.EggById[zone.egg]
+		if egg then
+			Icons.Image(&quot;egg&quot;, row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(200, 64), ZIndex = 13, ImageColor3 = egg.color })
+			text({ Size = UDim2.fromOffset(140, 28), Position = UDim2.fromOffset(240, 67), Text = fmt(egg.price), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		else
+			text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(200, 67), Text = zone.icon .. &quot; Zone de farm&quot;, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		end
 		if unlocked then
 			local go = Icons.Button(&quot;teleport&quot;, row, { Size = UDim2.fromOffset(150, 150), Position = UDim2.new(1, 10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), ZIndex = 14 })
 			bouncy(go)
@@ -5932,7 +7411,7 @@ function HUD.Init()
 end
 
 return HUD
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">PetFollow</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Pets 3D equipes qui suivent chaque joueur (rendu local fluide, aucun cout reseau).
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">PetFollow</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Pets 3D equipes qui suivent chaque joueur (rendu local fluide, aucun cout reseau).
 -- Les pets restent derriere le proprietaire, evitent les murs, se posent au sol ou flottent,
 -- et jouent idle / marche / course / saut selon le mouvement du joueur.
 -- Habille aussi les coureurs de la course avec des modeles animes.
@@ -6279,7 +7758,7 @@ function PetFollow.Init()
 end
 
 return PetFollow
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">Portrait</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Portrait 3D d'un pet dans l'interface (ViewportFrame avec le vrai modele de ReplicatedStorage.Pets).
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">Portrait</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Portrait 3D d'un pet dans l'interface (ViewportFrame avec le vrai modele de ReplicatedStorage.Pets).
 -- opts : silhouette (bool), spin (number : vitesse d'animation), zoom (number)
 
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
@@ -6399,7 +7878,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 return Portrait
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">State</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Etat partage cote client.
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">State</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Etat partage cote client.
 
 local State = {}
 
@@ -6421,7 +7900,7 @@ function State.petByUid(uid)
 end
 
 return State
-</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">WorldIcons</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Icones 3D flottantes au-dessus des stands, des portes et des coffres (rendu client).
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">WorldIcons</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Icones 3D flottantes au-dessus des stands, des portes et des coffres (rendu client).
 
 local Players = game:GetService(&quot;Players&quot;)
 local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)

@@ -328,7 +328,7 @@ local function teleport(player, zoneId)
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
-		hrp.CFrame = CFrame.new(zone.center + Vector3.new(0, 4, zone.size / 2 - 20))
+		hrp.CFrame = CFrame.new(zone.entry)
 		Remotes.FX:FireClient(player, "Teleport", { zoneId = zoneId })
 	end
 end

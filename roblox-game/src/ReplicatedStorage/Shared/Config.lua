@@ -128,11 +128,29 @@ for _, egg in ipairs(Config.Eggs) do
 end
 
 -- Zones
+-- Le monde : 8 iles flottantes reliees par des ponts, dans l'ordre de progression.
+-- egg = oeuf vendu dans la zone (nil = zone de farm sans oeuf).
 Config.Zones = {
-	{ id = "Village", name = "Starter Village", icon = "🏡", price = 0, center = Vector3.new(0, 0, 0), size = 220, coinValue = 5, coinCount = 40, ground = Color3.fromRGB(110, 200, 90), chestValue = 400 },
-	{ id = "Foret", name = "Forest", icon = "🌲", price = 2500, center = Vector3.new(0, 0, -300), size = 220, coinValue = 30, coinCount = 40, ground = Color3.fromRGB(60, 150, 70), chestValue = 3000 },
-	{ id = "Desert", name = "Desert", icon = "🏜️", price = 25000, center = Vector3.new(0, 0, -600), size = 220, coinValue = 150, coinCount = 40, ground = Color3.fromRGB(230, 200, 130), chestValue = 20000 },
+	{ id = "Village", name = "Starter Village", icon = "🏡", price = 0, center = Vector3.new(0, 0, 0), size = 400, coinValue = 5, coinCount = 60, ground = Color3.fromRGB(110, 200, 90), chestValue = 400, egg = "Village" },
+	{ id = "Foret", name = "Forest", icon = "🌲", price = 2500, center = Vector3.new(0, 0, -470), size = 320, coinValue = 30, coinCount = 50, ground = Color3.fromRGB(60, 150, 70), chestValue = 3000, egg = "Foret" },
+	{ id = "Desert", name = "Desert", icon = "🏜️", price = 25000, center = Vector3.new(-470, 0, -470), size = 320, coinValue = 150, coinCount = 50, ground = Color3.fromRGB(230, 200, 130), chestValue = 20000, egg = "Desert" },
+	{ id = "Plage", name = "Beach", icon = "🏖️", price = 150000, center = Vector3.new(-470, 0, 0), size = 320, coinValue = 500, coinCount = 50, ground = Color3.fromRGB(255, 225, 160), chestValue = 70000 },
+	{ id = "Bonbons", name = "Candy Land", icon = "🍭", price = 600000, center = Vector3.new(-470, 0, 470), size = 320, coinValue = 1500, coinCount = 50, ground = Color3.fromRGB(255, 160, 210), chestValue = 200000 },
+	{ id = "Neige", name = "Snow Peaks", icon = "❄️", price = 2500000, center = Vector3.new(0, 0, 470), size = 320, coinValue = 5000, coinCount = 50, ground = Color3.fromRGB(200, 230, 255), chestValue = 700000 },
+	{ id = "Mystique", name = "Mystic Zone", icon = "🔮", price = 10000000, center = Vector3.new(470, 0, 470), size = 320, coinValue = 15000, coinCount = 50, ground = Color3.fromRGB(150, 100, 230), chestValue = 2000000 },
+	{ id = "Royaume", name = "Pet Kingdom", icon = "👑", price = 40000000, center = Vector3.new(470, 0, 0), size = 340, coinValue = 50000, coinCount = 55, ground = Color3.fromRGB(255, 205, 80), chestValue = 7000000 },
 }
+-- point d'arrivee de chaque zone (teleportation) : cote du pont qui vient de la zone precedente
+for i, zone in ipairs(Config.Zones) do
+	local prev = Config.Zones[i - 1]
+	if prev then
+		local d = prev.center - zone.center
+		local dir = math.abs(d.X) > math.abs(d.Z) and Vector3.new(math.sign(d.X), 0, 0) or Vector3.new(0, 0, math.sign(d.Z))
+		zone.entry = zone.center + dir * (zone.size / 2 - 22) + Vector3.new(0, 4, 0)
+	else
+		zone.entry = Vector3.new(0, 4, 150)
+	end
+end
 Config.ZoneById = {}
 for _, zone in ipairs(Config.Zones) do
 	Config.ZoneById[zone.id] = zone
@@ -162,7 +180,7 @@ Config.Breakables = {
 		{ id = "Gift", name = "Cadeau geant", hp = 450, reward = 95, weight = 13 },
 	},
 	-- multiplicateur de PV / gains par zone
-	ZoneMult = { Village = 1, Foret = 6, Desert = 30 },
+	ZoneMult = { Village = 1, Foret = 6, Desert = 30, Plage = 100, Bonbons = 300, Neige = 1000, Mystique = 3000, Royaume = 10000 },
 }
 
 Config.Daily = {
@@ -183,7 +201,7 @@ Config.Race = {
 }
 
 Config.Map = {
-	SpawnPosition = Vector3.new(0, 3, 70),
+	SpawnPosition = Vector3.new(0, 3, 150),
 	KillHeight = -40,
 }
 

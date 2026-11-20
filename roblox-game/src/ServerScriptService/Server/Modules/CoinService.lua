@@ -28,11 +28,6 @@ local function spawnCoin(zone, position)
 	coin.CanQuery = false
 	coin:SetAttribute("Value", zone.coinValue)
 	coin.Parent = coinsFolder
-	local light = Instance.new("PointLight")
-	light.Color = Config.Colors.Gold
-	light.Range = 8
-	light.Brightness = 1
-	light.Parent = coin
 	coins[coin] = { zone = zone, value = zone.coinValue }
 	return coin
 end

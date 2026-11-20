@@ -601,13 +601,20 @@ function HUD.currentZoneEgg()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
-		for i, zone in ipairs(Config.Zones) do
-			if math.abs(hrp.Position.X - zone.center.X) <= zone.size / 2 + 50 and math.abs(hrp.Position.Z - zone.center.Z) <= zone.size / 2 + 50 then
-				return Config.Eggs[i].id
+		for _, zone in ipairs(Config.Zones) do
+			if zone.egg and math.abs(hrp.Position.X - zone.center.X) <= zone.size / 2 + 50 and math.abs(hrp.Position.Z - zone.center.Z) <= zone.size / 2 + 50 then
+				return zone.egg
 			end
 		end
 	end
-	return "Village"
+	-- zone sans oeuf : le meilleur oeuf deja debloque
+	local best = "Village"
+	for _, egg in ipairs(Config.Eggs) do
+		if State.data.zones and State.data.zones[egg.zone] then
+			best = egg.id
+		end
+	end
+	return best
 end
 
 local function equippedLuck()
@@ -667,9 +674,14 @@ local function rebuildWorlds()
 		stroke(row, DARK, 4)
 		text({ Size = UDim2.new(0.6, 0, 0, 44), Position = UDim2.fromOffset(20, 12), Text = zone.name, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row, DARK, 4)
 		Icons.Image("coin", row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(18, 64), ZIndex = 13 })
-		text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(58, 67), Text = zone.coinValue .. " / piece", TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
-		Icons.Image("egg", row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(200, 64), ZIndex = 13, ImageColor3 = Config.Eggs[i].color })
-		text({ Size = UDim2.fromOffset(140, 28), Position = UDim2.fromOffset(240, 67), Text = fmt(Config.Eggs[i].price), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(58, 67), Text = fmt(zone.coinValue) .. " / piece", TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		local egg = zone.egg and Config.EggById[zone.egg]
+		if egg then
+			Icons.Image("egg", row, { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromOffset(200, 64), ZIndex = 13, ImageColor3 = egg.color })
+			text({ Size = UDim2.fromOffset(140, 28), Position = UDim2.fromOffset(240, 67), Text = fmt(egg.price), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		else
+			text({ Size = UDim2.fromOffset(180, 28), Position = UDim2.fromOffset(200, 67), Text = zone.icon .. " Zone de farm", TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		end
 		if unlocked then
 			local go = Icons.Button("teleport", row, { Size = UDim2.fromOffset(150, 150), Position = UDim2.new(1, 10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), ZIndex = 14 })
 			bouncy(go)
