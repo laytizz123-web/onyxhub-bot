@@ -147,6 +147,24 @@ Config.Collect = {
 	ChestLifetime = 60,
 }
 
+-- Objets a casser avec ses pets (cliquer dessus : les pets attaquent, l'objet explose en coins)
+Config.Breakables = {
+	PerZone = 10,
+	Tick = 0.5, -- degats appliques toutes les 0,5 s
+	PlayerDamage = 2, -- degats du joueur seul
+	PetBaseDamage = 3, -- par pet equipe
+	PetPowerDamage = 2, -- x puissance du pet
+	MaxDistance = 90, -- le joueur doit rester proche
+	Respawn = { 8, 16 },
+	Types = {
+		{ id = "Piggy", name = "Tirelire", hp = 60, reward = 12, weight = 55 },
+		{ id = "Crystal", name = "Cristal", hp = 160, reward = 32, weight = 32 },
+		{ id = "Gift", name = "Cadeau geant", hp = 450, reward = 95, weight = 13 },
+	},
+	-- multiplicateur de PV / gains par zone
+	ZoneMult = { Village = 1, Foret = 6, Desert = 30 },
+}
+
 Config.Daily = {
 	Cooldown = 20 * 3600,
 	Coins = 500,

@@ -19,6 +19,7 @@ start("MapBuilder", "Build")
 start("DataService")
 start("PetService")
 start("CoinService")
+start("BreakableService")
 start("RaceService")
 
 print("[PetRush] Serveur pret.")

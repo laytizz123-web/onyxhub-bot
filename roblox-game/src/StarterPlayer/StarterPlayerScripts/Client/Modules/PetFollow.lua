@@ -180,7 +180,8 @@ end
 local function update(dt)
 	local now = os.clock()
 	local camPos = workspace.CurrentCamera.CFrame.Position
-	local ignore = { folder, workspace:FindFirstChild("Coins"), workspace:FindFirstChild("Racers") }
+	local breakFolder = workspace:FindFirstChild("Breakables")
+	local ignore = { folder, workspace:FindFirstChild("Coins"), workspace:FindFirstChild("Racers"), breakFolder }
 	for player in pairs(tracked) do
 		if player.Character then
 			table.insert(ignore, player.Character)
@@ -196,9 +197,26 @@ local function update(dt)
 			if hrp and #entry.pets > 0 and (hrp.Position - camPos).Magnitude < MAX_DISTANCE then
 				local state, speed = ownerState(char, hrp)
 				local count = #entry.pets
+				-- objet a casser vise par le joueur : les pets l'entourent et l'attaquent
+				local attack
+				local targetName = player:GetAttribute("BreakTarget")
+				if targetName and breakFolder then
+					local m = breakFolder:FindFirstChild(targetName)
+					local box = m and m:FindFirstChild("Hitbox")
+					if box and (box.Position - hrp.Position).Magnitude < 95 then
+						attack = box
+					end
+				end
 				for _, p in ipairs(entry.pets) do
 					local anim = p.anim
-					local target = targetFor(hrp, p.index, count, ignore)
+					local target
+					if attack then
+						local a = (p.index / count) * math.pi * 2 + now * 0.15
+						local r = math.max(attack.Size.X, attack.Size.Z) / 2 + 2.2
+						target = attack.Position + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+					else
+						target = targetFor(hrp, p.index, count, ignore)
+					end
 					-- deplacement doux (plus rapide si le pet est loin)
 					local flat = Vector3.new(target.X - p.pos.X, 0, target.Z - p.pos.Z)
 					local dist = flat.Magnitude
@@ -218,15 +236,21 @@ local function update(dt)
 					-- orientation : dans le sens de la marche, sinon vers le joueur
 					local petState = state
 					if state ~= "jump" then
-						if dist > 10 or speed > 18 then
+						if dist > 10 or (speed > 18 and not attack) then
 							petState = "run"
-						elseif dist > 0.6 or speed > 1.5 then
+						elseif dist > 0.6 or (speed > 1.5 and not attack) then
 							petState = "walk"
 						else
 							petState = "idle"
 						end
 					end
-					local facing = (petState ~= "idle") and flat or Vector3.new(hrp.Position.X - p.pos.X, 0, hrp.Position.Z - p.pos.Z)
+					local lookAt = attack and attack.Position or hrp.Position
+					local facing = (petState ~= "idle") and flat or Vector3.new(lookAt.X - p.pos.X, 0, lookAt.Z - p.pos.Z)
+					if attack and petState == "idle" and not anim.trick and now - (p.lastHit or 0) > 0.5 + (p.index % 3) * 0.12 then
+						-- coup : petit bond vers l'objet
+						p.lastHit = now
+						anim.trick = { kind = "hop", t0 = now }
+					end
 					p.yaw = yawTowards(p.yaw, facing, math.clamp(dt * 8, 0, 1))
 					anim:update(CFrame.new(p.pos) * CFrame.Angles(0, p.yaw, 0), petState, now)
 				end
