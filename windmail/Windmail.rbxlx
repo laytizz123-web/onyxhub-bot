@@ -1,0 +1,4084 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+<Item class="ReplicatedStorage" referent="RBX00000004"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000003"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">Config</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- WINDMAIL : configuration centrale (equilibrage, objets, zones, evenements).
+-- Tout le reglage du jeu se fait ici : aucun chiffre &quot;magique&quot; dans les scripts.
+
+local Config = {}
+
+Config.Version = &quot;0.1&quot;
+
+-- Rangs de facteur -----------------------------------------------------------------------
+-- XP pour passer du niveau n au niveau n+1 : Base * n ^ Exponent
+Config.Rank = { Base = 60, Exponent = 1.35, Max = 40 }
+Config.RankTitles = {
+	{ 1, &quot;Apprenti facteur&quot; }, { 3, &quot;Facteur du port&quot; }, { 6, &quot;Coursier des falaises&quot; },
+	{ 10, &quot;Messager celeste&quot; }, { 15, &quot;Pilote des tempetes&quot; }, { 22, &quot;Capitaine des vents&quot; }, { 30, &quot;Maitre des vents&quot; },
+}
+
+-- Zones (deblocage par rang ; l'exploration reste libre, seules les livraisons sont limitees)
+Config.Zones = {
+	{ id = &quot;Port&quot;, name = &quot;Port-Brise&quot;, rank = 1, color = Color3.fromRGB(120, 190, 255), center = Vector3.new(0, 0, 0) },
+	{ id = &quot;Verger&quot;, name = &quot;Le Verger&quot;, rank = 3, color = Color3.fromRGB(150, 215, 100), center = Vector3.new(330, 0, -120) },
+	{ id = &quot;Falaises&quot;, name = &quot;Falaises Brumeuses&quot;, rank = 6, color = Color3.fromRGB(170, 180, 200), center = Vector3.new(-320, 0, -230) },
+	{ id = &quot;Marche&quot;, name = &quot;Marche Celeste&quot;, rank = 10, color = Color3.fromRGB(255, 190, 90), center = Vector3.new(60, 0, -520) },
+	{ id = &quot;Pic&quot;, name = &quot;Pic des Tempetes&quot;, rank = 15, color = Color3.fromRGB(190, 140, 255), center = Vector3.new(470, 0, -560) },
+}
+Config.ZoneById = {}
+for i, z in ipairs(Config.Zones) do
+	z.index = i
+	Config.ZoneById[z.id] = z
+end
+
+-- Colis ----------------------------------------------------------------------------------
+-- weight : probabilite relative ; rank : rang minimum ; pay : multiplicateur de recompense
+Config.Parcels = {
+	{ id = &quot;Lettre&quot;, name = &quot;Lettre&quot;, weight = 40, rank = 1, pay = 1.0, color = Color3.fromRGB(245, 235, 210), size = Vector3.new(1.6, 0.4, 1.1),
+		desc = &quot;Un courrier classique. Rapide et sans souci.&quot; },
+	{ id = &quot;Fragile&quot;, name = &quot;Colis fragile&quot;, weight = 22, rank = 2, pay = 1.6, fragile = true, color = Color3.fromRGB(255, 170, 120), size = Vector3.new(1.8, 1.4, 1.8),
+		desc = &quot;Atterris en douceur : chaque choc l'abime.&quot; },
+	{ id = &quot;Express&quot;, name = &quot;Express&quot;, weight = 18, rank = 4, pay = 2.0, express = true, color = Color3.fromRGB(255, 90, 90), size = Vector3.new(1.6, 1.2, 1.6),
+		desc = &quot;A livrer avant la fin du chrono !&quot; },
+	{ id = &quot;Lourd&quot;, name = &quot;Malle lourde&quot;, weight = 12, rank = 7, pay = 2.6, heavy = true, color = Color3.fromRGB(150, 110, 75), size = Vector3.new(2.4, 1.8, 1.8),
+		desc = &quot;Tu planes moins bien... sauf si un ami vole a tes cotes.&quot; },
+	{ id = &quot;Mystere&quot;, name = &quot;Colis mystere&quot;, weight = 8, rank = 3, pay = 1.4, mystery = true, color = Color3.fromRGB(170, 120, 255), size = Vector3.new(1.6, 1.6, 1.6),
+		desc = &quot;Contient un timbre de collection au hasard.&quot; },
+}
+Config.ParcelById = {}
+for _, p in ipairs(Config.Parcels) do
+	Config.ParcelById[p.id] = p
+end
+
+Config.Delivery = {
+	BaseCoins = 12, -- recompense de base
+	CoinsPerStud = 0.09, -- + distance entre la poste et la boite aux lettres
+	XPPerCoin = 0.6,
+	ParSpeed = 38, -- vitesse de reference (studs/s) pour le temps &quot;par&quot;
+	ParBonus = 18, -- secondes ajoutees au temps par
+	ExpressFactor = 1.25, -- chrono express = par * facteur
+	Grades = { -- ratio temps / par -&gt; note et multiplicateur
+		{ max = 0.65, grade = &quot;S&quot;, mult = 1.6, color = Color3.fromRGB(255, 210, 60) },
+		{ max = 0.9, grade = &quot;A&quot;, mult = 1.3, color = Color3.fromRGB(110, 230, 140) },
+		{ max = 1.25, grade = &quot;B&quot;, mult = 1.1, color = Color3.fromRGB(120, 190, 255) },
+		{ max = math.huge, grade = &quot;C&quot;, mult = 1.0, color = Color3.fromRGB(200, 200, 210) },
+	},
+	ImpactSpeed = 55, -- perte de vitesse brutale (studs/s) consideree comme un choc
+	ImpactDamage = 0.25, -- integrite perdue par choc (colis fragile)
+	SplashDamage = 0.5, -- chute dans la mer
+	ConvoyRadius = 40, -- un autre facteur a moins de 40 studs = convoi
+	ConvoyBonus = 0.3, -- +30 % pour le livreur
+	ConvoyAssist = 0.2, -- 20 % de la recompense offerts aux equipiers proches
+	HeavyConvoySink = 1.0, -- malle lourde en convoi : plane normalement
+}
+
+-- Planeurs (achetables avec les pieces gagnees en jeu ; aucun avantage payant) --------------
+-- cruise/max : vitesse de croisiere / max ; sink : chute (studs/s) ; stamina : reserve de boost (s)
+Config.Gliders = {
+	{ id = &quot;Lin&quot;, name = &quot;Toile de lin&quot;, price = 0, rank = 1, cruise = 34, max = 70, sink = 9, stamina = 3, color = Color3.fromRGB(235, 225, 200), accent = Color3.fromRGB(150, 110, 70) },
+	{ id = &quot;Mouette&quot;, name = &quot;Aile de mouette&quot;, price = 900, rank = 3, cruise = 40, max = 80, sink = 7.5, stamina = 4, color = Color3.fromRGB(250, 250, 255), accent = Color3.fromRGB(120, 140, 170) },
+	{ id = &quot;Voilure&quot;, name = &quot;Voilure marine&quot;, price = 4500, rank = 6, cruise = 46, max = 92, sink = 6.5, stamina = 5, color = Color3.fromRGB(70, 130, 210), accent = Color3.fromRGB(245, 245, 250) },
+	{ id = &quot;Aigle&quot;, name = &quot;Plume d'aigle&quot;, price = 18000, rank = 11, cruise = 52, max = 105, sink = 5.5, stamina = 6, color = Color3.fromRGB(140, 95, 55), accent = Color3.fromRGB(240, 220, 170) },
+	{ id = &quot;Aurore&quot;, name = &quot;Aile d'aurore&quot;, price = 65000, rank = 18, cruise = 60, max = 120, sink = 4.5, stamina = 8, color = Color3.fromRGB(120, 230, 210), accent = Color3.fromRGB(200, 120, 255) },
+}
+Config.GliderById = {}
+for i, g in ipairs(Config.Gliders) do
+	g.index = i
+	Config.GliderById[g.id] = g
+end
+
+-- Sacoches : nombre de colis transportes en meme temps (= tournees plus rentables)
+Config.Satchels = {
+	{ level = 1, name = &quot;Besace&quot;, capacity = 1, price = 0 },
+	{ level = 2, name = &quot;Sacoche en cuir&quot;, capacity = 2, price = 600, rank = 2 },
+	{ level = 3, name = &quot;Sacoche double&quot;, capacity = 3, price = 3500, rank = 5 },
+	{ level = 4, name = &quot;Sac de tournee&quot;, capacity = 4, price = 14000, rank = 9 },
+	{ level = 5, name = &quot;Sac du maitre&quot;, capacity = 5, price = 50000, rank = 14 },
+}
+
+-- Trainees (cosmetiques) : pieces ou timbres
+Config.Trails = {
+	{ id = &quot;Aucune&quot;, name = &quot;Aucune&quot;, price = 0 },
+	{ id = &quot;Brise&quot;, name = &quot;Brise&quot;, price = 1500, color = Color3.fromRGB(230, 245, 255) },
+	{ id = &quot;Corail&quot;, name = &quot;Corail&quot;, price = 6000, color = Color3.fromRGB(255, 130, 110) },
+	{ id = &quot;Emeraude&quot;, name = &quot;Emeraude&quot;, price = 20000, color = Color3.fromRGB(80, 220, 140) },
+	{ id = &quot;Aurore&quot;, name = &quot;Aurore boreale&quot;, stampSet = &quot;Secrets&quot;, color = Color3.fromRGB(150, 120, 255), color2 = Color3.fromRGB(90, 240, 220) },
+}
+Config.TrailById = {}
+for _, t in ipairs(Config.Trails) do
+	Config.TrailById[t.id] = t
+end
+
+-- Timbres de collection ------------------------------------------------------------------
+-- source : mystery (colis mystere), secret (cache sur la carte), event (evenement)
+Config.Stamps = {
+	{ id = &quot;Phare&quot;, name = &quot;Le Phare&quot;, set = &quot;Port&quot;, rarity = &quot;Commun&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Mouette&quot;, name = &quot;La Mouette&quot;, set = &quot;Port&quot;, rarity = &quot;Commun&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Ancre&quot;, name = &quot;L'Ancre&quot;, set = &quot;Port&quot;, rarity = &quot;Rare&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Pomme&quot;, name = &quot;La Pomme d'or&quot;, set = &quot;Verger&quot;, rarity = &quot;Commun&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Moulin&quot;, name = &quot;Le Moulin&quot;, set = &quot;Verger&quot;, rarity = &quot;Commun&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Ruche&quot;, name = &quot;La Ruche&quot;, set = &quot;Verger&quot;, rarity = &quot;Rare&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Brume&quot;, name = &quot;La Brume&quot;, set = &quot;Falaises&quot;, rarity = &quot;Commun&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Corbeau&quot;, name = &quot;Le Corbeau&quot;, set = &quot;Falaises&quot;, rarity = &quot;Rare&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Lanterne&quot;, name = &quot;La Lanterne&quot;, set = &quot;Marche&quot;, rarity = &quot;Rare&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Eclair&quot;, name = &quot;L'Eclair&quot;, set = &quot;Pic&quot;, rarity = &quot;Epique&quot;, source = &quot;mystery&quot; },
+	{ id = &quot;Grotte&quot;, name = &quot;La Grotte cachee&quot;, set = &quot;Secrets&quot;, rarity = &quot;Secret&quot;, source = &quot;secret&quot; },
+	{ id = &quot;Sommet&quot;, name = &quot;Le Sommet du phare&quot;, set = &quot;Secrets&quot;, rarity = &quot;Secret&quot;, source = &quot;secret&quot; },
+	{ id = &quot;Ilot&quot;, name = &quot;L'Ilot oublie&quot;, set = &quot;Secrets&quot;, rarity = &quot;Secret&quot;, source = &quot;secret&quot; },
+	{ id = &quot;Epave&quot;, name = &quot;L'Epave&quot;, set = &quot;Secrets&quot;, rarity = &quot;Secret&quot;, source = &quot;secret&quot; },
+	{ id = &quot;Ballon&quot;, name = &quot;Le Ballon egare&quot;, set = &quot;Evenements&quot;, rarity = &quot;Legendaire&quot;, source = &quot;event&quot; },
+	{ id = &quot;Tournee&quot;, name = &quot;La Grande Tournee&quot;, set = &quot;Evenements&quot;, rarity = &quot;Epique&quot;, source = &quot;event&quot; },
+}
+Config.StampById = {}
+for _, s in ipairs(Config.Stamps) do
+	Config.StampById[s.id] = s
+end
+Config.StampRarity = {
+	Commun = { weight = 60, color = Color3.fromRGB(200, 205, 215) },
+	Rare = { weight = 28, color = Color3.fromRGB(90, 170, 255) },
+	Epique = { weight = 10, color = Color3.fromRGB(190, 110, 255) },
+	Legendaire = { weight = 0, color = Color3.fromRGB(255, 200, 60) },
+	Secret = { weight = 0, color = Color3.fromRGB(80, 230, 190) },
+}
+-- Bonus de collection : completer un set donne un bonus permanent
+Config.StampSets = {
+	{ id = &quot;Port&quot;, name = &quot;Port-Brise&quot;, bonus = &quot;+5 % de pieces&quot;, coinBonus = 0.05 },
+	{ id = &quot;Verger&quot;, name = &quot;Le Verger&quot;, bonus = &quot;+5 % de pieces&quot;, coinBonus = 0.05 },
+	{ id = &quot;Falaises&quot;, name = &quot;Falaises&quot;, bonus = &quot;+10 % d'XP&quot;, xpBonus = 0.1 },
+	{ id = &quot;Marche&quot;, name = &quot;Marche&quot;, bonus = &quot;+5 % de pieces&quot;, coinBonus = 0.05 },
+	{ id = &quot;Pic&quot;, name = &quot;Pic&quot;, bonus = &quot;+10 % d'XP&quot;, xpBonus = 0.1 },
+	{ id = &quot;Secrets&quot;, name = &quot;Secrets&quot;, bonus = &quot;Trainee Aurore boreale&quot;, trail = &quot;Aurore&quot; },
+	{ id = &quot;Evenements&quot;, name = &quot;Evenements&quot;, bonus = &quot;+10 % de pieces&quot;, coinBonus = 0.1 },
+}
+
+-- Recompense quotidienne (serie de jours)
+Config.Daily = { Cooldown = 20 * 3600, Reset = 48 * 3600, Coins = { 150, 250, 400, 600, 900, 1300, 2000 } }
+
+-- Evenements aleatoires --------------------------------------------------------------------
+Config.Events = {
+	Interval = { 300, 480 }, -- secondes entre deux evenements
+	List = {
+		{ id = &quot;VentDore&quot;, name = &quot;Vent dore&quot;, duration = 150, desc = &quot;Toutes les livraisons rapportent x2 !&quot;, color = Color3.fromRGB(255, 205, 70) },
+		{ id = &quot;Ballon&quot;, name = &quot;Ballon egare&quot;, duration = 180, desc = &quot;Un ballon postal s'est echappe. Attrape-le en vol !&quot;, color = Color3.fromRGB(255, 110, 130) },
+		{ id = &quot;Tournee&quot;, name = &quot;Grande Tournee&quot;, duration = 240, desc = &quot;Objectif commun : livrez ensemble avant la fin !&quot;, color = Color3.fromRGB(110, 220, 160), goalPerPlayer = 6, goalMin = 10 },
+	},
+}
+
+Config.StartCoins = 0
+Config.SeaLevel = 0
+Config.SpawnPosition = Vector3.new(0, 66, 42)
+
+return Config
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Progress</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Calculs partages client/serveur : rang a partir de l'XP, bonus de collection, format.
+local Config = require(script.Parent.Config)
+
+local Progress = {}
+
+function Progress.XPForLevel(n)
+	return math.floor(Config.Rank.Base * n ^ Config.Rank.Exponent)
+end
+
+-- renvoie rang, xp dans le rang, xp necessaire pour le suivant
+function Progress.RankFromXP(xp)
+	local rank = 1
+	while rank &lt; Config.Rank.Max do
+		local need = Progress.XPForLevel(rank)
+		if xp &lt; need then
+			return rank, xp, need
+		end
+		xp -= need
+		rank += 1
+	end
+	return rank, 0, 1
+end
+
+function Progress.Title(rank)
+	local title = Config.RankTitles[1][2]
+	for _, t in ipairs(Config.RankTitles) do
+		if rank &gt;= t[1] then
+			title = t[2]
+		end
+	end
+	return title
+end
+
+-- Sets de timbres completes et bonus cumules
+function Progress.SetBonuses(stamps)
+	local coin, xp, trails, done = 0, 0, {}, {}
+	for _, set in ipairs(Config.StampSets) do
+		local complete = true
+		for _, s in ipairs(Config.Stamps) do
+			if s.set == set.id and not (stamps and stamps[s.id]) then
+				complete = false
+				break
+			end
+		end
+		if complete then
+			done[set.id] = true
+			coin += set.coinBonus or 0
+			xp += set.xpBonus or 0
+			if set.trail then
+				trails[set.trail] = true
+			end
+		end
+	end
+	return { coin = coin, xp = xp, trails = trails, done = done }
+end
+
+function Progress.Format(n)
+	n = math.floor(n or 0)
+	if n &gt;= 1e6 then
+		return string.format(&quot;%.1fM&quot;, n / 1e6)
+	elseif n &gt;= 1e4 then
+		return string.format(&quot;%.1fk&quot;, n / 1e3)
+	end
+	local s = tostring(n)
+	return (s:reverse():gsub(&quot;(%d%d%d)&quot;, &quot;%1 &quot;):reverse():gsub(&quot;^ &quot;, &quot;&quot;))
+end
+
+return Progress
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000002"><Properties><string name="Name">Remotes</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- RemoteEvents de Windmail (crees par le serveur, recuperes par le client).
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+
+local NAMES = { &quot;Request&quot;, &quot;Sync&quot;, &quot;Notify&quot;, &quot;FX&quot;, &quot;Event&quot;, &quot;Parcels&quot; }
+local Remotes = {}
+local folder
+if RunService:IsServer() then
+	folder = ReplicatedStorage:FindFirstChild(&quot;Remotes&quot;) or Instance.new(&quot;Folder&quot;)
+	folder.Name = &quot;Remotes&quot;
+	folder.Parent = ReplicatedStorage
+	for _, n in ipairs(NAMES) do
+		if not folder:FindFirstChild(n) then
+			local r = Instance.new(&quot;RemoteEvent&quot;)
+			r.Name = n
+			r.Parent = folder
+		end
+	end
+else
+	folder = ReplicatedStorage:WaitForChild(&quot;Remotes&quot;)
+end
+for _, n in ipairs(NAMES) do
+	Remotes[n] = folder:WaitForChild(n)
+end
+return Remotes
+</ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000000F"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Folder" referent="RBX0000000E"><Properties><string name="Name">Server</string></Properties><Item class="Script" referent="RBX00000005"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree serveur de WINDMAIL.
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+require(ReplicatedStorage.Shared.Remotes)
+
+local Modules = script.Parent.Modules
+
+local function start(name, method)
+	local ok, err = pcall(function()
+		require(Modules[name])[method or &quot;Init&quot;]()
+	end)
+	if not ok then
+		warn(&quot;[Windmail] Demarrage de &quot; .. name .. &quot; : &quot; .. tostring(err))
+	end
+end
+
+start(&quot;WorldBuilder&quot;, &quot;Build&quot;)
+start(&quot;DataService&quot;)
+start(&quot;StampService&quot;)
+start(&quot;ParcelService&quot;)
+start(&quot;ShopService&quot;)
+start(&quot;EventService&quot;)
+start(&quot;BoardService&quot;)
+print(&quot;[Windmail] Serveur pret.&quot;)
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000000D"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">BoardService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Panneau du classement global dans la poste (top 10 des livraisons).
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local DataService = require(script.Parent.DataService)
+local Progress = require(game:GetService(&quot;ReplicatedStorage&quot;).Shared.Progress)
+
+local BoardService = {}
+
+local function render(board)
+	local gui = board:FindFirstChild(&quot;Board&quot;) or Instance.new(&quot;SurfaceGui&quot;)
+	gui.Name = &quot;Board&quot;
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0.2
+	gui:ClearAllChildren()
+	local layout = Instance.new(&quot;UIListLayout&quot;)
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = gui
+	local pad = Instance.new(&quot;UIPadding&quot;)
+	pad.PaddingTop = UDim.new(0, 14)
+	pad.PaddingLeft = UDim.new(0, 18)
+	pad.PaddingRight = UDim.new(0, 18)
+	pad.Parent = gui
+	local function line(text, color, h)
+		local l = Instance.new(&quot;TextLabel&quot;)
+		l.BackgroundTransparency = 1
+		l.Size = UDim2.new(1, 0, 0, h or 26)
+		l.Font = Enum.Font.GothamBold
+		l.TextScaled = true
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextColor3 = color
+		l.Text = text
+		l.Parent = gui
+	end
+	line(&quot;MEILLEURS FACTEURS&quot;, Color3.fromRGB(255, 215, 120), 40)
+	local top = DataService.GetTop()
+	if #top == 0 then
+		line(&quot;Classement en cours de chargement...&quot;, Color3.fromRGB(200, 205, 215))
+	end
+	for _, e in ipairs(top) do
+		line(e.rank .. &quot;.  &quot; .. e.name .. &quot;  -  &quot; .. Progress.Format(e.value) .. &quot; livraisons&quot;, e.rank &lt;= 3 and Color3.fromRGB(255, 235, 180) or Color3.fromRGB(225, 230, 240))
+	end
+	gui.Parent = board
+end
+
+function BoardService.Init()
+	task.spawn(function()
+		while true do
+			for _, b in ipairs(CollectionService:GetTagged(&quot;TopBoard&quot;)) do
+				pcall(render, b)
+			end
+			task.wait(60)
+		end
+	end)
+end
+
+return BoardService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">DataService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Sauvegarde des joueurs : DataStore avec nouvelles tentatives, sauvegarde automatique,
+-- sauvegarde a la deconnexion et a la fermeture du serveur. Leaderstats + classement global.
+
+local DataStoreService = game:GetService(&quot;DataStoreService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local DataService = {}
+
+local STORE_NAME = &quot;Windmail_v1&quot;
+local store, topStore
+pcall(function()
+	store = DataStoreService:GetDataStore(STORE_NAME)
+	topStore = DataStoreService:GetOrderedDataStore(&quot;Windmail_Deliveries_v1&quot;)
+end)
+
+local cache = {} -- [player] = data
+local loaded = {} -- [player] = true quand le chargement a reussi (on ne sauvegarde jamais des donnees vides)
+local onLoaded = Instance.new(&quot;BindableEvent&quot;)
+DataService.Loaded = onLoaded.Event
+
+local function defaults()
+	return {
+		Version = 1,
+		Coins = Config.StartCoins,
+		TotalCoins = 0,
+		XP = 0,
+		Deliveries = 0,
+		Grades = { S = 0, A = 0, B = 0, C = 0 },
+		Gliders = { Lin = true },
+		Glider = &quot;Lin&quot;,
+		Satchel = 1,
+		Trails = { Aucune = true },
+		Trail = &quot;Aucune&quot;,
+		Stamps = {}, -- [id] = nombre
+		DailyStreak = 0,
+		LastDaily = 0,
+		Tutorial = false,
+		Playtime = 0,
+	}
+end
+
+local function merge(into, from)
+	for k, v in pairs(from) do
+		if type(v) == &quot;table&quot; and type(into[k]) == &quot;table&quot; then
+			merge(into[k], v)
+		else
+			into[k] = v
+		end
+	end
+end
+
+local function retry(fn)
+	for attempt = 1, 4 do
+		local ok, result = pcall(fn)
+		if ok then
+			return true, result
+		end
+		warn(&quot;[Windmail] DataStore (essai &quot; .. attempt .. &quot;) : &quot; .. tostring(result))
+		task.wait(attempt * 1.5)
+	end
+	return false
+end
+
+local function key(player)
+	return &quot;u_&quot; .. player.UserId
+end
+
+local function makeLeaderstats(player)
+	local ls = Instance.new(&quot;Folder&quot;)
+	ls.Name = &quot;leaderstats&quot;
+	for _, name in ipairs({ &quot;Rang&quot;, &quot;Livraisons&quot;, &quot;Pieces&quot; }) do
+		local v = Instance.new(&quot;IntValue&quot;)
+		v.Name = name
+		v.Parent = ls
+	end
+	ls.Parent = player
+end
+
+function DataService.Get(player)
+	return cache[player]
+end
+
+function DataService.IsLoaded(player)
+	return loaded[player] == true
+end
+
+-- Envoie l'etat utile au client + met a jour leaderstats et attributs visibles par tous
+function DataService.Sync(player)
+	local data = cache[player]
+	if not data then
+		return
+	end
+	local rank, xpIn, xpNeed = Progress.RankFromXP(data.XP)
+	local ls = player:FindFirstChild(&quot;leaderstats&quot;)
+	if ls then
+		ls.Rang.Value = rank
+		ls.Livraisons.Value = data.Deliveries
+		ls.Pieces.Value = math.floor(data.Coins)
+	end
+	player:SetAttribute(&quot;Rank&quot;, rank)
+	player:SetAttribute(&quot;Glider&quot;, data.Glider)
+	player:SetAttribute(&quot;Trail&quot;, data.Trail)
+	Remotes.Sync:FireClient(player, {
+		coins = data.Coins,
+		xp = data.XP,
+		rank = rank,
+		xpIn = xpIn,
+		xpNeed = xpNeed,
+		deliveries = data.Deliveries,
+		grades = data.Grades,
+		gliders = data.Gliders,
+		glider = data.Glider,
+		satchel = data.Satchel,
+		trails = data.Trails,
+		trail = data.Trail,
+		stamps = data.Stamps,
+		dailyIn = math.max(0, Config.Daily.Cooldown - (os.time() - data.LastDaily)),
+		dailyStreak = data.DailyStreak,
+		tutorial = data.Tutorial,
+	})
+end
+
+function DataService.AddCoins(player, amount)
+	local data = cache[player]
+	if not data then
+		return
+	end
+	data.Coins += amount
+	if amount &gt; 0 then
+		data.TotalCoins += amount
+	end
+end
+
+-- Ajoute de l'XP ; renvoie le nouveau rang si le joueur monte de rang
+function DataService.AddXP(player, amount)
+	local data = cache[player]
+	if not data then
+		return nil
+	end
+	local before = Progress.RankFromXP(data.XP)
+	data.XP += amount
+	local after = Progress.RankFromXP(data.XP)
+	if after &gt; before then
+		return after
+	end
+	return nil
+end
+
+function DataService.Save(player)
+	local data = cache[player]
+	if not (store and data and loaded[player]) then
+		return
+	end
+	retry(function()
+		store:UpdateAsync(key(player), function()
+			return data
+		end)
+	end)
+	if topStore then
+		pcall(function()
+			topStore:SetAsync(key(player), data.Deliveries)
+		end)
+	end
+end
+
+local function load(player)
+	makeLeaderstats(player)
+	local data = defaults()
+	local ok = true
+	if store then
+		local result
+		ok, result = retry(function()
+			return store:GetAsync(key(player))
+		end)
+		if ok and type(result) == &quot;table&quot; then
+			merge(data, result)
+		end
+	end
+	if player.Parent ~= Players then
+		return
+	end
+	if not ok then
+		-- pas de sauvegarde pour eviter d'ecraser les vraies donnees
+		Remotes.Notify:FireClient(player, &quot;Sauvegarde indisponible : ta progression de cette session ne sera pas enregistree.&quot;, &quot;danger&quot;)
+	end
+	cache[player] = data
+	loaded[player] = ok
+	DataService.Sync(player)
+	onLoaded:Fire(player, data)
+end
+
+-- Classement global (top 10 livraisons) lu toutes les 2 minutes
+local top = {}
+function DataService.GetTop()
+	return top
+end
+
+local function refreshTop()
+	if not topStore then
+		return
+	end
+	local ok, pages = pcall(function()
+		return topStore:GetSortedAsync(false, 10)
+	end)
+	if not ok then
+		return
+	end
+	local list = {}
+	for rank, entry in ipairs(pages:GetCurrentPage()) do
+		local id = tonumber(string.sub(entry.key, 3))
+		local name = &quot;Facteur&quot;
+		if id then
+			local ok2, n = pcall(Players.GetNameFromUserIdAsync, Players, id)
+			if ok2 then
+				name = n
+			end
+		end
+		table.insert(list, { rank = rank, name = name, value = entry.value })
+	end
+	top = list
+end
+
+function DataService.Init()
+	for _, p in ipairs(Players:GetPlayers()) do
+		task.spawn(load, p)
+	end
+	Players.PlayerAdded:Connect(load)
+	Players.PlayerRemoving:Connect(function(player)
+		DataService.Save(player)
+		cache[player] = nil
+		loaded[player] = nil
+	end)
+	game:BindToClose(function()
+		if RunService:IsStudio() then
+			task.wait(1)
+		end
+		local pending = 0
+		for _, player in ipairs(Players:GetPlayers()) do
+			pending += 1
+			task.spawn(function()
+				DataService.Save(player)
+				pending -= 1
+			end)
+		end
+		local t0 = os.clock()
+		while pending &gt; 0 and os.clock() - t0 &lt; 25 do
+			task.wait(0.2)
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(120)
+			for _, player in ipairs(Players:GetPlayers()) do
+				local data = cache[player]
+				if data then
+					data.Playtime += 120
+				end
+				task.spawn(DataService.Save, player)
+			end
+			refreshTop()
+		end
+	end)
+	task.delay(5, refreshTop)
+end
+
+return DataService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">EventService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Evenements aleatoires du serveur : Vent dore (x2), Ballon egare (chasse en vol),
+-- Grande Tournee (objectif commun). Annonces a tous les joueurs.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local StampService = require(script.Parent.StampService)
+local ParcelService = require(script.Parent.ParcelService)
+
+local EventService = {}
+
+local current -- { def, endsAt, ... }
+
+local function defById(id)
+	for _, e in ipairs(Config.Events.List) do
+		if e.id == id then
+			return e
+		end
+	end
+end
+
+local function broadcast(kind, extra)
+	local payload = extra or {}
+	if current then
+		payload.id = current.def.id
+		payload.name = current.def.name
+		payload.desc = current.def.desc
+		payload.color = current.def.color
+		payload.endsAt = current.endsAt
+	end
+	Remotes.Event:FireAllClients(kind, payload)
+end
+
+local function reward(player, coins, xp)
+	DataService.AddCoins(player, coins)
+	local up = DataService.AddXP(player, xp)
+	if up then
+		Remotes.FX:FireClient(player, &quot;RankUp&quot;, { rank = up, title = Progress.Title(up) })
+	end
+	DataService.Sync(player)
+end
+
+local function scaled(player, base)
+	local data = DataService.Get(player)
+	local rank = data and Progress.RankFromXP(data.XP) or 1
+	return math.floor(base * (1 + rank * 0.25))
+end
+
+-- Ballon egare -----------------------------------------------------------------------------------
+local function runBalloon()
+	local points = {}
+	for _, z in ipairs(Config.Zones) do
+		table.insert(points, z.center + Vector3.new(math.random(-60, 60), math.random(90, 140), math.random(-60, 60)))
+	end
+	for i = #points, 2, -1 do
+		local j = math.random(i)
+		points[i], points[j] = points[j], points[i]
+	end
+	local model = Instance.new(&quot;Model&quot;)
+	model.Name = &quot;LostBalloon&quot;
+	local env = Instance.new(&quot;Part&quot;)
+	env.Name = &quot;Envelope&quot;
+	env.Shape = Enum.PartType.Ball
+	env.Size = Vector3.new(12, 12, 12)
+	env.Color = Color3.fromRGB(230, 80, 100)
+	env.Material = Enum.Material.Fabric
+	env.Anchored = true
+	env.CanCollide = false
+	env.CFrame = CFrame.new(points[1])
+	env.Parent = model
+	local bag = Instance.new(&quot;Part&quot;)
+	bag.Name = &quot;Mailbag&quot;
+	bag.Size = Vector3.new(3, 3, 3)
+	bag.Color = Color3.fromRGB(150, 110, 70)
+	bag.Material = Enum.Material.Fabric
+	bag.Anchored = true
+	bag.CanCollide = false
+	bag.CFrame = env.CFrame * CFrame.new(0, -10, 0)
+	bag.Parent = model
+	local beam = Instance.new(&quot;Part&quot;)
+	beam.Size = Vector3.new(1.2, 300, 1.2)
+	beam.Material = Enum.Material.Neon
+	beam.Color = Color3.fromRGB(255, 150, 170)
+	beam.Transparency = 0.5
+	beam.Anchored = true
+	beam.CanCollide = false
+	beam.CanTouch = false
+	beam.CFrame = env.CFrame * CFrame.new(0, 150, 0)
+	beam.Parent = model
+	local hitbox = Instance.new(&quot;Part&quot;)
+	hitbox.Name = &quot;Hitbox&quot;
+	hitbox.Size = Vector3.new(16, 26, 16)
+	hitbox.Transparency = 1
+	hitbox.Anchored = true
+	hitbox.CanCollide = false
+	hitbox.CFrame = env.CFrame * CFrame.new(0, -4, 0)
+	hitbox.Parent = model
+	model.PrimaryPart = hitbox
+	model.Parent = workspace
+	current.balloon = model
+	broadcast(&quot;balloon&quot;, { target = model })
+	local caught = false
+	hitbox.Touched:Connect(function(hit)
+		if caught then
+			return
+		end
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if not player or not DataService.Get(player) then
+			return
+		end
+		caught = true
+		StampService.Give(player, &quot;Ballon&quot;)
+		reward(player, scaled(player, 600), 200)
+		Remotes.Notify:FireAllClients(player.DisplayName .. &quot; a attrape le ballon egare !&quot;, &quot;gold&quot;)
+		Remotes.FX:FireAllClients(&quot;Confetti&quot;, { position = hitbox.Position, userId = player.UserId })
+		current.endsAt = workspace:GetServerTimeNow()
+	end)
+	-- trajet lent d'une ile a l'autre
+	task.spawn(function()
+		local i = 1
+		while not caught and current and workspace:GetServerTimeNow() &lt; current.endsAt do
+			i = (i % #points) + 1
+			local target = points[i]
+			local dist = (target - env.Position).Magnitude
+			local t = dist / 14
+			local info = TweenInfo.new(t, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+			for _, p in ipairs(model:GetChildren()) do
+				local offset = p.CFrame.Position - env.Position
+				TweenService:Create(p, info, { CFrame = CFrame.new(target + offset) }):Play()
+			end
+			local t0 = os.clock()
+			while os.clock() - t0 &lt; t and not caught and workspace:GetServerTimeNow() &lt; current.endsAt do
+				task.wait(0.5)
+			end
+		end
+	end)
+end
+
+-- Grande Tournee -----------------------------------------------------------------------------------
+local function onDeliveryTournee(player)
+	if not (current and current.def.id == &quot;Tournee&quot;) then
+		return
+	end
+	current.count += 1
+	current.contributors[player] = true
+	broadcast(&quot;progress&quot;, { count = current.count, goal = current.goal })
+	if current.count &gt;= current.goal and not current.done then
+		current.done = true
+		for p in pairs(current.contributors) do
+			if p.Parent == Players then
+				reward(p, scaled(p, 500), 250)
+				if math.random() &lt; 0.35 then
+					StampService.Give(p, &quot;Tournee&quot;)
+				end
+			end
+		end
+		Remotes.Notify:FireAllClients(&quot;Grande Tournee reussie ! Tous les participants sont recompenses.&quot;, &quot;gold&quot;)
+		current.endsAt = workspace:GetServerTimeNow()
+	end
+end
+
+local function start(def)
+	current = { def = def, endsAt = workspace:GetServerTimeNow() + def.duration }
+	if def.id == &quot;VentDore&quot; then
+		ParcelService.CoinMultiplier = function()
+			return 2
+		end
+		broadcast(&quot;start&quot;)
+	elseif def.id == &quot;Ballon&quot; then
+		broadcast(&quot;start&quot;)
+		runBalloon()
+	elseif def.id == &quot;Tournee&quot; then
+		current.count = 0
+		current.goal = math.max(def.goalMin, def.goalPerPlayer * #Players:GetPlayers())
+		current.contributors = {}
+		broadcast(&quot;start&quot;, { count = 0, goal = current.goal })
+	end
+	while workspace:GetServerTimeNow() &lt; current.endsAt do
+		task.wait(1)
+	end
+	ParcelService.CoinMultiplier = function()
+		return 1
+	end
+	if current.balloon then
+		current.balloon:Destroy()
+	end
+	broadcast(&quot;end&quot;)
+	current = nil
+end
+
+function EventService.Current()
+	return current
+end
+
+function EventService.Init()
+	table.insert(ParcelService.EventHooks, onDeliveryTournee)
+	Players.PlayerAdded:Connect(function(player)
+		task.wait(4)
+		if current then
+			Remotes.Event:FireClient(player, &quot;start&quot;, {
+				id = current.def.id, name = current.def.name, desc = current.def.desc, color = current.def.color,
+				endsAt = current.endsAt, count = current.count, goal = current.goal, target = current.balloon,
+			})
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(math.random(Config.Events.Interval[1], Config.Events.Interval[2]))
+			if #Players:GetPlayers() &gt; 0 then
+				local list = Config.Events.List
+				local ok, err = pcall(start, list[math.random(#list)])
+				if not ok then
+					warn(&quot;[Windmail] Evenement : &quot; .. tostring(err))
+					current = nil
+				end
+			end
+		end
+	end)
+end
+
+-- Pour tester dans Studio : require(...EventService).Force(&quot;Ballon&quot;)
+function EventService.Force(id)
+	local def = defById(id)
+	if def and not current then
+		task.spawn(start, def)
+	end
+end
+
+return EventService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">ParcelService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Coeur du jeu : missions de livraison.
+-- Guichet -&gt; colis attribues (destinations dans les zones debloquees) -&gt; vol -&gt; livraison a la
+-- boite aux lettres -&gt; note S/A/B/C selon le temps, integrite, convoi, evenement -&gt; pieces + XP.
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local StampService = require(script.Parent.StampService)
+
+local ParcelService = {}
+ParcelService.EventHooks = {} -- fonctions(player) appelees a chaque livraison (evenements)
+ParcelService.CoinMultiplier = function()
+	return 1
+end
+
+local D = Config.Delivery
+local carrying = {} -- [player] = { parcels }
+local nextId = 0
+
+local function capacity(data)
+	return Config.Satchels[data.Satchel].capacity
+end
+
+local function zoneUnlocked(rank, zoneId)
+	local z = Config.ZoneById[zoneId]
+	return z and rank &gt;= z.rank
+end
+
+-- Colis sur le dos (visibles par tous)
+local function refreshVisual(player)
+	local char = player.Character
+	local torso = char and (char:FindFirstChild(&quot;UpperTorso&quot;) or char:FindFirstChild(&quot;Torso&quot;))
+	if not torso then
+		return
+	end
+	local old = char:FindFirstChild(&quot;Satchel&quot;)
+	if old then
+		old:Destroy()
+	end
+	local list = carrying[player] or {}
+	player:SetAttribute(&quot;Heavy&quot;, false)
+	if #list == 0 then
+		return
+	end
+	local model = Instance.new(&quot;Model&quot;)
+	model.Name = &quot;Satchel&quot;
+	local y = 0
+	for i, p in ipairs(list) do
+		local def = Config.ParcelById[p.type]
+		local s = def.size * 0.7
+		local box = Instance.new(&quot;Part&quot;)
+		box.Name = &quot;Parcel&quot;
+		box.Size = s
+		box.Color = def.color
+		box.Material = Enum.Material.Fabric
+		pcall(function()
+			box.Material = def.id == &quot;Lettre&quot; and Enum.Material.Fabric or Enum.Material.Cardboard
+		end)
+		box.CanCollide = false
+		box.CanQuery = false
+		box.CanTouch = false
+		box.Massless = true
+		box.CFrame = torso.CFrame * CFrame.new(0, -0.2 + y + s.Y / 2, torso.Size.Z / 2 + s.Z / 2 + 0.05)
+		y += s.Y + 0.05
+		local tape = Instance.new(&quot;Part&quot;)
+		tape.Size = Vector3.new(s.X + 0.02, s.Y + 0.02, 0.25)
+		tape.Color = Color3.fromRGB(215, 190, 140)
+		tape.Material = Enum.Material.Fabric
+		tape.CanCollide = false
+		tape.CanQuery = false
+		tape.Massless = true
+		tape.CFrame = box.CFrame
+		tape.Parent = model
+		local w2 = Instance.new(&quot;WeldConstraint&quot;)
+		w2.Part0 = box
+		w2.Part1 = tape
+		w2.Parent = tape
+		local w = Instance.new(&quot;WeldConstraint&quot;)
+		w.Part0 = torso
+		w.Part1 = box
+		w.Parent = box
+		box.Parent = model
+		if def.heavy then
+			player:SetAttribute(&quot;Heavy&quot;, true)
+		end
+	end
+	model.Parent = char
+end
+
+local function sendList(player)
+	local out = {}
+	for _, p in ipairs(carrying[player] or {}) do
+		table.insert(out, {
+			id = p.id,
+			type = p.type,
+			mailbox = p.mailbox,
+			owner = p.mailbox:GetAttribute(&quot;Owner&quot;),
+			zone = p.mailbox:GetAttribute(&quot;Zone&quot;),
+			par = p.par,
+			start = p.start,
+			deadline = p.deadline,
+			integrity = p.integrity,
+			serverNow = workspace:GetServerTimeNow(),
+		})
+	end
+	Remotes.Parcels:FireClient(player, out)
+end
+
+local function pickType(rank, dist, hasHeavy)
+	local pool, total = {}, 0
+	for _, t in ipairs(Config.Parcels) do
+		local ok = rank &gt;= t.rank
+		if t.express and dist &lt; 90 then
+			ok = false
+		end
+		if t.heavy and hasHeavy then
+			ok = false
+		end
+		if ok then
+			table.insert(pool, t)
+			total += t.weight
+		end
+	end
+	local r = math.random() * total
+	for _, t in ipairs(pool) do
+		r -= t.weight
+		if r &lt;= 0 then
+			return t
+		end
+	end
+	return pool[1]
+end
+
+local function takeParcels(player, counter)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	local list = carrying[player] or {}
+	carrying[player] = list
+	local free = capacity(data) - #list
+	if free &lt;= 0 then
+		Remotes.Notify:FireClient(player, &quot;Ta sacoche est pleine ! Livre tes colis (ou ameliore ta sacoche).&quot;, &quot;info&quot;)
+		return
+	end
+	local rank = Progress.RankFromXP(data.XP)
+	local origin = counter.Position
+	local local_, far = {}, {}
+	local here
+	for _, z in ipairs(Config.Zones) do
+		if (Vector3.new(origin.X, 0, origin.Z) - z.center).Magnitude &lt; 160 then
+			here = z.id
+		end
+	end
+	local taken = {}
+	for _, p in ipairs(list) do
+		taken[p.mailbox] = true
+	end
+	for _, m in ipairs(CollectionService:GetTagged(&quot;Mailbox&quot;)) do
+		local zone = m:GetAttribute(&quot;Zone&quot;)
+		if m.PrimaryPart and zoneUnlocked(rank, zone) and not taken[m] and (m.PrimaryPart.Position - origin).Magnitude &gt; 30 then
+			if zone == here then
+				table.insert(local_, m)
+			else
+				table.insert(far, m)
+			end
+		end
+	end
+	local hasHeavy = false
+	for _, p in ipairs(list) do
+		if Config.ParcelById[p.type].heavy then
+			hasHeavy = true
+		end
+	end
+	local given = 0
+	for _ = 1, free do
+		local pool = (#far &gt; 0 and (math.random() &lt; 0.4 or #local_ == 0)) and far or local_
+		if #pool == 0 then
+			break
+		end
+		local m = table.remove(pool, math.random(#pool))
+		local dist = (m.PrimaryPart.Position - origin).Magnitude
+		local t = pickType(rank, dist, hasHeavy)
+		hasHeavy = hasHeavy or t.heavy == true
+		nextId += 1
+		local par = dist / D.ParSpeed + D.ParBonus
+		if t.heavy then
+			par *= 1.2
+		end
+		local now = workspace:GetServerTimeNow()
+		table.insert(list, {
+			id = nextId,
+			type = t.id,
+			mailbox = m,
+			origin = origin,
+			dist = dist,
+			start = now,
+			par = par,
+			deadline = t.express and (now + par * D.ExpressFactor) or nil,
+			integrity = 1,
+		})
+		given += 1
+	end
+	if given == 0 then
+		Remotes.Notify:FireClient(player, &quot;Aucune destination disponible pour l'instant.&quot;, &quot;info&quot;)
+		return
+	end
+	Remotes.FX:FireClient(player, &quot;Pickup&quot;, { count = given })
+	refreshVisual(player)
+	sendList(player)
+end
+
+local function gradeFor(ratio)
+	for _, g in ipairs(D.Grades) do
+		if ratio &lt;= g.max then
+			return g
+		end
+	end
+	return D.Grades[#D.Grades]
+end
+
+local function deliver(player, mailbox)
+	local data = DataService.Get(player)
+	local list = carrying[player]
+	if not (data and list) then
+		return
+	end
+	local index
+	for i, p in ipairs(list) do
+		if p.mailbox == mailbox then
+			index = i
+			break
+		end
+	end
+	if not index then
+		if #list &gt; 0 then
+			Remotes.Notify:FireClient(player, &quot;Ce n'est pas la bonne boite aux lettres ! Suis les fleches.&quot;, &quot;info&quot;)
+		end
+		return
+	end
+	local p = table.remove(list, index)
+	local def = Config.ParcelById[p.type]
+	local now = workspace:GetServerTimeNow()
+	local elapsed = now - p.start
+	local grade = gradeFor(elapsed / p.par)
+	local bonuses = Progress.SetBonuses(data.Stamps)
+	-- convoi : autres facteurs proches de la boite aux lettres
+	local helpers = {}
+	local mpos = mailbox.PrimaryPart.Position
+	for _, other in ipairs(Players:GetPlayers()) do
+		local ch = other.Character
+		local hrp = ch and ch:FindFirstChild(&quot;HumanoidRootPart&quot;)
+		if other ~= player and hrp and (hrp.Position - mpos).Magnitude &lt;= D.ConvoyRadius then
+			table.insert(helpers, other)
+		end
+	end
+	local base = D.BaseCoins + p.dist * D.CoinsPerStud
+	local convoy = #helpers &gt; 0 and (1 + D.ConvoyBonus) or 1
+	local eventMult = ParcelService.CoinMultiplier()
+	local coins = math.floor(base * def.pay * grade.mult * p.integrity * convoy * eventMult * (1 + bonuses.coin) + 0.5)
+	local xp = math.floor(coins * D.XPPerCoin * (1 + bonuses.xp) + 0.5)
+	DataService.AddCoins(player, coins)
+	local newRank = DataService.AddXP(player, xp)
+	data.Deliveries += 1
+	data.Grades[grade.grade] = (data.Grades[grade.grade] or 0) + 1
+	local stamp
+	if def.mystery then
+		stamp = StampService.RollMystery()
+		StampService.Give(player, stamp)
+	end
+	for _, h in ipairs(helpers) do
+		local share = math.max(1, math.floor(coins * D.ConvoyAssist))
+		DataService.AddCoins(h, share)
+		local up = DataService.AddXP(h, math.floor(share * D.XPPerCoin))
+		Remotes.Notify:FireClient(h, &quot;Convoi avec &quot; .. player.DisplayName .. &quot; : +&quot; .. share .. &quot; pieces&quot;, &quot;good&quot;)
+		if up then
+			Remotes.FX:FireClient(h, &quot;RankUp&quot;, { rank = up, title = Progress.Title(up) })
+		end
+		DataService.Sync(h)
+	end
+	Remotes.FX:FireClient(player, &quot;Delivered&quot;, {
+		parcel = def.name,
+		owner = mailbox:GetAttribute(&quot;Owner&quot;),
+		grade = grade.grade,
+		gradeColor = grade.color,
+		coins = coins,
+		xp = xp,
+		time = elapsed,
+		par = p.par,
+		integrity = p.integrity,
+		convoy = #helpers,
+		event = eventMult &gt; 1,
+		stamp = stamp,
+		position = mpos,
+	})
+	Remotes.FX:FireAllClients(&quot;Confetti&quot;, { position = mpos, userId = player.UserId })
+	if newRank then
+		Remotes.FX:FireClient(player, &quot;RankUp&quot;, { rank = newRank, title = Progress.Title(newRank) })
+		for _, z in ipairs(Config.Zones) do
+			if z.rank == newRank then
+				Remotes.Notify:FireClient(player, &quot;Nouvelle zone de livraison : &quot; .. z.name .. &quot; !&quot;, &quot;gold&quot;)
+			end
+		end
+	end
+	for _, hook in ipairs(ParcelService.EventHooks) do
+		task.spawn(hook, player)
+	end
+	refreshVisual(player)
+	sendList(player)
+	DataService.Sync(player)
+end
+
+-- Sauvetage en mer : retour au quai le plus proche
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Include
+rayParams.IgnoreWater = false
+
+local function inWater(pos)
+	rayParams.FilterDescendantsInstances = { workspace.Terrain }
+	local hit = workspace:Raycast(pos + Vector3.new(0, 3, 0), Vector3.new(0, -6, 0), rayParams)
+	return hit and hit.Material == Enum.Material.Water
+end
+
+local function rescue(player, hrp)
+	local best, bestD
+	for _, d in ipairs(CollectionService:GetTagged(&quot;Dock&quot;)) do
+		local dist = (d.Position - hrp.Position).Magnitude
+		if not bestD or dist &lt; bestD then
+			best, bestD = d, dist
+		end
+	end
+	if best then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.CFrame = best.CFrame + Vector3.new(0, 3, 0)
+	end
+	local damaged = false
+	for _, p in ipairs(carrying[player] or {}) do
+		if Config.ParcelById[p.type].fragile then
+			p.integrity = math.max(0.2, p.integrity - D.SplashDamage)
+			damaged = true
+		end
+	end
+	Remotes.FX:FireClient(player, &quot;Splash&quot;, { damaged = damaged })
+	if damaged then
+		sendList(player)
+	end
+end
+
+function ParcelService.Carrying(player)
+	return carrying[player] or {}
+end
+
+function ParcelService.Init()
+	local function hookCounter(counter)
+		local prompt = counter:FindFirstChildOfClass(&quot;ProximityPrompt&quot;)
+		if prompt then
+			prompt.Triggered:Connect(function(player)
+				takeParcels(player, counter)
+			end)
+		end
+	end
+	for _, c in ipairs(CollectionService:GetTagged(&quot;PostCounter&quot;)) do
+		hookCounter(c)
+	end
+	CollectionService:GetInstanceAddedSignal(&quot;PostCounter&quot;):Connect(hookCounter)
+	local function hookMailbox(m)
+		local box = m.PrimaryPart
+		local prompt = box and box:FindFirstChildOfClass(&quot;ProximityPrompt&quot;)
+		if prompt then
+			prompt.Triggered:Connect(function(player)
+				deliver(player, m)
+			end)
+		end
+	end
+	for _, m in ipairs(CollectionService:GetTagged(&quot;Mailbox&quot;)) do
+		hookMailbox(m)
+	end
+	CollectionService:GetInstanceAddedSignal(&quot;Mailbox&quot;):Connect(hookMailbox)
+
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+			refreshVisual(player)
+		end)
+	end)
+	for _, player in ipairs(Players:GetPlayers()) do
+		player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+			refreshVisual(player)
+		end)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		carrying[player] = nil
+	end)
+
+	-- chocs (colis fragiles) et noyade : suivi de la vitesse
+	local lastSpeed = {}
+	RunService.Heartbeat:Connect(function()
+		for _, player in ipairs(Players:GetPlayers()) do
+			local list = carrying[player]
+			local ch = player.Character
+			local hrp = ch and ch:FindFirstChild(&quot;HumanoidRootPart&quot;)
+			if hrp and list and #list &gt; 0 then
+				local speed = hrp.AssemblyLinearVelocity.Magnitude
+				local prev = lastSpeed[player] or speed
+				lastSpeed[player] = speed
+				if prev - speed &gt; D.ImpactSpeed and speed &lt; 25 then
+					local hit = false
+					for _, p in ipairs(list) do
+						if Config.ParcelById[p.type].fragile then
+							p.integrity = math.max(0.2, p.integrity - D.ImpactDamage)
+							hit = true
+						end
+					end
+					if hit then
+						Remotes.FX:FireClient(player, &quot;Impact&quot;, {})
+						sendList(player)
+					end
+				end
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			local now = workspace:GetServerTimeNow()
+			for _, player in ipairs(Players:GetPlayers()) do
+				local ch = player.Character
+				local hrp = ch and ch:FindFirstChild(&quot;HumanoidRootPart&quot;)
+				local hum = ch and ch:FindFirstChildOfClass(&quot;Humanoid&quot;)
+				if hrp and hum and hum.Health &gt; 0 and hrp.Position.Y &lt; 3 and inWater(hrp.Position) then
+					rescue(player, hrp)
+				end
+				-- colis express hors delai
+				local list = carrying[player]
+				if list then
+					for i = #list, 1, -1 do
+						local p = list[i]
+						if p.deadline and now &gt; p.deadline then
+							table.remove(list, i)
+							Remotes.Notify:FireClient(player, &quot;Colis express en retard : il retourne a la poste.&quot;, &quot;danger&quot;)
+							refreshVisual(player)
+							sendList(player)
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+return ParcelService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">ShopService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Boutique, equipement, recompense quotidienne, etat de vol (pour les ailes et trainees visibles).
+-- Tout s'achete avec les pieces gagnees en jouant : aucun objet payant ne donne d'avantage.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+
+local ShopService = {}
+
+local function notify(player, text, kind)
+	Remotes.Notify:FireClient(player, text, kind or &quot;info&quot;)
+end
+
+local function rankOf(data)
+	return (Progress.RankFromXP(data.XP))
+end
+
+-- Trainee sur le personnage (activee seulement en vol)
+local function applyTrail(player)
+	local data = DataService.Get(player)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if not (data and hrp) then
+		return
+	end
+	for _, n in ipairs({ &quot;WindTrail&quot;, &quot;TrailA0&quot;, &quot;TrailA1&quot; }) do
+		local o = hrp:FindFirstChild(n)
+		if o then
+			o:Destroy()
+		end
+	end
+	local def = Config.TrailById[data.Trail]
+	if not def or not def.color then
+		return
+	end
+	local a0 = Instance.new(&quot;Attachment&quot;)
+	a0.Name = &quot;TrailA0&quot;
+	a0.Position = Vector3.new(-2.8, 0.6, 0.6)
+	a0.Parent = hrp
+	local a1 = Instance.new(&quot;Attachment&quot;)
+	a1.Name = &quot;TrailA1&quot;
+	a1.Position = Vector3.new(2.8, 0.6, 0.6)
+	a1.Parent = hrp
+	local t = Instance.new(&quot;Trail&quot;)
+	t.Name = &quot;WindTrail&quot;
+	t.Attachment0 = a0
+	t.Attachment1 = a1
+	t.Lifetime = 0.9
+	t.LightEmission = 0.6
+	t.Color = ColorSequence.new(def.color, def.color2 or def.color)
+	t.Transparency = NumberSequence.new(0.35, 1)
+	t.WidthScale = NumberSequence.new(1, 0.2)
+	t.Enabled = player:GetAttribute(&quot;Gliding&quot;) == true
+	t.Parent = hrp
+end
+
+local handlers = {}
+
+function handlers.buyGlider(player, data, id)
+	local g = Config.GliderById[id]
+	if not g or data.Gliders[id] then
+		return
+	end
+	if rankOf(data) &lt; g.rank then
+		return notify(player, &quot;Rang &quot; .. g.rank .. &quot; requis pour &quot; .. g.name .. &quot;.&quot;, &quot;danger&quot;)
+	end
+	if data.Coins &lt; g.price then
+		return notify(player, &quot;Il te manque &quot; .. Progress.Format(g.price - data.Coins) .. &quot; pieces.&quot;, &quot;danger&quot;)
+	end
+	data.Coins -= g.price
+	data.Gliders[id] = true
+	data.Glider = id
+	Remotes.FX:FireClient(player, &quot;Purchase&quot;, { name = g.name })
+end
+
+function handlers.equipGlider(player, data, id)
+	if data.Gliders[id] then
+		data.Glider = id
+	end
+end
+
+function handlers.buySatchel(player, data)
+	local nextS = Config.Satchels[data.Satchel + 1]
+	if not nextS then
+		return
+	end
+	if rankOf(data) &lt; (nextS.rank or 1) then
+		return notify(player, &quot;Rang &quot; .. nextS.rank .. &quot; requis.&quot;, &quot;danger&quot;)
+	end
+	if data.Coins &lt; nextS.price then
+		return notify(player, &quot;Il te manque &quot; .. Progress.Format(nextS.price - data.Coins) .. &quot; pieces.&quot;, &quot;danger&quot;)
+	end
+	data.Coins -= nextS.price
+	data.Satchel += 1
+	Remotes.FX:FireClient(player, &quot;Purchase&quot;, { name = nextS.name })
+end
+
+function handlers.buyTrail(player, data, id)
+	local t = Config.TrailById[id]
+	if not t or data.Trails[id] or not t.price then
+		return
+	end
+	if data.Coins &lt; t.price then
+		return notify(player, &quot;Il te manque &quot; .. Progress.Format(t.price - data.Coins) .. &quot; pieces.&quot;, &quot;danger&quot;)
+	end
+	data.Coins -= t.price
+	data.Trails[id] = true
+	data.Trail = id
+	Remotes.FX:FireClient(player, &quot;Purchase&quot;, { name = t.name })
+	applyTrail(player)
+end
+
+function handlers.equipTrail(player, data, id)
+	local unlocked = data.Trails[id] or Progress.SetBonuses(data.Stamps).trails[id]
+	if unlocked and Config.TrailById[id] then
+		data.Trails[id] = true
+		data.Trail = id
+		applyTrail(player)
+	end
+end
+
+function handlers.daily(player, data)
+	local since = os.time() - data.LastDaily
+	if since &lt; Config.Daily.Cooldown then
+		return notify(player, &quot;Reviens plus tard pour ta recompense !&quot;, &quot;info&quot;)
+	end
+	data.DailyStreak = (since &lt; Config.Daily.Reset) and math.min(data.DailyStreak + 1, #Config.Daily.Coins) or 1
+	data.LastDaily = os.time()
+	local coins = Config.Daily.Coins[data.DailyStreak]
+	DataService.AddCoins(player, coins)
+	Remotes.FX:FireClient(player, &quot;Daily&quot;, { coins = coins, streak = data.DailyStreak })
+end
+
+function handlers.tutorialDone(player, data)
+	data.Tutorial = true
+end
+
+local lastGlide = {}
+function handlers.glide(player, data, on)
+	if lastGlide[player] and os.clock() - lastGlide[player] &lt; 0.15 then
+		return
+	end
+	lastGlide[player] = os.clock()
+	player:SetAttribute(&quot;Gliding&quot;, on == true)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	local trail = hrp and hrp:FindFirstChild(&quot;WindTrail&quot;)
+	if trail then
+		trail.Enabled = on == true
+	end
+	return true -- pas de resynchronisation necessaire
+end
+
+function ShopService.Init()
+	Remotes.Request.OnServerEvent:Connect(function(player, action, arg)
+		local data = DataService.Get(player)
+		local fn = handlers[action]
+		if not (data and fn) or (arg ~= nil and type(arg) ~= &quot;string&quot; and type(arg) ~= &quot;boolean&quot;) then
+			return
+		end
+		local ok, skipSync = pcall(fn, player, data, arg)
+		if not ok then
+			warn(&quot;[Windmail] Action &quot; .. tostring(action) .. &quot; : &quot; .. tostring(skipSync))
+		end
+		if not skipSync then
+			DataService.Sync(player)
+		end
+	end)
+	local function onChar(player)
+		player.CharacterAdded:Connect(function()
+			player:SetAttribute(&quot;Gliding&quot;, false)
+			task.wait(0.3)
+			applyTrail(player)
+		end)
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		onChar(p)
+	end
+	Players.PlayerAdded:Connect(onChar)
+	Players.PlayerRemoving:Connect(function(p)
+		lastGlide[p] = nil
+	end)
+	DataService.Loaded:Connect(function(player)
+		applyTrail(player)
+	end)
+end
+
+return ShopService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">StampService</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Timbres de collection : colis mystere, timbres caches (secrets), evenements. Bonus de sets.
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+
+local StampService = {}
+
+function StampService.Give(player, stampId)
+	local data = DataService.Get(player)
+	local stamp = Config.StampById[stampId]
+	if not (data and stamp) then
+		return false
+	end
+	local before = Progress.SetBonuses(data.Stamps)
+	local first = not data.Stamps[stampId]
+	data.Stamps[stampId] = (data.Stamps[stampId] or 0) + 1
+	local after = Progress.SetBonuses(data.Stamps)
+	Remotes.FX:FireClient(player, &quot;Stamp&quot;, { id = stampId, first = first })
+	for setId in pairs(after.done) do
+		if not before.done[setId] then
+			for _, set in ipairs(Config.StampSets) do
+				if set.id == setId then
+					Remotes.Notify:FireClient(player, &quot;Collection &quot; .. set.name .. &quot; complete ! Bonus : &quot; .. set.bonus, &quot;gold&quot;)
+					if set.trail then
+						data.Trails[set.trail] = true
+					end
+				end
+			end
+		end
+	end
+	DataService.Sync(player)
+	return first
+end
+
+-- Tirage d'un timbre de colis mystere (rarete ponderee)
+function StampService.RollMystery()
+	local pool, total = {}, 0
+	for _, s in ipairs(Config.Stamps) do
+		if s.source == &quot;mystery&quot; then
+			local w = Config.StampRarity[s.rarity].weight
+			table.insert(pool, { s, w })
+			total += w
+		end
+	end
+	local r = math.random() * total
+	for _, e in ipairs(pool) do
+		r -= e[2]
+		if r &lt;= 0 then
+			return e[1].id
+		end
+	end
+	return pool[1][1].id
+end
+
+function StampService.Init()
+	local cooldown = {}
+	local function hook(spot)
+		spot.CanTouch = true
+		spot.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if not player then
+				return
+			end
+			local data = DataService.Get(player)
+			local id = spot:GetAttribute(&quot;StampId&quot;)
+			if not data or data.Stamps[id] or (cooldown[player] and os.clock() - cooldown[player] &lt; 1) then
+				return
+			end
+			cooldown[player] = os.clock()
+			StampService.Give(player, id)
+			Remotes.Notify:FireAllClients(player.DisplayName .. &quot; a decouvert un timbre secret : &quot; .. Config.StampById[id].name .. &quot; !&quot;, &quot;gold&quot;)
+		end)
+	end
+	for _, s in ipairs(CollectionService:GetTagged(&quot;StampSpot&quot;)) do
+		hook(s)
+	end
+	CollectionService:GetInstanceAddedSignal(&quot;StampSpot&quot;):Connect(hook)
+	Players.PlayerRemoving:Connect(function(p)
+		cooldown[p] = nil
+	end)
+end
+
+return StampService
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">WorldBuilder</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Monde de WINDMAIL : archipel realiste (Terrain Roblox), villages, boites aux lettres,
+-- colonnes de vent (thermiques), anneaux de vent, secrets et eclairage.
+-- Tags poses ici et utilises ailleurs :
+--   PostCounter (guichet a colis), Mailbox (boite aux lettres), Updraft (colonne de vent),
+--   WindRing (anneau de vitesse), StampSpot (timbre cache), Dock (point de sauvetage), TopBoard.
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local Lighting = game:GetService(&quot;Lighting&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local WorldBuilder = {}
+
+local Terrain = workspace.Terrain
+local rng = Random.new(2024)
+local function R(a, b)
+	return rng:NextNumber(a, b)
+end
+
+local root -- dossier Workspace.Windmail
+local mailboxCount = 0
+
+-- Pieces ----------------------------------------------------------------------------------------
+
+local function part(props, parent)
+	local p = Instance.new(&quot;Part&quot;)
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for k, v in pairs(props) do
+		p[k] = v
+	end
+	p.Parent = parent or root
+	return p
+end
+
+local function wedge(props, parent)
+	local p = Instance.new(&quot;WedgePart&quot;)
+	p.Anchored = true
+	for k, v in pairs(props) do
+		p[k] = v
+	end
+	p.Parent = parent or root
+	return p
+end
+
+local function cyl(cf, height, radius, color, material, parent)
+	return part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(height, radius * 2, radius * 2), CFrame = cf * CFrame.Angles(0, 0, math.rad(90)), Color = color, Material = material or Enum.Material.SmoothPlastic }, parent)
+end
+
+local function ball(pos, size, color, material, parent)
+	return part({ Shape = Enum.PartType.Ball, Size = Vector3.new(size, size, size), CFrame = CFrame.new(pos), Color = color, Material = material or Enum.Material.SmoothPlastic }, parent)
+end
+
+local function folder(name, parent)
+	local f = Instance.new(&quot;Folder&quot;)
+	f.Name = name
+	f.Parent = parent or root
+	return f
+end
+
+local function label(parent, face, text, color, ppS)
+	local gui = Instance.new(&quot;SurfaceGui&quot;)
+	gui.Face = face or Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = ppS or 40
+	gui.LightInfluence = 0.3
+	local l = Instance.new(&quot;TextLabel&quot;)
+	l.Size = UDim2.fromScale(1, 1)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.TextScaled = true
+	l.Font = Enum.Font.GothamBold
+	l.TextColor3 = color or Color3.fromRGB(250, 245, 230)
+	l.Parent = gui
+	gui.Parent = parent
+	return l
+end
+
+-- Couleurs et materiaux realistes
+local WOOD = Color3.fromRGB(120, 85, 55)
+local WOOD_LIGHT = Color3.fromRGB(170, 130, 90)
+local PLASTER = { Color3.fromRGB(238, 230, 214), Color3.fromRGB(225, 214, 190), Color3.fromRGB(214, 222, 228), Color3.fromRGB(236, 220, 205), Color3.fromRGB(205, 215, 195) }
+local ROOF = { Color3.fromRGB(150, 70, 55), Color3.fromRGB(70, 85, 105), Color3.fromRGB(110, 75, 60), Color3.fromRGB(85, 95, 80) }
+local STONE = Color3.fromRGB(150, 145, 140)
+local SHUTTER = { Color3.fromRGB(60, 110, 150), Color3.fromRGB(80, 130, 90), Color3.fromRGB(150, 70, 60), Color3.fromRGB(200, 170, 90) }
+
+-- Eclairage --------------------------------------------------------------------------------------
+
+local function lighting()
+	Lighting.ClockTime = 15.2
+	Lighting.GeographicLatitude = 38
+	Lighting.Brightness = 2.6
+	Lighting.Ambient = Color3.fromRGB(95, 100, 115)
+	Lighting.OutdoorAmbient = Color3.fromRGB(130, 135, 150)
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 1
+	Lighting.GlobalShadows = true
+	Lighting.ShadowSoftness = 0.25
+	pcall(function()
+		Lighting.Technology = Enum.Technology.Future
+	end)
+	for _, c in ipairs(Lighting:GetChildren()) do
+		c:Destroy()
+	end
+	local atm = Instance.new(&quot;Atmosphere&quot;)
+	atm.Density = 0.32
+	atm.Offset = 0.15
+	atm.Color = Color3.fromRGB(200, 220, 240)
+	atm.Decay = Color3.fromRGB(110, 140, 175)
+	atm.Glare = 0.35
+	atm.Haze = 1.6
+	atm.Parent = Lighting
+	local sky = Instance.new(&quot;Sky&quot;)
+	sky.SunAngularSize = 14
+	sky.Parent = Lighting
+	local bloom = Instance.new(&quot;BloomEffect&quot;)
+	bloom.Intensity = 0.35
+	bloom.Size = 30
+	bloom.Threshold = 1.4
+	bloom.Parent = Lighting
+	local rays = Instance.new(&quot;SunRaysEffect&quot;)
+	rays.Intensity = 0.06
+	rays.Spread = 0.6
+	rays.Parent = Lighting
+	local cc = Instance.new(&quot;ColorCorrectionEffect&quot;)
+	cc.Contrast = 0.08
+	cc.Saturation = 0.08
+	cc.TintColor = Color3.fromRGB(255, 250, 242)
+	cc.Parent = Lighting
+	local dof = Instance.new(&quot;DepthOfFieldEffect&quot;)
+	dof.FarIntensity = 0.12
+	dof.FocusDistance = 120
+	dof.InFocusRadius = 140
+	dof.NearIntensity = 0
+	dof.Parent = Lighting
+	local clouds = Instance.new(&quot;Clouds&quot;)
+	clouds.Cover = 0.55
+	clouds.Density = 0.6
+	clouds.Parent = Terrain
+	Terrain.WaterColor = Color3.fromRGB(40, 120, 150)
+	Terrain.WaterTransparency = 0.35
+	Terrain.WaterWaveSize = 0.2
+	Terrain.WaterWaveSpeed = 12
+	Terrain.WaterReflectance = 0.6
+	pcall(function()
+		Terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(100, 140, 70))
+		Terrain:SetMaterialColor(Enum.Material.Rock, Color3.fromRGB(125, 120, 115))
+		Terrain:SetMaterialColor(Enum.Material.Sand, Color3.fromRGB(215, 200, 160))
+	end)
+end
+
+-- Terrain : iles et mer ---------------------------------------------------------------------------
+
+local function sea()
+	Terrain:FillBlock(CFrame.new(-20, -24, -180), Vector3.new(1700, 48, 1500), Enum.Material.Water)
+	Terrain:FillBlock(CFrame.new(-20, -50, -180), Vector3.new(1700, 4, 1500), Enum.Material.Sand)
+end
+
+-- Ile a falaises : socle rocheux irregulier, dessus herbeux, plage au pied
+local function island(center, radius, height, opts)
+	opts = opts or {}
+	local top = opts.top or Enum.Material.Grass
+	local rock = opts.rock or Enum.Material.Rock
+	-- socle sous-marin et plage
+	Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, -26, 0)), 52, radius * 1.3, Enum.Material.Sand)
+	if not opts.noBeach then
+		Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, 0.5, 0)), 3, radius * 1.22, Enum.Material.Sand)
+	end
+	-- falaise : cylindres empiles legerement decales + blocs arrondis sur le pourtour
+	local steps = math.max(3, math.floor(height / 12))
+	for i = 0, steps - 1 do
+		local y0 = (height - 4) * i / steps
+		local h = (height - 4) / steps + 2
+		local r = radius * (1.06 - 0.08 * (i / steps)) + R(-2, 2)
+		Terrain:FillCylinder(CFrame.new(center + Vector3.new(R(-2, 2), y0 + h / 2, R(-2, 2))), h, r, rock)
+	end
+	for k = 1, math.floor(radius / 3) do
+		local a = R(0, math.pi * 2)
+		local y = R(4, height - 6)
+		local r = radius * (1.02 - 0.06 * (y / height)) + R(-1, 3)
+		Terrain:FillBall(center + Vector3.new(math.cos(a) * r, y, math.sin(a) * r), R(6, 12), rock)
+	end
+	-- dessus
+	Terrain:FillCylinder(CFrame.new(center + Vector3.new(0, height - 2, 0)), 4, radius, top)
+	if opts.patch then
+		for k = 1, 6 do
+			local a = R(0, math.pi * 2)
+			local r = R(0, radius * 0.7)
+			Terrain:FillCylinder(CFrame.new(center + Vector3.new(math.cos(a) * r, height - 1.9, math.sin(a) * r)), 4, R(8, 18), opts.patch)
+		end
+	end
+	return center + Vector3.new(0, height, 0)
+end
+
+-- Rocher en mer (pour les thermiques et le decor)
+local function seaStack(pos, radius, height)
+	Terrain:FillCylinder(CFrame.new(pos + Vector3.new(0, height / 2 - 20, 0)), height + 40, radius, Enum.Material.Rock)
+	Terrain:FillBall(pos + Vector3.new(0, height, 0), radius * 1.1, Enum.Material.Rock)
+	Terrain:FillCylinder(CFrame.new(pos + Vector3.new(0, height + radius * 0.6, 0)), 2, radius * 0.7, Enum.Material.Grass)
+end
+
+-- Vegetation et props ---------------------------------------------------------------------------
+
+local LEAVES = { Color3.fromRGB(70, 110, 50), Color3.fromRGB(85, 125, 60), Color3.fromRGB(60, 95, 45) }
+
+local function tree(parent, pos, scale, fruit)
+	scale = scale or 1
+	local trunk = cyl(CFrame.new(pos + Vector3.new(0, 5 * scale, 0)) * CFrame.Angles(R(-0.08, 0.08), 0, R(-0.08, 0.08)), 10 * scale, 0.7 * scale, Color3.fromRGB(95, 70, 50), Enum.Material.Wood, parent)
+	local top = pos + Vector3.new(0, 10.5 * scale, 0)
+	for k = 1, 6 do
+		local o = Vector3.new(R(-2.6, 2.6), R(-1.2, 2.2), R(-2.6, 2.6)) * scale
+		local b = ball(top + o, R(5, 7.5) * scale, LEAVES[rng:NextInteger(1, 3)], Enum.Material.Grass, parent)
+		b.CanCollide = false
+	end
+	if fruit then
+		for k = 1, 7 do
+			local a = R(0, math.pi * 2)
+			local b = ball(top + Vector3.new(math.cos(a) * 3.6 * scale, R(-1.5, 1.5) * scale, math.sin(a) * 3.6 * scale), 0.7 * scale, fruit, Enum.Material.SmoothPlastic, parent)
+			b.CanCollide = false
+		end
+	end
+end
+
+local function pine(parent, pos, scale)
+	scale = scale or 1
+	cyl(CFrame.new(pos + Vector3.new(0, 4 * scale, 0)), 8 * scale, 0.6 * scale, Color3.fromRGB(90, 65, 45), Enum.Material.Wood, parent)
+	for i = 0, 3 do
+		local r = (5 - i * 1.1) * scale
+		local c = cyl(CFrame.new(pos + Vector3.new(0, (5 + i * 2.6) * scale, 0)), 3 * scale, r, Color3.fromRGB(45, 80 + i * 6, 50), Enum.Material.Grass, parent)
+		c.CanCollide = false
+	end
+end
+
+local function rockProp(parent, pos, scale)
+	part({ Size = Vector3.new(R(3, 6), R(2, 4), R(3, 6)) * scale, CFrame = CFrame.new(pos + Vector3.new(0, 0.8 * scale, 0)) * CFrame.Angles(R(-0.4, 0.4), R(0, 6.28), R(-0.4, 0.4)), Color = Color3.fromRGB(135, 130, 125), Material = Enum.Material.Slate }, parent)
+end
+
+local function bush(parent, pos)
+	for k = 1, 3 do
+		local b = ball(pos + Vector3.new(R(-1.4, 1.4), 1.1, R(-1.4, 1.4)), R(2.2, 3.2), LEAVES[rng:NextInteger(1, 3)], Enum.Material.Grass, parent)
+		b.CanCollide = false
+	end
+	if rng:NextNumber() &lt; 0.5 then
+		local col = ({ Color3.fromRGB(230, 90, 110), Color3.fromRGB(250, 220, 90), Color3.fromRGB(240, 240, 250) })[rng:NextInteger(1, 3)]
+		for k = 1, 4 do
+			local f = ball(pos + Vector3.new(R(-1.6, 1.6), R(1.8, 2.4), R(-1.6, 1.6)), 0.5, col, Enum.Material.SmoothPlastic, parent)
+			f.CanCollide = false
+		end
+	end
+end
+
+local function lampPost(parent, pos)
+	cyl(CFrame.new(pos + Vector3.new(0, 0.3, 0)), 0.6, 0.6, Color3.fromRGB(40, 40, 45), Enum.Material.Metal, parent)
+	cyl(CFrame.new(pos + Vector3.new(0, 4.5, 0)), 9, 0.18, Color3.fromRGB(40, 40, 45), Enum.Material.Metal, parent)
+	local lamp = part({ Size = Vector3.new(1, 1.3, 1), CFrame = CFrame.new(pos + Vector3.new(0, 9.4, 0)), Color = Color3.fromRGB(255, 225, 170), Material = Enum.Material.Neon, Transparency = 0.15 }, parent)
+	part({ Size = Vector3.new(1.4, 0.3, 1.4), CFrame = CFrame.new(pos + Vector3.new(0, 10.2, 0)), Color = Color3.fromRGB(40, 40, 45), Material = Enum.Material.Metal }, parent)
+	local l = Instance.new(&quot;PointLight&quot;)
+	l.Range = 16
+	l.Brightness = 0.9
+	l.Color = Color3.fromRGB(255, 210, 150)
+	l.Shadows = false
+	l.Parent = lamp
+end
+
+local function crate(parent, pos, s)
+	s = s or 2
+	part({ Size = Vector3.new(s, s, s), CFrame = CFrame.new(pos + Vector3.new(0, s / 2, 0)) * CFrame.Angles(0, R(0, 1.5), 0), Color = WOOD_LIGHT, Material = Enum.Material.WoodPlanks }, parent)
+end
+
+local function barrel(parent, pos)
+	cyl(CFrame.new(pos + Vector3.new(0, 1.4, 0)), 2.8, 1.1, Color3.fromRGB(120, 80, 50), Enum.Material.Wood, parent)
+	for _, y in ipairs({ 0.5, 2.3 }) do
+		cyl(CFrame.new(pos + Vector3.new(0, y, 0)), 0.2, 1.15, Color3.fromRGB(70, 70, 75), Enum.Material.Metal, parent)
+	end
+end
+
+local function fence(parent, a, b)
+	local d = b - a
+	local n = math.max(1, math.floor(d.Magnitude / 5))
+	for i = 0, n do
+		part({ Size = Vector3.new(0.4, 3, 0.4), CFrame = CFrame.new(a + d * (i / n) + Vector3.new(0, 1.5, 0)), Color = WOOD, Material = Enum.Material.Wood }, parent)
+	end
+	for _, h in ipairs({ 1.1, 2.3 }) do
+		part({ Size = Vector3.new(0.25, 0.3, d.Magnitude), CFrame = CFrame.lookAt((a + b) / 2 + Vector3.new(0, h, 0), b + Vector3.new(0, h, 0)), Color = WOOD, Material = Enum.Material.Wood }, parent)
+	end
+end
+
+-- Batiments -------------------------------------------------------------------------------------
+
+-- Maison en pierre et crepi, toit a deux pans, volets, cheminee. Porte vers -Z de cf.
+local function house(parent, cf, w, d, floors)
+	w, d, floors = w or 14, d or 12, floors or 1
+	local h = 8 * floors
+	local wall = PLASTER[rng:NextInteger(1, #PLASTER)]
+	local roof = ROOF[rng:NextInteger(1, #ROOF)]
+	local shutter = SHUTTER[rng:NextInteger(1, #SHUTTER)]
+	part({ Size = Vector3.new(w + 1, 1.2, d + 1), CFrame = cf * CFrame.new(0, 0.6, 0), Color = STONE, Material = Enum.Material.Cobblestone }, parent)
+	part({ Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, 1.2 + h / 2, 0), Color = wall, Material = Enum.Material.Plaster }, parent)
+	for _, x in ipairs({ -w / 2, w / 2 }) do
+		for _, z in ipairs({ -d / 2, d / 2 }) do
+			part({ Size = Vector3.new(1, h, 1), CFrame = cf * CFrame.new(x, 1.2 + h / 2, z), Color = STONE, Material = Enum.Material.Cobblestone }, parent)
+		end
+	end
+	local rh = 5.5
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(w + 2, rh, d / 2 + 1), CFrame = cf * CFrame.new(0, 1.2 + h + rh / 2, s * (d / 4 + 0.5)) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = roof, Material = Enum.Material.Slate }, parent)
+	end
+	part({ Size = Vector3.new(1.8, 5, 1.8), CFrame = cf * CFrame.new(w / 3, h + rh + 0.5, d / 6), Color = Color3.fromRGB(120, 75, 60), Material = Enum.Material.Brick }, parent)
+	part({ Size = Vector3.new(3, 5.5, 0.4), CFrame = cf * CFrame.new(0, 3.95, -d / 2 - 0.15), Color = Color3.fromRGB(90, 60, 40), Material = Enum.Material.WoodPlanks }, parent)
+	part({ Size = Vector3.new(3.8, 0.4, 1.2), CFrame = cf * CFrame.new(0, 7, -d / 2 - 0.5), Color = STONE, Material = Enum.Material.Slate }, parent)
+	for f = 0, floors - 1 do
+		for _, x in ipairs({ -w / 3.2, w / 3.2 }) do
+			if not (f == 0 and math.abs(x) &lt; 2.5) then
+				local y = 5.5 + f * 8
+				part({ Size = Vector3.new(2.4, 2.8, 0.3), CFrame = cf * CFrame.new(x, y, -d / 2 - 0.1), Color = Color3.fromRGB(170, 200, 215), Material = Enum.Material.Glass, Transparency = 0.25, Reflectance = 0.2 }, parent)
+				for _, sx in ipairs({ -1, 1 }) do
+					part({ Size = Vector3.new(1.1, 3, 0.25), CFrame = cf * CFrame.new(x + sx * 1.8, y, -d / 2 - 0.25), Color = shutter, Material = Enum.Material.WoodPlanks }, parent)
+				end
+				local box = part({ Size = Vector3.new(2.8, 0.6, 0.8), CFrame = cf * CFrame.new(x, y - 1.8, -d / 2 - 0.5), Color = WOOD, Material = Enum.Material.Wood }, parent)
+				for k = -1, 1 do
+					local fl = ball((box.CFrame * CFrame.new(k * 0.8, 0.5, 0)).Position, 0.6, ({ Color3.fromRGB(220, 70, 90), Color3.fromRGB(250, 200, 80) })[rng:NextInteger(1, 2)], Enum.Material.SmoothPlastic, parent)
+					fl.CanCollide = false
+				end
+			end
+		end
+	end
+end
+
+-- Boite aux lettres (destination). Le drapeau rouge se leve quand un colis est attendu.
+local function mailbox(parent, pos, facing, zoneId, owner)
+	mailboxCount += 1
+	local cf = CFrame.lookAt(pos, pos + Vector3.new(facing.X, 0, facing.Z))
+	local m = Instance.new(&quot;Model&quot;)
+	m.Name = &quot;Mailbox_&quot; .. mailboxCount
+	part({ Size = Vector3.new(0.5, 3.6, 0.5), CFrame = cf * CFrame.new(0, 1.8, 0), Color = WOOD, Material = Enum.Material.Wood }, m)
+	local box = part({ Name = &quot;Box&quot;, Size = Vector3.new(1.8, 1.6, 2.6), CFrame = cf * CFrame.new(0, 4.1, 0), Color = Color3.fromRGB(45, 95, 150), Material = Enum.Material.Metal }, m)
+	cyl(cf * CFrame.new(0, 4.9, 0) * CFrame.Angles(math.rad(90), 0, 0), 2.6, 0.9, Color3.fromRGB(45, 95, 150), Enum.Material.Metal, m)
+	local flag = part({ Name = &quot;Flag&quot;, Size = Vector3.new(0.15, 1.6, 0.25), CFrame = cf * CFrame.new(1, 4.6, 0.6), Color = Color3.fromRGB(210, 50, 50), Material = Enum.Material.Metal }, m)
+	part({ Size = Vector3.new(0.15, 0.6, 0.9), CFrame = cf * CFrame.new(1, 5.15, 0.25), Color = Color3.fromRGB(210, 50, 50), Material = Enum.Material.Metal }, m).Parent = m
+	-- plaque du proprietaire
+	local plate = part({ Size = Vector3.new(1.7, 0.6, 0.1), CFrame = cf * CFrame.new(0, 3.65, -1.34), Color = Color3.fromRGB(235, 225, 200), Material = Enum.Material.SmoothPlastic }, m)
+	label(plate, Enum.NormalId.Front, owner, Color3.fromRGB(40, 40, 50), 60)
+	-- pastille d'atterrissage
+	local pad = cyl(cf * CFrame.new(0, 0.12, -5), 0.25, 5, Color3.fromRGB(190, 170, 130), Enum.Material.Cobblestone, m)
+	pad.Name = &quot;Pad&quot;
+	pad.CanCollide = false
+	m.PrimaryPart = box
+	m:SetAttribute(&quot;Zone&quot;, zoneId)
+	m:SetAttribute(&quot;Owner&quot;, owner)
+	m.Parent = parent
+	local prompt = Instance.new(&quot;ProximityPrompt&quot;)
+	prompt.ActionText = &quot;Livrer&quot;
+	prompt.ObjectText = owner
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = true
+	prompt.Parent = box
+	CollectionService:AddTag(m, &quot;Mailbox&quot;)
+	return m
+end
+
+local OWNERS = {
+	&quot;Margot&quot;, &quot;Famille Leroux&quot;, &quot;Pepe Albin&quot;, &quot;Ines &amp; Tom&quot;, &quot;Capitaine Yann&quot;, &quot;Mme Rosier&quot;, &quot;Atelier Noe&quot;, &quot;Lucie&quot;, &quot;Les Moreau&quot;,
+	&quot;Docteur Hugo&quot;, &quot;Boulangerie Lina&quot;, &quot;Oscar&quot;, &quot;Mamie Jo&quot;, &quot;Ferme Belair&quot;, &quot;Paul le peintre&quot;, &quot;Les Garnier&quot;, &quot;Zoe&quot;, &quot;Elio&quot;,
+	&quot;Maison Aubin&quot;, &quot;Gaspard&quot;, &quot;Clemence&quot;, &quot;Rita&quot;, &quot;Victor&quot;, &quot;Nora&quot;, &quot;L'horloger&quot;, &quot;Felix&quot;, &quot;Adele&quot;, &quot;Bastien&quot;, &quot;Celeste&quot;, &quot;Mael&quot;,
+	&quot;Jade&quot;, &quot;Sacha&quot;, &quot;Theo&quot;, &quot;Luna&quot;, &quot;Armand&quot;, &quot;Ada&quot;, &quot;Vieux Marcel&quot;, &quot;Salome&quot;, &quot;Anouk&quot;, &quot;Max&quot;,
+}
+local ownerIndex = 0
+local function nextOwner()
+	ownerIndex += 1
+	return OWNERS[((ownerIndex - 1) % #OWNERS) + 1]
+end
+
+-- Guichet de poste (point de depart des missions)
+local function postCounter(parent, cf, title)
+	local counter = part({ Name = &quot;PostCounter&quot;, Size = Vector3.new(10, 3.6, 3), CFrame = cf * CFrame.new(0, 1.8, 0), Color = Color3.fromRGB(110, 75, 50), Material = Enum.Material.WoodPlanks }, parent)
+	part({ Size = Vector3.new(10.6, 0.4, 3.6), CFrame = cf * CFrame.new(0, 3.8, 0), Color = Color3.fromRGB(70, 50, 35), Material = Enum.Material.Wood }, parent)
+	for i = 0, 4 do
+		local s = R(1.2, 2)
+		local p = part({ Size = Vector3.new(s, s * 0.7, s), CFrame = cf * CFrame.new(-3.5 + i * 1.7, 4 + s * 0.35, 0.4) * CFrame.Angles(0, R(-0.4, 0.4), 0), Color = Color3.fromRGB(200, 170, 120), Material = Enum.Material.Fabric }, parent)
+		p.CanCollide = false
+	end
+	local sign = part({ Size = Vector3.new(9, 2, 0.4), CFrame = cf * CFrame.new(0, 8.5, 1), Color = Color3.fromRGB(40, 70, 110), Material = Enum.Material.Wood }, parent)
+	label(sign, Enum.NormalId.Front, title, Color3.fromRGB(255, 225, 150))
+	label(sign, Enum.NormalId.Back, title, Color3.fromRGB(255, 225, 150))
+	for _, x in ipairs({ -4.3, 4.3 }) do
+		part({ Size = Vector3.new(0.5, 9.5, 0.5), CFrame = cf * CFrame.new(x, 4.75, 1), Color = Color3.fromRGB(70, 50, 35), Material = Enum.Material.Wood }, parent)
+	end
+	local prompt = Instance.new(&quot;ProximityPrompt&quot;)
+	prompt.ActionText = &quot;Prendre des colis&quot;
+	prompt.ObjectText = title
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = counter
+	CollectionService:AddTag(counter, &quot;PostCounter&quot;)
+	return counter
+end
+
+-- Grande poste de Port-Brise
+local function postOffice(parent, cf)
+	local w, d, h = 34, 24, 16
+	local brick = Color3.fromRGB(165, 90, 70)
+	part({ Size = Vector3.new(w + 2, 1.5, d + 2), CFrame = cf * CFrame.new(0, 0.75, 0), Color = STONE, Material = Enum.Material.Cobblestone }, parent)
+	-- murs (ouverture large a l'avant)
+	part({ Size = Vector3.new(w, h, 1.2), CFrame = cf * CFrame.new(0, 1.5 + h / 2, d / 2), Color = brick, Material = Enum.Material.Brick }, parent)
+	for _, s in ipairs({ -1, 1 }) do
+		part({ Size = Vector3.new(1.2, h, d), CFrame = cf * CFrame.new(s * w / 2, 1.5 + h / 2, 0), Color = brick, Material = Enum.Material.Brick }, parent)
+		part({ Size = Vector3.new(w / 2 - 7, h, 1.2), CFrame = cf * CFrame.new(s * (w / 4 + 3.5), 1.5 + h / 2, -d / 2), Color = brick, Material = Enum.Material.Brick }, parent)
+		for _, x in ipairs({ 9.5, 13.5 }) do
+			part({ Size = Vector3.new(2.6, 5, 0.3), CFrame = cf * CFrame.new(s * x, 9, -d / 2 - 0.6), Color = Color3.fromRGB(180, 205, 220), Material = Enum.Material.Glass, Transparency = 0.3 }, parent)
+		end
+	end
+	part({ Size = Vector3.new(14, h - 10, 1.2), CFrame = cf * CFrame.new(0, 1.5 + 10 + (h - 10) / 2, -d / 2), Color = brick, Material = Enum.Material.Brick }, parent)
+	-- colonnes et fronton
+	for _, x in ipairs({ -6, 6 }) do
+		cyl(cf * CFrame.new(x, 6.5, -d / 2 - 2), 10, 0.8, Color3.fromRGB(235, 230, 220), Enum.Material.Marble, parent)
+	end
+	part({ Size = Vector3.new(16, 1.2, 5), CFrame = cf * CFrame.new(0, 12, -d / 2 - 1.5), Color = Color3.fromRGB(235, 230, 220), Material = Enum.Material.Marble }, parent)
+	local sign = part({ Size = Vector3.new(20, 3.4, 0.5), CFrame = cf * CFrame.new(0, h - 1.5, -d / 2 - 0.9), Color = Color3.fromRGB(30, 55, 90), Material = Enum.Material.Wood }, parent)
+	label(sign, Enum.NormalId.Front, &quot;POSTE DES VENTS&quot;, Color3.fromRGB(255, 215, 120))
+	-- toit
+	for _, s in ipairs({ -1, 1 }) do
+		wedge({ Size = Vector3.new(w + 3, 7, d / 2 + 1.5), CFrame = cf * CFrame.new(0, 1.5 + h + 3.5, s * (d / 4 + 0.75)) * CFrame.Angles(0, s &gt; 0 and math.pi or 0, 0), Color = Color3.fromRGB(65, 75, 90), Material = Enum.Material.Slate }, parent)
+	end
+	-- horloge et girouette
+	local clock = cyl(cf * CFrame.new(0, h + 4, -d / 4 - 1) * CFrame.Angles(0, math.rad(90), 0), 0.6, 2.6, Color3.fromRGB(245, 240, 225), Enum.Material.SmoothPlastic, parent)
+	clock.CFrame = cf * CFrame.new(0, h + 3.2, -d / 4 - 1.2) * CFrame.Angles(math.rad(90), 0, 0) * CFrame.Angles(0, 0, 0)
+	part({ Size = Vector3.new(0.3, 4, 0.3), CFrame = cf * CFrame.new(0, h + 10, 0), Color = Color3.fromRGB(60, 60, 65), Material = Enum.Material.Metal }, parent)
+	local vane = part({ Size = Vector3.new(0.2, 1.2, 3), CFrame = cf * CFrame.new(0, h + 11.5, 0), Color = Color3.fromRGB(200, 160, 70), Material = Enum.Material.Metal }, parent)
+	TweenService:Create(vane, TweenInfo.new(6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = vane.CFrame * CFrame.Angles(0, math.rad(70), 0) }):Play()
+	-- interieur : sol, guichet, casiers, panneau du classement
+	part({ Size = Vector3.new(w - 1, 0.3, d - 1), CFrame = cf * CFrame.new(0, 1.65, 0), Color = Color3.fromRGB(150, 110, 75), Material = Enum.Material.WoodPlanks }, parent)
+	postCounter(parent, cf * CFrame.new(0, 1.5, 4) * CFrame.Angles(0, math.pi, 0), &quot;Guichet principal&quot;)
+	for i = 0, 5 do
+		part({ Size = Vector3.new(4.5, 9, 2), CFrame = cf * CFrame.new(-13 + i * 5.2, 6, d / 2 - 1.6), Color = Color3.fromRGB(100, 70, 45), Material = Enum.Material.WoodPlanks }, parent)
+	end
+	local board = part({ Name = &quot;TopBoard&quot;, Size = Vector3.new(10, 8, 0.4), CFrame = cf * CFrame.new(w / 2 - 1, 7.5, 0) * CFrame.Angles(0, math.rad(-90), 0), Color = Color3.fromRGB(30, 40, 55), Material = Enum.Material.Wood }, parent)
+	CollectionService:AddTag(board, &quot;TopBoard&quot;)
+	local lamp = part({ Size = Vector3.new(2, 0.5, 2), CFrame = cf * CFrame.new(0, h, 0), Color = Color3.fromRGB(255, 230, 180), Material = Enum.Material.Neon }, parent)
+	local l = Instance.new(&quot;PointLight&quot;)
+	l.Range = 30
+	l.Brightness = 1.2
+	l.Color = Color3.fromRGB(255, 220, 170)
+	l.Parent = lamp
+end
+
+local function lighthouse(parent, pos, height)
+	local base = pos
+	for i = 0, 7 do
+		local r = 6 - i * 0.35
+		cyl(CFrame.new(base + Vector3.new(0, i * height / 8 + height / 16, 0)), height / 8 + 0.05, r, (i % 2 == 0) and Color3.fromRGB(240, 240, 235) or Color3.fromRGB(190, 50, 45), Enum.Material.Concrete, parent)
+	end
+	local top = base + Vector3.new(0, height, 0)
+	cyl(CFrame.new(top + Vector3.new(0, 0.5, 0)), 1, 5.5, Color3.fromRGB(50, 50, 55), Enum.Material.Metal, parent)
+	-- garde-corps de la galerie
+	for k = 0, 15 do
+		local a = k / 16 * math.pi * 2
+		part({ Size = Vector3.new(0.2, 2.5, 0.2), CFrame = CFrame.new(top + Vector3.new(math.cos(a) * 5.2, 2.2, math.sin(a) * 5.2)), Color = Color3.fromRGB(50, 50, 55), Material = Enum.Material.Metal }, parent)
+	end
+	local glass = cyl(CFrame.new(top + Vector3.new(0, 3.5, 0)), 5, 3, Color3.fromRGB(255, 240, 190), Enum.Material.Glass, parent)
+	glass.Transparency = 0.3
+	local bulb = ball(top + Vector3.new(0, 3.5, 0), 2.4, Color3.fromRGB(255, 235, 170), Enum.Material.Neon, parent)
+	local l = Instance.new(&quot;SpotLight&quot;)
+	l.Range = 60
+	l.Angle = 30
+	l.Brightness = 3
+	l.Face = Enum.NormalId.Front
+	l.Parent = bulb
+	TweenService:Create(bulb, TweenInfo.new(8, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { CFrame = bulb.CFrame * CFrame.Angles(0, math.rad(-359), 0) }):Play()
+	local roof = ball(top + Vector3.new(0, 6.5, 0), 7, Color3.fromRGB(190, 50, 45), Enum.Material.Metal, parent)
+	local mesh = Instance.new(&quot;SpecialMesh&quot;)
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = Vector3.new(1, 0.6, 1)
+	mesh.Parent = roof
+	-- echelle cachee a l'arriere (+X)
+	local truss = Instance.new(&quot;TrussPart&quot;)
+	truss.Anchored = true
+	truss.Size = Vector3.new(2, height, 2)
+	truss.CFrame = CFrame.new(base + Vector3.new(6.2, height / 2, 0))
+	truss.Color = Color3.fromRGB(80, 80, 85)
+	truss.Material = Enum.Material.Metal
+	truss.Parent = parent
+	return top
+end
+
+local function windmill(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	for i = 0, 4 do
+		cyl(cf * CFrame.new(0, i * 4 + 2, 0), 4.05, 7 - i * 0.6, Color3.fromRGB(225, 215, 195), Enum.Material.Plaster, parent)
+	end
+	local cap = ball((cf * CFrame.new(0, 21, 0)).Position, 9, Color3.fromRGB(110, 75, 55), Enum.Material.WoodPlanks, parent)
+	local hub = part({ Size = Vector3.new(1.6, 1.6, 2), CFrame = cf * CFrame.new(0, 19, -5), Color = WOOD, Material = Enum.Material.Wood, CanCollide = false }, parent)
+	for k = 0, 3 do
+		local blade = part({ Size = Vector3.new(2.6, 13, 0.3), CFrame = hub.CFrame * CFrame.Angles(0, 0, math.rad(k * 90)) * CFrame.new(0, 7, 0), Color = Color3.fromRGB(235, 225, 205), Material = Enum.Material.Fabric, CanCollide = false }, parent)
+		blade.Anchored = false
+		local w = Instance.new(&quot;WeldConstraint&quot;)
+		w.Part0 = hub
+		w.Part1 = blade
+		w.Parent = blade
+	end
+	TweenService:Create(hub, TweenInfo.new(10, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { CFrame = hub.CFrame * CFrame.Angles(0, 0, math.rad(-359)) }):Play()
+	part({ Size = Vector3.new(3.4, 6, 0.4), CFrame = cf * CFrame.new(0, 3, -6.7), Color = Color3.fromRGB(90, 60, 40), Material = Enum.Material.WoodPlanks }, parent)
+end
+
+local function dock(parent, pos, dir, length)
+	local cf = CFrame.lookAt(pos, pos + dir)
+	for i = 0, math.floor(length / 2.2) do
+		part({ Size = Vector3.new(8, 0.5, 2), CFrame = cf * CFrame.new(0, 1.6, -i * 2.2), Color = (i % 2 == 0) and WOOD_LIGHT or WOOD, Material = Enum.Material.WoodPlanks }, parent)
+		if i % 3 == 0 then
+			for _, x in ipairs({ -3.6, 3.6 }) do
+				cyl(cf * CFrame.new(x, -1, -i * 2.2), 6, 0.45, WOOD, Enum.Material.Wood, parent)
+			end
+		end
+	end
+	barrel(parent, (cf * CFrame.new(2.5, 1.85, -4)).Position)
+	crate(parent, (cf * CFrame.new(-2.5, 1.85, -6)).Position)
+	-- petite barque amarree
+	local boat = cf * CFrame.new(7, 0.6, -length * 0.6)
+	part({ Size = Vector3.new(4, 1.4, 9), CFrame = boat, Color = Color3.fromRGB(60, 110, 140), Material = Enum.Material.WoodPlanks }, parent)
+	part({ Size = Vector3.new(4.2, 0.3, 9.2), CFrame = boat * CFrame.new(0, 0.75, 0), Color = Color3.fromRGB(230, 225, 210), Material = Enum.Material.Wood }, parent)
+	local spawnPoint = part({ Name = &quot;DockSpawn&quot;, Size = Vector3.new(4, 1, 4), CFrame = cf * CFrame.new(0, 2.4, -3), Transparency = 1, CanCollide = false, CanQuery = false }, parent)
+	CollectionService:AddTag(spawnPoint, &quot;Dock&quot;)
+end
+
+-- Colonne de vent : souleve les joueurs (a pied ou en vol). top = altitude atteinte.
+local function updraft(parent, pos, radius, top, strength)
+	local h = top - pos.Y
+	local col = part({ Name = &quot;Updraft&quot;, Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, radius * 2, radius * 2), CFrame = CFrame.new(pos + Vector3.new(0, h / 2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false }, parent)
+	col:SetAttribute(&quot;Radius&quot;, radius)
+	col:SetAttribute(&quot;Bottom&quot;, pos.Y)
+	col:SetAttribute(&quot;Top&quot;, top)
+	col:SetAttribute(&quot;Strength&quot;, strength or 45)
+	CollectionService:AddTag(col, &quot;Updraft&quot;)
+	-- base : bouche d'aeration en pierre
+	cyl(CFrame.new(pos + Vector3.new(0, 0.4, 0)), 0.8, radius * 0.7, Color3.fromRGB(110, 105, 100), Enum.Material.Slate, parent)
+	cyl(CFrame.new(pos + Vector3.new(0, 0.6, 0)), 0.8, radius * 0.55, Color3.fromRGB(70, 130, 160), Enum.Material.Neon, parent).Transparency = 0.6
+	local emitterPart = part({ Size = Vector3.new(radius * 1.4, 1, radius * 1.4), CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)), Transparency = 1, CanCollide = false, CanQuery = false }, parent)
+	local e = Instance.new(&quot;ParticleEmitter&quot;)
+	e.Texture = &quot;rbxasset://textures/particles/smoke_main.dds&quot;
+	e.Rate = 18
+	e.Lifetime = NumberRange.new(h / 40, h / 30)
+	e.Speed = NumberRange.new(30, 40)
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 4) })
+	e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(0.5, 0.75), NumberSequenceKeypoint.new(1, 1) })
+	e.Color = ColorSequence.new(Color3.fromRGB(235, 245, 255))
+	e.Rotation = NumberRange.new(0, 360)
+	e.RotSpeed = NumberRange.new(-60, 60)
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.Parent = emitterPart
+	local leaves = Instance.new(&quot;ParticleEmitter&quot;)
+	leaves.Rate = 6
+	leaves.Lifetime = NumberRange.new(h / 35, h / 28)
+	leaves.Speed = NumberRange.new(28, 36)
+	leaves.Size = NumberSequence.new(0.35)
+	leaves.Color = ColorSequence.new(Color3.fromRGB(140, 180, 90), Color3.fromRGB(220, 190, 110))
+	leaves.SpreadAngle = Vector2.new(8, 8)
+	leaves.Rotation = NumberRange.new(0, 360)
+	leaves.RotSpeed = NumberRange.new(-200, 200)
+	leaves.Parent = emitterPart
+	return col
+end
+
+-- Anneau de vent : traverser l'anneau donne un elan
+local function windRing(parent, pos, facing, radius)
+	radius = radius or 9
+	local cf = CFrame.lookAt(pos, pos + facing)
+	local m = Instance.new(&quot;Model&quot;)
+	m.Name = &quot;WindRing&quot;
+	for k = 0, 17 do
+		local a = k / 18 * math.pi * 2
+		part({ Size = Vector3.new(radius * 0.38, 0.6, 0.6), CFrame = cf * CFrame.new(math.cos(a) * radius, math.sin(a) * radius, 0) * CFrame.Angles(0, 0, a + math.pi / 2), Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Neon, Transparency = 0.2, CanCollide = false, CanQuery = false }, m)
+	end
+	local center = part({ Name = &quot;Center&quot;, Size = Vector3.new(1, 1, 1), CFrame = cf, Transparency = 1, CanCollide = false, CanQuery = false }, m)
+	center:SetAttribute(&quot;Radius&quot;, radius)
+	m.PrimaryPart = center
+	m.Parent = parent
+	CollectionService:AddTag(center, &quot;WindRing&quot;)
+end
+
+-- Timbre cache (secret)
+local function stampSpot(parent, pos, stampId)
+	local p = part({ Name = &quot;Stamp_&quot; .. stampId, Size = Vector3.new(2.2, 2.8, 0.2), CFrame = CFrame.new(pos), Color = Color3.fromRGB(255, 240, 200), Material = Enum.Material.SmoothPlastic, CanCollide = false }, parent)
+	label(p, Enum.NormalId.Front, &quot;✉&quot;, Color3.fromRGB(200, 70, 60), 30)
+	label(p, Enum.NormalId.Back, &quot;✉&quot;, Color3.fromRGB(200, 70, 60), 30)
+	local glow = Instance.new(&quot;PointLight&quot;)
+	glow.Color = Color3.fromRGB(255, 220, 150)
+	glow.Range = 10
+	glow.Parent = p
+	local sp = Instance.new(&quot;Sparkles&quot;)
+	sp.SparkleColor = Color3.fromRGB(255, 230, 160)
+	sp.Parent = p
+	p:SetAttribute(&quot;StampId&quot;, stampId)
+	CollectionService:AddTag(p, &quot;StampSpot&quot;)
+	TweenService:Create(p, TweenInfo.new(4, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { CFrame = p.CFrame * CFrame.Angles(0, math.rad(-359), 0) }):Play()
+end
+
+local function scatter(center, radius, count, fn, avoid)
+	for k = 1, count do
+		local a = R(0, math.pi * 2)
+		local r = math.sqrt(R(0, 1)) * radius
+		local p = center + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		local ok = true
+		for _, av in ipairs(avoid or {}) do
+			if (Vector3.new(p.X, 0, p.Z) - Vector3.new(av[1].X, 0, av[1].Z)).Magnitude &lt; av[2] then
+				ok = false
+				break
+			end
+		end
+		if ok then
+			fn(p)
+		end
+	end
+end
+
+-- Chemin de terre (terrain) entre deux points du dessus d'une ile
+local function trail(a, b, width)
+	local d = b - a
+	local n = math.ceil(d.Magnitude / 4)
+	for i = 0, n do
+		local p = a + d * (i / n)
+		Terrain:FillBlock(CFrame.new(p + Vector3.new(0, -1.9, 0)) * CFrame.Angles(0, math.atan2(d.X, d.Z), 0), Vector3.new(width, 4, 5), Enum.Material.Ground)
+	end
+end
+
+-- Iles ------------------------------------------------------------------------------------------
+
+local function buildPort(z)
+	local f = folder(&quot;Port-Brise&quot;)
+	local c = z.center
+	local top = island(c, 120, 62, { patch = Enum.Material.LeafyGrass })
+	local avoid = {}
+	-- place pavee et poste
+	Terrain:FillCylinder(CFrame.new(top + Vector3.new(0, -1.9, 0)), 4, 30, Enum.Material.Cobblestone)
+	postOffice(f, CFrame.new(top + Vector3.new(0, 0, -6)) * CFrame.Angles(0, math.pi, 0))
+	table.insert(avoid, { top, 34 })
+	-- fontaine
+	local fpos = top + Vector3.new(0, 0, 26)
+	cyl(CFrame.new(fpos + Vector3.new(0, 0.8, 0)), 1.6, 6, STONE, Enum.Material.Cobblestone, f)
+	local water = cyl(CFrame.new(fpos + Vector3.new(0, 1.4, 0)), 0.6, 5.4, Color3.fromRGB(70, 140, 170), Enum.Material.Glass, f)
+	water.Transparency = 0.3
+	cyl(CFrame.new(fpos + Vector3.new(0, 3, 0)), 3.5, 0.8, STONE, Enum.Material.Cobblestone, f)
+	-- rues vers les quatre directions
+	for _, d in ipairs({ Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }) do
+		trail(top + d * 28, top + d * 108, 9)
+		table.insert(avoid, { top + d * 68, 10 })
+		for t = 40, 100, 20 do
+			lampPost(f, top + d * t + Vector3.new(d.Z, 0, d.X) * 6)
+		end
+	end
+	-- maisons + boites aux lettres
+	local spots = {
+		{ 45, 40 }, { 75, 30 }, { -45, 42 }, { -78, 25 }, { 45, -45 }, { 80, -38 }, { -50, -48 }, { -80, -30 }, { 20, 85 }, { -22, 82 },
+	}
+	for i, s in ipairs(spots) do
+		local pos = top + Vector3.new(s[1], 0, s[2])
+		local toCenter = (top - pos) * Vector3.new(1, 0, 1)
+		local cf = CFrame.lookAt(pos, pos + toCenter)
+		house(f, cf, R(12, 16), R(10, 13), rng:NextInteger(1, 2))
+		mailbox(f, (cf * CFrame.new(5, 0, -10)).Position, toCenter, z.id, nextOwner())
+		bush(f, (cf * CFrame.new(-5, 0, -8)).Position)
+		table.insert(avoid, { pos, 14 })
+	end
+	-- tremplin d'envol au bord nord
+	local edge = top + Vector3.new(0, 0, -112)
+	local ramp = CFrame.lookAt(edge, edge + Vector3.new(0, 0, -1))
+	wedge({ Size = Vector3.new(10, 3, 14), CFrame = ramp * CFrame.new(0, 1.5, 4) * CFrame.Angles(0, math.pi, 0), Color = WOOD_LIGHT, Material = Enum.Material.WoodPlanks }, f)
+	part({ Size = Vector3.new(10, 3, 6), CFrame = ramp * CFrame.new(0, 1.5, -6), Color = WOOD_LIGHT, Material = Enum.Material.WoodPlanks }, f)
+	for _, x in ipairs({ -5.5, 5.5 }) do
+		local flagPole = part({ Size = Vector3.new(0.3, 10, 0.3), CFrame = ramp * CFrame.new(x, 5, -8), Color = Color3.fromRGB(230, 230, 230), Material = Enum.Material.Metal }, f)
+		part({ Size = Vector3.new(0.1, 2, 3), CFrame = ramp * CFrame.new(x, 9, -6.5), Color = Color3.fromRGB(200, 60, 60), Material = Enum.Material.Fabric, CanCollide = false }, f)
+	end
+	local sign = part({ Size = Vector3.new(8, 2, 0.3), CFrame = ramp * CFrame.new(0, 4, 8) * CFrame.Angles(0, math.pi, 0), Color = Color3.fromRGB(40, 70, 110), Material = Enum.Material.Wood }, f)
+	label(sign, Enum.NormalId.Front, &quot;TREMPLIN - saute et ouvre ton planeur !&quot;, Color3.fromRGB(255, 225, 150))
+	table.insert(avoid, { edge, 14 })
+	-- phare a l'est (timbre secret sur la galerie)
+	local lh = lighthouse(f, top + Vector3.new(102, 0, 52), 34)
+	stampSpot(f, lh + Vector3.new(-3.5, 2, 0), &quot;Sommet&quot;)
+	table.insert(avoid, { top + Vector3.new(102, 0, 52), 10 })
+	-- port en bas (sud) : quai + colonne de vent pour remonter
+	dock(f, c + Vector3.new(0, 0, 150), Vector3.new(0, 0, 1), 30)
+	updraft(f, c + Vector3.new(14, 1.5, 152), 9, 82, 55)
+	updraft(f, c + Vector3.new(-152, 1.5, -10), 8, 80, 50)
+	-- grotte secrete derriere une cascade (falaise ouest)
+	local cave = c + Vector3.new(-121, 8, 40)
+	Terrain:FillBall(cave + Vector3.new(6, 0, 0), 9, Enum.Material.Air)
+	Terrain:FillBlock(CFrame.new(cave + Vector3.new(-4, -1, 0)), Vector3.new(16, 9, 8), Enum.Material.Air)
+	stampSpot(f, cave + Vector3.new(9, -2, 0), &quot;Grotte&quot;)
+	local fallTop = c + Vector3.new(-126, 62, 40)
+	local fall = part({ Size = Vector3.new(1.2, 60, 12), CFrame = CFrame.new(fallTop + Vector3.new(0, -30, 0)), Color = Color3.fromRGB(190, 225, 240), Material = Enum.Material.Glass, Transparency = 0.45, CanCollide = false }, f)
+	local mist = Instance.new(&quot;ParticleEmitter&quot;)
+	mist.Rate = 25
+	mist.Lifetime = NumberRange.new(1, 2)
+	mist.Speed = NumberRange.new(2, 5)
+	mist.SpreadAngle = Vector2.new(80, 80)
+	mist.Size = NumberSequence.new(3, 6)
+	mist.Transparency = NumberSequence.new(0.6, 1)
+	mist.Texture = &quot;rbxasset://textures/particles/smoke_main.dds&quot;
+	mist.Parent = fall
+	-- vegetation
+	scatter(top, 110, 70, function(p)
+		if rng:NextNumber() &lt; 0.6 then
+			tree(f, p, R(0.9, 1.3))
+		else
+			bush(f, p)
+		end
+	end, avoid)
+	scatter(top, 100, 12, function(p)
+		crate(f, p)
+	end, avoid)
+	return top
+end
+
+local function buildVerger(z)
+	local f = folder(&quot;Le Verger&quot;)
+	local c = z.center
+	local top = island(c, 105, 30, { patch = Enum.Material.Ground })
+	local avoid = {}
+	postCounter(f, CFrame.new(top + Vector3.new(-12, 0, 0)) * CFrame.Angles(0, math.rad(90), 0), &quot;Relais du Verger&quot;)
+	table.insert(avoid, { top + Vector3.new(-12, 0, 0), 12 })
+	windmill(f, top + Vector3.new(40, 0, -55), Vector3.new(-1, 0, 1))
+	table.insert(avoid, { top + Vector3.new(40, 0, -55), 12 })
+	-- vergers en rangees
+	local fruits = { Color3.fromRGB(200, 40, 40), Color3.fromRGB(240, 160, 40), Color3.fromRGB(150, 200, 60) }
+	for row = 0, 4 do
+		for col = 0, 5 do
+			local p = top + Vector3.new(-70 + col * 12, 0, 25 + row * 11)
+			tree(f, p, R(0.8, 1), fruits[(row % 3) + 1])
+		end
+	end
+	table.insert(avoid, { top + Vector3.new(-40, 0, 47), 40 })
+	-- fermes
+	local spots = { { 35, 20 }, { 65, 5 }, { 60, 45 }, { -30, -40 }, { -65, -20 }, { 10, -70 }, { 75, -20 } }
+	for _, s in ipairs(spots) do
+		local pos = top + Vector3.new(s[1], 0, s[2])
+		if (pos - top).Magnitude &lt; 92 then
+			local dir = (top - pos) * Vector3.new(1, 0, 1)
+			local cf = CFrame.lookAt(pos, pos + dir)
+			house(f, cf, R(13, 17), R(11, 14), 1)
+			mailbox(f, (cf * CFrame.new(5, 0, -10)).Position, dir, z.id, nextOwner())
+			fence(f, (cf * CFrame.new(-9, 0, -9)).Position, (cf * CFrame.new(-9, 0, 9)).Position)
+			table.insert(avoid, { pos, 15 })
+		end
+	end
+	-- ruches (timbre a theme) et bottes de foin
+	for k = 1, 5 do
+		local p = top + Vector3.new(-80 + k * 5, 0, -10)
+		part({ Size = Vector3.new(2.4, 3, 2.4), CFrame = CFrame.new(p + Vector3.new(0, 1.5, 0)), Color = Color3.fromRGB(230, 190, 90), Material = Enum.Material.WoodPlanks }, f)
+		part({ Size = Vector3.new(3, 0.4, 3), CFrame = CFrame.new(p + Vector3.new(0, 3.2, 0)), Color = Color3.fromRGB(150, 110, 70), Material = Enum.Material.Wood }, f)
+	end
+	scatter(top, 90, 14, function(p)
+		cyl(CFrame.new(p + Vector3.new(0, 1.3, 0)) * CFrame.Angles(math.rad(90), 0, 0), 3, 1.4, Color3.fromRGB(225, 195, 110), Enum.Material.Fabric, f)
+	end, avoid)
+	scatter(top, 95, 30, function(p)
+		bush(f, p)
+	end, avoid)
+	dock(f, c + Vector3.new(-128, 0, 0), Vector3.new(-1, 0, 0), 26)
+	updraft(f, c + Vector3.new(-136, 1.5, 22), 8, 60, 50)
+	return top
+end
+
+local function buildFalaises(z)
+	local f = folder(&quot;Falaises Brumeuses&quot;)
+	local c = z.center
+	local top = island(c, 95, 95, { top = Enum.Material.Grass, patch = Enum.Material.Rock })
+	local avoid = {}
+	postCounter(f, CFrame.new(top + Vector3.new(0, 0, 10)), &quot;Relais des Falaises&quot;)
+	table.insert(avoid, { top + Vector3.new(0, 0, 10), 12 })
+	local spots = { { 40, 35 }, { -40, 40 }, { 55, -25 }, { -55, -20 }, { 0, -60 }, { 25, 65 } }
+	for _, s in ipairs(spots) do
+		local pos = top + Vector3.new(s[1], 0, s[2])
+		local dir = (top - pos) * Vector3.new(1, 0, 1)
+		local cf = CFrame.lookAt(pos, pos + dir)
+		house(f, cf, R(11, 14), R(10, 12), rng:NextInteger(1, 2))
+		mailbox(f, (cf * CFrame.new(5, 0, -10)).Position, dir, z.id, nextOwner())
+		table.insert(avoid, { pos, 14 })
+	end
+	-- ruines et cercle de pierres
+	for k = 0, 7 do
+		local a = k / 8 * math.pi * 2
+		local p = top + Vector3.new(-30 + math.cos(a) * 11, 0, -55 + math.sin(a) * 11)
+		part({ Size = Vector3.new(2.5, R(4, 8), 2), CFrame = CFrame.new(p + Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, a, R(-0.1, 0.1)), Color = Color3.fromRGB(120, 120, 125), Material = Enum.Material.Slate }, f)
+	end
+	scatter(top, 85, 45, function(p)
+		if rng:NextNumber() &lt; 0.6 then
+			pine(f, p, R(1, 1.5))
+		else
+			rockProp(f, p, R(0.8, 1.6))
+		end
+	end, avoid)
+	-- brume permanente
+	local mistBox = part({ Size = Vector3.new(190, 30, 190), CFrame = CFrame.new(top + Vector3.new(0, 10, 0)), Transparency = 1, CanCollide = false, CanQuery = false }, f)
+	local mist = Instance.new(&quot;ParticleEmitter&quot;)
+	mist.Texture = &quot;rbxasset://textures/particles/smoke_main.dds&quot;
+	mist.Rate = 22
+	mist.Lifetime = NumberRange.new(8, 12)
+	mist.Speed = NumberRange.new(0.5, 1.5)
+	mist.Size = NumberSequence.new(14, 22)
+	mist.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.82), NumberSequenceKeypoint.new(1, 1) })
+	mist.Color = ColorSequence.new(Color3.fromRGB(220, 225, 235))
+	mist.Shape = Enum.ParticleEmitterShape.Box
+	mist.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	mist.Parent = mistBox
+	dock(f, c + Vector3.new(0, 0, 120), Vector3.new(0, 0, 1), 24)
+	updraft(f, c + Vector3.new(14, 1.5, 124), 9, 120, 60)
+	return top
+end
+
+local function buildMarche(z)
+	local f = folder(&quot;Marche Celeste&quot;)
+	local c = z.center
+	-- trois pitons relies par des ponts de corde
+	local stacks = { c + Vector3.new(-45, 0, 0), c + Vector3.new(40, 0, -25), c + Vector3.new(15, 0, 50) }
+	local tops = {}
+	for i, s in ipairs(stacks) do
+		tops[i] = island(s, 34, 105 + i * 6, { noBeach = i ~= 1 })
+	end
+	for i = 1, 3 do
+		local a, b = tops[i], tops[(i % 3) + 1]
+		local dir = (b - a) * Vector3.new(1, 0, 1)
+		local p0 = a + dir.Unit * 30
+		local p1 = b - dir.Unit * 30
+		local n = math.floor((p1 - p0).Magnitude / 2.3)
+		for k = 0, n do
+			local t = k / n
+			local p = p0:Lerp(p1, t) - Vector3.new(0, math.sin(t * math.pi) * 4 + 0.3, 0)
+			part({ Size = Vector3.new(6, 0.4, 2), CFrame = CFrame.lookAt(p, p + dir), Color = WOOD_LIGHT, Material = Enum.Material.WoodPlanks }, f)
+		end
+		for _, side in ipairs({ -3.2, 3.2 }) do
+			local off = Vector3.new(dir.Unit.Z, 0, -dir.Unit.X) * side
+			for k = 0, n, 3 do
+				local t = k / n
+				local p = p0:Lerp(p1, t) - Vector3.new(0, math.sin(t * math.pi) * 4, 0) + off
+				part({ Size = Vector3.new(0.25, 3, 0.25), CFrame = CFrame.new(p + Vector3.new(0, 1.2, 0)), Color = WOOD, Material = Enum.Material.Wood }, f)
+			end
+		end
+	end
+	local stallColors = { Color3.fromRGB(200, 60, 60), Color3.fromRGB(60, 110, 180), Color3.fromRGB(220, 170, 50), Color3.fromRGB(70, 150, 90) }
+	for i, t in ipairs(tops) do
+		if i == 1 then
+			postCounter(f, CFrame.new(t + Vector3.new(0, 0, 8)), &quot;Relais du Marche&quot;)
+		end
+		for k = 0, 2 do
+			local a = k / 3 * math.pi * 2 + i
+			local p = t + Vector3.new(math.cos(a) * 18, 0, math.sin(a) * 18)
+			local cf = CFrame.lookAt(p, t)
+			part({ Size = Vector3.new(7, 3, 3), CFrame = cf * CFrame.new(0, 1.5, 0), Color = WOOD, Material = Enum.Material.WoodPlanks }, f)
+			for s = 0, 3 do
+				wedge({ Size = Vector3.new(1.75, 1.2, 4), CFrame = cf * CFrame.new(-2.6 + s * 1.75, 7, -0.5) * CFrame.Angles(0, math.pi, 0), Color = (s % 2 == 0) and stallColors[(k + i) % 4 + 1] or Color3.fromRGB(240, 235, 225), Material = Enum.Material.Fabric, CanCollide = false }, f)
+			end
+			for _, x in ipairs({ -3.3, 3.3 }) do
+				part({ Size = Vector3.new(0.3, 6.5, 0.3), CFrame = cf * CFrame.new(x, 3.25, 1.2), Color = WOOD, Material = Enum.Material.Wood }, f)
+			end
+			local lantern = part({ Size = Vector3.new(0.8, 1, 0.8), CFrame = cf * CFrame.new(0, 6, 0.8), Color = Color3.fromRGB(255, 200, 120), Material = Enum.Material.Neon }, f)
+			local l = Instance.new(&quot;PointLight&quot;)
+			l.Range = 12
+			l.Color = Color3.fromRGB(255, 190, 120)
+			l.Parent = lantern
+		end
+		for k = 1, 3 do
+			local a = k * 2.1 + i * 0.7
+			local p = t + Vector3.new(math.cos(a) * 25, 0, math.sin(a) * 25)
+			mailbox(f, p, (t - p) * Vector3.new(1, 0, 1), z.id, nextOwner())
+		end
+		barrel(f, t + Vector3.new(-6, 0, -12))
+		crate(f, t + Vector3.new(7, 0, -11))
+	end
+	updraft(f, stacks[1] + Vector3.new(-60, 1.5, 0), 9, 135, 60)
+	dock(f, stacks[1] + Vector3.new(-62, 0, 14), Vector3.new(-1, 0, 0), 20)
+	return tops[1]
+end
+
+local function buildPic(z)
+	local f = folder(&quot;Pic des Tempetes&quot;)
+	local c = z.center
+	-- montagne : cylindres de plus en plus etroits, neige au sommet
+	local h = 0
+	local layers = { { 90, 40 }, { 70, 40 }, { 52, 35 }, { 36, 30 }, { 24, 25 } }
+	for i, L in ipairs(layers) do
+		Terrain:FillCylinder(CFrame.new(c + Vector3.new(R(-3, 3), h + L[2] / 2, R(-3, 3))), L[2], L[1], Enum.Material.Rock)
+		Terrain:FillCylinder(CFrame.new(c + Vector3.new(0, h + L[2] - 1, 0)), 3, L[1] - 3, i &gt;= 4 and Enum.Material.Snow or Enum.Material.Grass)
+		h += L[2]
+	end
+	Terrain:FillCylinder(CFrame.new(c + Vector3.new(0, -26, 0)), 52, 120, Enum.Material.Sand)
+	Terrain:FillCylinder(CFrame.new(c + Vector3.new(0, 0.5, 0)), 3, 110, Enum.Material.Sand)
+	local top = c + Vector3.new(0, h, 0)
+	-- observatoire au sommet
+	cyl(CFrame.new(top + Vector3.new(0, 5, 0)), 10, 9, Color3.fromRGB(230, 230, 235), Enum.Material.Concrete, f)
+	local dome = ball(top + Vector3.new(0, 10, 0), 18, Color3.fromRGB(190, 195, 205), Enum.Material.Metal, f)
+	dome.Reflectance = 0.2
+	part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(10, 2, 2), CFrame = CFrame.new(top + Vector3.new(4, 15, 0)) * CFrame.Angles(0, 0, math.rad(35)), Color = Color3.fromRGB(60, 60, 70), Material = Enum.Material.Metal }, f)
+	postCounter(f, CFrame.new(top + Vector3.new(0, 0, 16)), &quot;Relais du Pic&quot;)
+	-- refuges sur les replats
+	local ledges = { { 1, 0 }, { 2, 1.6 }, { 3, 3.2 }, { 2, 4.4 }, { 1, 5.5 } }
+	local hh = 0
+	local heights = {}
+	for i, L in ipairs(layers) do
+		hh += L[2]
+		heights[i] = hh
+	end
+	for i, L in ipairs(ledges) do
+		local li = L[1]
+		local r = layers[li + 1][1] + (layers[li][1] - layers[li + 1][1]) / 2
+		local p = c + Vector3.new(math.cos(L[2]) * r, heights[li], math.sin(L[2]) * r)
+		local dir = (c - p) * Vector3.new(1, 0, 1)
+		local cf = CFrame.lookAt(p, p + dir) * CFrame.Angles(0, math.pi, 0)
+		house(f, cf * CFrame.new(0, 0, 3), 10, 9, 1)
+		mailbox(f, (cf * CFrame.new(6, 0, -5)).Position, -dir, z.id, nextOwner())
+	end
+	for k = 1, 30 do
+		local a = R(0, math.pi * 2)
+		pine(f, c + Vector3.new(math.cos(a) * R(72, 86), 40, math.sin(a) * R(72, 86)), R(1, 1.6))
+	end
+	updraft(f, c + Vector3.new(-118, 1.5, 0), 10, 200, 70)
+	updraft(f, c + Vector3.new(0, 1.5, 116), 9, 150, 60)
+	dock(f, c + Vector3.new(-125, 0, 15), Vector3.new(-1, 0, 0), 20)
+	-- neige qui vole
+	local box = part({ Size = Vector3.new(120, 60, 120), CFrame = CFrame.new(top + Vector3.new(0, 0, 0)), Transparency = 1, CanCollide = false, CanQuery = false }, f)
+	local snow = Instance.new(&quot;ParticleEmitter&quot;)
+	snow.Rate = 60
+	snow.Lifetime = NumberRange.new(4, 6)
+	snow.Speed = NumberRange.new(8, 14)
+	snow.EmissionDirection = Enum.NormalId.Right
+	snow.Size = NumberSequence.new(0.25)
+	snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	snow.Shape = Enum.ParticleEmitterShape.Box
+	snow.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	snow.Parent = box
+	return top
+end
+
+-- Routes aeriennes : thermiques en mer + anneaux de vent entre les iles
+local function airRoutes()
+	local f = folder(&quot;Routes du vent&quot;)
+	local thermals = {
+		{ Vector3.new(170, 0, -55), 120 }, { Vector3.new(-160, 0, -120), 140 }, { Vector3.new(200, 0, -340), 150 },
+		{ Vector3.new(-140, 0, -420), 150 }, { Vector3.new(290, 0, -500), 210 }, { Vector3.new(-420, 0, 40), 140 },
+	}
+	for _, t in ipairs(thermals) do
+		seaStack(t[1], 9, R(10, 18))
+		updraft(f, t[1] + Vector3.new(0, R(24, 30), 0), 12, t[2], 55)
+	end
+	local rings = {
+		{ Vector3.new(80, 60, -30), Vector3.new(1, -0.1, -0.4) }, { Vector3.new(250, 70, -90), Vector3.new(1, 0, -0.1) },
+		{ Vector3.new(-80, 60, -60), Vector3.new(-1, -0.1, -0.5) }, { Vector3.new(-240, 90, -180), Vector3.new(-1, 0, -0.6) },
+		{ Vector3.new(120, 110, -420), Vector3.new(0.3, 0, -1) }, { Vector3.new(380, 160, -520), Vector3.new(1, 0, -0.3) },
+		{ Vector3.new(0, 75, -180), Vector3.new(0, -0.1, -1) }, { Vector3.new(0, 90, -330), Vector3.new(0.1, 0, -1) },
+	}
+	for _, r in ipairs(rings) do
+		windRing(f, r[1], r[2])
+	end
+	-- secrets en mer : epave sur un banc de sable, ilot oublie
+	local wreck = Vector3.new(250, 0, 250)
+	Terrain:FillCylinder(CFrame.new(wreck + Vector3.new(0, -1, 0)), 6, 28, Enum.Material.Sand)
+	local hull = CFrame.new(wreck + Vector3.new(0, 3, 0)) * CFrame.Angles(0, 0.6, math.rad(14))
+	part({ Size = Vector3.new(9, 5, 26), CFrame = hull, Color = Color3.fromRGB(85, 60, 40), Material = Enum.Material.WoodPlanks }, f)
+	part({ Size = Vector3.new(7, 0.6, 22), CFrame = hull * CFrame.new(0, 2.6, 0), Color = Color3.fromRGB(110, 80, 55), Material = Enum.Material.WoodPlanks }, f)
+	part({ Size = Vector3.new(0.8, 16, 0.8), CFrame = hull * CFrame.new(0, 10, 2) * CFrame.Angles(0.3, 0, 0), Color = Color3.fromRGB(85, 60, 40), Material = Enum.Material.Wood }, f)
+	stampSpot(f, (hull * CFrame.new(0, 4.5, -6)).Position, &quot;Epave&quot;)
+	dock(f, wreck + Vector3.new(0, 0, 24), Vector3.new(0, 0, 1), 8)
+	local islet = Vector3.new(-600, 0, 160)
+	island(islet, 22, 18, {})
+	local lone = islet + Vector3.new(0, 18, 0)
+	tree(f, lone + Vector3.new(6, 0, 4), 1.3, Color3.fromRGB(240, 200, 60))
+	local golden = mailbox(f, lone + Vector3.new(-4, 0, 0), Vector3.new(1, 0, 0), &quot;Secret&quot;, &quot;???&quot;)
+	for _, p in ipairs(golden:GetDescendants()) do
+		if p:IsA(&quot;BasePart&quot;) and p.Name ~= &quot;Pad&quot; then
+			p.Color = Color3.fromRGB(230, 185, 60)
+			p.Reflectance = 0.3
+		end
+	end
+	CollectionService:RemoveTag(golden, &quot;Mailbox&quot;)
+	golden.PrimaryPart:FindFirstChildOfClass(&quot;ProximityPrompt&quot;):Destroy()
+	stampSpot(f, lone + Vector3.new(-4, 7.5, 0), &quot;Ilot&quot;)
+end
+
+-- Construction ----------------------------------------------------------------------------------
+
+function WorldBuilder.Build()
+	local old = workspace:FindFirstChild(&quot;Windmail&quot;)
+	if old then
+		old:Destroy()
+	end
+	Terrain:Clear()
+	root = Instance.new(&quot;Folder&quot;)
+	root.Name = &quot;Windmail&quot;
+	root.Parent = workspace
+	lighting()
+	sea()
+	local builders = { Port = buildPort, Verger = buildVerger, Falaises = buildFalaises, Marche = buildMarche, Pic = buildPic }
+	for _, z in ipairs(Config.Zones) do
+		local ok, err = pcall(builders[z.id], z)
+		if not ok then
+			warn(&quot;[Windmail] Construction de &quot; .. z.name .. &quot; : &quot; .. tostring(err))
+		end
+		task.wait()
+	end
+	local ok, err = pcall(airRoutes)
+	if not ok then
+		warn(&quot;[Windmail] Routes du vent : &quot; .. tostring(err))
+	end
+	-- point d'apparition sur la place de Port-Brise
+	for _, s in ipairs(workspace:GetDescendants()) do
+		if s:IsA(&quot;SpawnLocation&quot;) then
+			s:Destroy()
+		end
+	end
+	local spawn = Instance.new(&quot;SpawnLocation&quot;)
+	spawn.Name = &quot;Spawn&quot;
+	spawn.Size = Vector3.new(10, 1, 10)
+	spawn.CFrame = CFrame.new(Config.SpawnPosition - Vector3.new(0, 3.5, 0))
+	spawn.Anchored = true
+	spawn.Transparency = 1
+	spawn.CanCollide = false
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Parent = root
+	local baseplate = workspace:FindFirstChild(&quot;Baseplate&quot;)
+	if baseplate then
+		baseplate:Destroy()
+	end
+end
+
+return WorldBuilder
+</ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000001A"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000019"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="Folder" referent="RBX00000018"><Properties><string name="Name">Client</string></Properties><Item class="LocalScript" referent="RBX00000010"><Properties><string name="Name">Main</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Point d'entree client de WINDMAIL.
+local Modules = script.Parent.Modules
+
+local function start(name, ...)
+	local args = table.pack(...)
+	local ok, err = pcall(function()
+		require(Modules[name]).Init(table.unpack(args, 1, args.n))
+	end)
+	if not ok then
+		warn(&quot;[Windmail] Demarrage de &quot; .. name .. &quot; : &quot; .. tostring(err))
+	end
+end
+
+start(&quot;Glider&quot;)
+start(&quot;HUD&quot;)
+start(&quot;Effects&quot;)
+local HUD = require(Modules.HUD)
+local screen = game:GetService(&quot;Players&quot;).LocalPlayer.PlayerGui:WaitForChild(&quot;WindmailHUD&quot;)
+start(&quot;Navigator&quot;, screen)
+</ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000017"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">Effects</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Sons, camera (champ de vision selon la vitesse), vent, confettis, eclaboussures.
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local SoundService = game:GetService(&quot;SoundService&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Glider = require(script.Parent.Glider)
+
+local Effects = {}
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local SOUNDS = {
+	click = &quot;rbxasset://sounds/electronicpingshort.wav&quot;,
+	deliver = &quot;rbxasset://sounds/electronicpingshort.wav&quot;,
+	whoosh = &quot;rbxasset://sounds/swoosh.wav&quot;,
+	land = &quot;rbxasset://sounds/action_jump_land.mp3&quot;,
+	wind = &quot;rbxasset://sounds/action_falling.mp3&quot;,
+	splash = &quot;rbxasset://sounds/action_swim.mp3&quot;,
+}
+
+function Effects.Play(name, volume, pitch)
+	local s = Instance.new(&quot;Sound&quot;)
+	s.SoundId = SOUNDS[name] or name
+	s.Volume = volume or 0.5
+	s.PlaybackSpeed = pitch or 1
+	s.Parent = SoundService
+	s:Play()
+	s.Ended:Connect(function()
+		s:Destroy()
+	end)
+	task.delay(6, function()
+		if s.Parent then
+			s:Destroy()
+		end
+	end)
+end
+
+function Effects.Confetti(position, big)
+	local p = Instance.new(&quot;Part&quot;)
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.Transparency = 1
+	p.Size = Vector3.new(1, 1, 1)
+	p.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
+	p.Parent = workspace
+	local e = Instance.new(&quot;ParticleEmitter&quot;)
+	e.Rate = 0
+	e.Lifetime = NumberRange.new(1.2, 2)
+	e.Speed = NumberRange.new(18, 30)
+	e.SpreadAngle = Vector2.new(50, 50)
+	e.Acceleration = Vector3.new(0, -35, 0)
+	e.Drag = 1.5
+	e.Size = NumberSequence.new(0.35)
+	e.Rotation = NumberRange.new(0, 360)
+	e.RotSpeed = NumberRange.new(-300, 300)
+	e.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)), ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 210, 70)),
+		ColorSequenceKeypoint.new(0.66, Color3.fromRGB(90, 200, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 230, 130)),
+	})
+	e.Parent = p
+	e:Emit(big and 120 or 60)
+	task.delay(3, function()
+		p:Destroy()
+	end)
+end
+
+function Effects.Shake(intensity, duration)
+	local t0 = os.clock()
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		local k = 1 - (os.clock() - t0) / duration
+		if k &lt;= 0 then
+			conn:Disconnect()
+			return
+		end
+		camera.CFrame = camera.CFrame * CFrame.Angles(math.rad((math.random() - 0.5) * intensity * k), math.rad((math.random() - 0.5) * intensity * k), 0)
+	end)
+end
+
+function Effects.Init()
+	local wind = Instance.new(&quot;Sound&quot;)
+	wind.SoundId = SOUNDS.wind
+	wind.Looped = true
+	wind.Volume = 0
+	wind.Parent = SoundService
+	wind:Play()
+	local baseFov = 70
+	RunService.RenderStepped:Connect(function(dt)
+		local target = baseFov
+		local vol = 0
+		if Glider.Gliding then
+			target = baseFov + math.clamp((Glider.Speed - 30) * 0.35, 0, 24)
+			vol = math.clamp(Glider.Speed / 90, 0.15, 0.8)
+		end
+		camera.FieldOfView += (target - camera.FieldOfView) * math.clamp(dt * 3, 0, 1)
+		wind.Volume += (vol - wind.Volume) * math.clamp(dt * 3, 0, 1)
+		wind.PlaybackSpeed = 0.8 + math.clamp(Glider.Speed / 150, 0, 0.6)
+	end)
+	Glider.Signal.Event:Connect(function(kind)
+		if kind == &quot;ring&quot; then
+			Effects.Play(&quot;whoosh&quot;, 0.7, 1.2)
+			camera.FieldOfView += 8
+		elseif kind == &quot;open&quot; then
+			Effects.Play(&quot;whoosh&quot;, 0.4, 0.8)
+		elseif kind == &quot;close&quot; then
+			Effects.Play(&quot;land&quot;, 0.4)
+		end
+	end)
+	Remotes.FX.OnClientEvent:Connect(function(kind, data)
+		data = data or {}
+		if kind == &quot;Confetti&quot; then
+			Effects.Confetti(data.position, data.userId == player.UserId)
+		elseif kind == &quot;Delivered&quot; then
+			Effects.Play(&quot;deliver&quot;, 0.8, 1.1)
+			task.delay(0.12, Effects.Play, &quot;deliver&quot;, 0.6, 1.5)
+		elseif kind == &quot;Impact&quot; then
+			Effects.Shake(3, 0.35)
+			Effects.Play(&quot;land&quot;, 0.8, 0.7)
+		elseif kind == &quot;Splash&quot; then
+			Effects.Play(&quot;splash&quot;, 0.8)
+		elseif kind == &quot;Pickup&quot; or kind == &quot;Purchase&quot; or kind == &quot;Stamp&quot; then
+			Effects.Play(&quot;click&quot;, 0.6, 1.3)
+		elseif kind == &quot;RankUp&quot; or kind == &quot;Daily&quot; then
+			Effects.Play(&quot;deliver&quot;, 0.9, 0.8)
+			task.delay(0.15, Effects.Play, &quot;deliver&quot;, 0.9, 1.2)
+			task.delay(0.3, Effects.Play, &quot;deliver&quot;, 0.9, 1.6)
+		end
+	end)
+end
+
+return Effects
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">Glider</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Planeur du joueur local : ouverture en l'air (Espace / bouton saut), pilotage a la camera
+-- (regarder vers le bas = piquer et accelerer, vers le haut = remonter en perdant de la vitesse),
+-- boost (Shift / bouton), colonnes de vent, anneaux d'elan. Ailes visibles pour tous les joueurs.
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local ContextActionService = game:GetService(&quot;ContextActionService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local UserInputService = game:GetService(&quot;UserInputService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local Glider = {}
+Glider.Gliding = false
+Glider.Speed = 0
+Glider.Stamina = 3
+Glider.MaxStamina = 3
+Glider.Airborne = false
+Glider.InUpdraft = false
+Glider.Signal = Instance.new(&quot;BindableEvent&quot;) -- (&quot;open&quot;|&quot;close&quot;|&quot;ring&quot;|&quot;updraft&quot;)
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local char, hum, hrp
+local att, linVel, align
+local yaw, pitch, roll = 0, 0, 0
+local boosting = false
+local lastToggle = 0
+local airSince = 0
+local ringCooldown = {}
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = false
+
+local function stats()
+	return Config.GliderById[player:GetAttribute(&quot;Glider&quot;) or &quot;Lin&quot;] or Config.Gliders[1]
+end
+
+local function convoyNearby()
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player then
+			local o = other.Character and other.Character:FindFirstChild(&quot;HumanoidRootPart&quot;)
+			if o and hrp and (o.Position - hrp.Position).Magnitude &lt;= Config.Delivery.ConvoyRadius then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function groundDistance()
+	rayParams.FilterDescendantsInstances = { char }
+	local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -6, 0), rayParams)
+	return hit and (hrp.Position.Y - hit.Position.Y) or math.huge, hit
+end
+
+local function setConstraints(on)
+	if on then
+		att = Instance.new(&quot;Attachment&quot;)
+		att.Name = &quot;GliderAtt&quot;
+		att.Parent = hrp
+		linVel = Instance.new(&quot;LinearVelocity&quot;)
+		linVel.Attachment0 = att
+		linVel.MaxForce = math.huge
+		linVel.RelativeTo = Enum.ActuatorRelativeTo.World
+		linVel.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		linVel.VectorVelocity = hrp.AssemblyLinearVelocity
+		linVel.Parent = hrp
+		align = Instance.new(&quot;AlignOrientation&quot;)
+		align.Mode = Enum.OrientationAlignmentMode.OneAttachment
+		align.Attachment0 = att
+		align.Responsiveness = 18
+		align.MaxTorque = math.huge
+		align.CFrame = hrp.CFrame.Rotation
+		align.Parent = hrp
+	else
+		for _, o in ipairs({ linVel, align, att }) do
+			if o then
+				o:Destroy()
+			end
+		end
+		att, linVel, align = nil, nil, nil
+	end
+end
+
+function Glider.Open()
+	if Glider.Gliding or not hrp or hum.Health &lt;= 0 then
+		return
+	end
+	Glider.Gliding = true
+	local look = camera.CFrame.LookVector
+	yaw = math.atan2(-look.X, -look.Z)
+	local v = hrp.AssemblyLinearVelocity
+	Glider.Speed = math.max(Vector3.new(v.X, 0, v.Z).Magnitude, stats().cruise * 0.8)
+	hum.PlatformStand = true
+	setConstraints(true)
+	Remotes.Request:FireServer(&quot;glide&quot;, true)
+	Glider.Signal:Fire(&quot;open&quot;)
+end
+
+function Glider.Close()
+	if not Glider.Gliding then
+		return
+	end
+	Glider.Gliding = false
+	local v = linVel and linVel.VectorVelocity or Vector3.zero
+	setConstraints(false)
+	if hum then
+		hum.PlatformStand = false
+		hum:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.new(v.X * 0.4, math.min(v.Y, 0), v.Z * 0.4)
+		local _, y, _ = hrp.CFrame:ToEulerAnglesYXZ()
+		hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, y, 0)
+	end
+	Remotes.Request:FireServer(&quot;glide&quot;, false)
+	Glider.Signal:Fire(&quot;close&quot;)
+end
+
+local function toggle()
+	if os.clock() - lastToggle &lt; 0.3 then
+		return
+	end
+	if Glider.Gliding then
+		lastToggle = os.clock()
+		Glider.Close()
+	elseif Glider.Airborne and os.clock() - airSince &gt; 0.18 then
+		lastToggle = os.clock()
+		Glider.Open()
+	end
+end
+
+-- Colonnes de vent : renvoie la poussee verticale a cette position
+local function updraftLift(pos)
+	for _, u in ipairs(CollectionService:GetTagged(&quot;Updraft&quot;)) do
+		local r = u:GetAttribute(&quot;Radius&quot;) or 8
+		local bottom = u:GetAttribute(&quot;Bottom&quot;) or 0
+		local top = u:GetAttribute(&quot;Top&quot;) or 50
+		local d = Vector3.new(pos.X - u.Position.X, 0, pos.Z - u.Position.Z).Magnitude
+		if d &lt;= r and pos.Y &gt;= bottom - 3 and pos.Y &lt;= top + 6 then
+			local k = math.clamp((top + 6 - pos.Y) / 12, 0, 1) -- s'attenue au sommet
+			return (u:GetAttribute(&quot;Strength&quot;) or 45) * k
+		end
+	end
+	return 0
+end
+
+local function checkRings(pos)
+	for _, c in ipairs(CollectionService:GetTagged(&quot;WindRing&quot;)) do
+		local r = c:GetAttribute(&quot;Radius&quot;) or 9
+		if (c.Position - pos).Magnitude &lt; r and (not ringCooldown[c] or os.clock() - ringCooldown[c] &gt; 2) then
+			ringCooldown[c] = os.clock()
+			Glider.Speed = math.min(stats().max, Glider.Speed + 28)
+			Glider.Stamina = math.min(Glider.MaxStamina, Glider.Stamina + 1)
+			Glider.Signal:Fire(&quot;ring&quot;)
+		end
+	end
+end
+
+local function step(dt)
+	if not (hrp and hum and hrp.Parent) then
+		return
+	end
+	dt = math.min(dt, 0.05)
+	local s = stats()
+	Glider.MaxStamina = s.stamina
+	local state = hum:GetState()
+	local dist, hit = groundDistance()
+	Glider.Airborne = dist &gt; 3.6 and state ~= Enum.HumanoidStateType.Swimming
+	if not Glider.Airborne then
+		airSince = os.clock()
+	end
+	local lift = updraftLift(hrp.Position)
+	Glider.InUpdraft = lift &gt; 0
+	if not Glider.Gliding then
+		-- recharge au sol, la colonne de vent porte aussi les pietons (ascenseur naturel)
+		if not Glider.Airborne then
+			Glider.Stamina = math.min(s.stamina, Glider.Stamina + dt * 1.5)
+		end
+		if lift &gt; 0 and hum.Health &gt; 0 then
+			local v = hrp.AssemblyLinearVelocity
+			hrp.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, lift * 0.75), v.Z)
+			if state ~= Enum.HumanoidStateType.Freefall then
+				hum:ChangeState(Enum.HumanoidStateType.Freefall)
+			end
+		end
+		return
+	end
+	-- atterrissage / eau / mort
+	if hum.Health &lt;= 0 or (dist &lt; 3.2 and hit) or state == Enum.HumanoidStateType.Swimming or (hit and hit.Material == Enum.Material.Water) then
+		Glider.Close()
+		return
+	end
+	local look = camera.CFrame.LookVector
+	local targetYaw = math.atan2(-look.X, -look.Z)
+	local dyaw = (targetYaw - yaw + math.pi) % (2 * math.pi) - math.pi
+	local maxTurn = math.rad(150) * dt
+	local turn = math.clamp(dyaw, -maxTurn, maxTurn)
+	yaw += turn
+	local targetPitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), math.rad(-55), math.rad(22))
+	pitch += (targetPitch - pitch) * math.clamp(dt * 4, 0, 1)
+	roll += (math.clamp(-turn / dt * 0.35, -0.6, 0.6) - roll) * math.clamp(dt * 5, 0, 1)
+	-- energie : piquer accelere, cabrer ralentit
+	local accel = -math.sin(pitch) * 60 - 0.55 * (Glider.Speed - s.cruise)
+	if boosting and Glider.Stamina &gt; 0 then
+		accel += 55
+		Glider.Stamina = math.max(0, Glider.Stamina - dt)
+	end
+	Glider.Speed = math.clamp(Glider.Speed + accel * dt, 12, s.max)
+	local dir = Vector3.new(-math.sin(yaw) * math.cos(pitch), math.sin(pitch), -math.cos(yaw) * math.cos(pitch))
+	local sink = s.sink
+	if player:GetAttribute(&quot;Heavy&quot;) and not convoyNearby() then
+		sink *= 1.6
+	end
+	local vertical = -sink + lift * 0.9
+	if lift &gt; 0 then
+		Glider.Speed = math.max(Glider.Speed, s.cruise * 0.7)
+	end
+	linVel.VectorVelocity = dir * Glider.Speed + Vector3.new(0, vertical, 0)
+	align.CFrame = CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(-68) + pitch * 0.6, 0, roll)
+	checkRings(hrp.Position)
+	Glider.Signal:Fire(&quot;tick&quot;)
+end
+
+local function onCharacter(c)
+	Glider.Gliding = false
+	setConstraints(false)
+	char = c
+	hum = c:WaitForChild(&quot;Humanoid&quot;)
+	hrp = c:WaitForChild(&quot;HumanoidRootPart&quot;)
+	Glider.Stamina = stats().stamina
+	hum.Died:Connect(function()
+		if Glider.Gliding then
+			Glider.Close()
+		end
+	end)
+end
+
+-- Ailes visibles sur tous les personnages en vol ------------------------------------------------
+local wings = {} -- [player] = Model
+
+local function buildWings(p)
+	local c = p.Character
+	local torso = c and (c:FindFirstChild(&quot;UpperTorso&quot;) or c:FindFirstChild(&quot;Torso&quot;))
+	if not torso then
+		return
+	end
+	local g = Config.GliderById[p:GetAttribute(&quot;Glider&quot;) or &quot;Lin&quot;] or Config.Gliders[1]
+	local m = Instance.new(&quot;Model&quot;)
+	m.Name = &quot;GliderWings&quot;
+	local function piece(size, cf, color, material, transparency)
+		local w = Instance.new(&quot;WedgePart&quot;)
+		w.Size = size
+		w.Color = color
+		w.Material = material
+		w.Transparency = transparency or 0
+		w.CanCollide = false
+		w.CanQuery = false
+		w.CanTouch = false
+		w.Massless = true
+		w.CastShadow = true
+		w.CFrame = torso.CFrame * cf
+		local weld = Instance.new(&quot;WeldConstraint&quot;)
+		weld.Part0 = torso
+		weld.Part1 = w
+		weld.Parent = w
+		w.Parent = m
+		return w
+	end
+	local span = 5.5 + g.index * 0.5
+	for _, s in ipairs({ -1, 1 }) do
+		-- toile principale (triangle) + bord d'attaque
+		piece(Vector3.new(0.12, 2.6, span), CFrame.new(s * (span / 2 + 0.4), 0.2, 0.9) * CFrame.Angles(0, math.rad(s * 90), 0) * CFrame.Angles(0, 0, 0), g.color, Enum.Material.Fabric)
+		local spar = Instance.new(&quot;Part&quot;)
+		spar.Size = Vector3.new(span + 0.6, 0.22, 0.22)
+		spar.Color = g.accent
+		spar.Material = Enum.Material.Wood
+		spar.CanCollide = false
+		spar.CanQuery = false
+		spar.Massless = true
+		spar.CFrame = torso.CFrame * CFrame.new(s * (span / 2 + 0.4), 1.45, 0.9)
+		local weld = Instance.new(&quot;WeldConstraint&quot;)
+		weld.Part0 = torso
+		weld.Part1 = spar
+		weld.Parent = spar
+		spar.Parent = m
+	end
+	m.Parent = c
+	wings[p] = m
+end
+
+local function updateWings(p)
+	local on = p:GetAttribute(&quot;Gliding&quot;) == true
+	if p == player then
+		on = Glider.Gliding
+	end
+	local existing = wings[p]
+	if on and not (existing and existing.Parent) then
+		buildWings(p)
+	elseif not on and existing then
+		existing:Destroy()
+		wings[p] = nil
+	end
+end
+
+local function watch(p)
+	p:GetAttributeChangedSignal(&quot;Gliding&quot;):Connect(function()
+		updateWings(p)
+	end)
+	p:GetAttributeChangedSignal(&quot;Glider&quot;):Connect(function()
+		if wings[p] then
+			wings[p]:Destroy()
+			wings[p] = nil
+			updateWings(p)
+		end
+	end)
+	p.CharacterAdded:Connect(function()
+		wings[p] = nil
+	end)
+end
+
+function Glider.Init()
+	if player.Character then
+		task.spawn(onCharacter, player.Character)
+	end
+	player.CharacterAdded:Connect(onCharacter)
+	UserInputService.JumpRequest:Connect(toggle)
+	ContextActionService:BindAction(&quot;WindmailBoost&quot;, function(_, inputState)
+		boosting = inputState == Enum.UserInputState.Begin
+		return Enum.ContextActionResult.Pass
+	end, true, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonR2)
+	ContextActionService:SetTitle(&quot;WindmailBoost&quot;, &quot;Boost&quot;)
+	ContextActionService:SetPosition(&quot;WindmailBoost&quot;, UDim2.new(1, -170, 1, -150))
+	ContextActionService:BindAction(&quot;WindmailGlide&quot;, function(_, inputState)
+		if inputState == Enum.UserInputState.Begin then
+			if Glider.Gliding then
+				Glider.Close()
+			elseif Glider.Airborne then
+				Glider.Open()
+			end
+		end
+		return Enum.ContextActionResult.Pass
+	end, true, Enum.KeyCode.Q, Enum.KeyCode.ButtonX)
+	ContextActionService:SetTitle(&quot;WindmailGlide&quot;, &quot;Planer&quot;)
+	ContextActionService:SetPosition(&quot;WindmailGlide&quot;, UDim2.new(1, -95, 1, -210))
+	for _, p in ipairs(Players:GetPlayers()) do
+		watch(p)
+	end
+	Players.PlayerAdded:Connect(watch)
+	Players.PlayerRemoving:Connect(function(p)
+		wings[p] = nil
+	end)
+	Glider.Signal.Event:Connect(function(kind)
+		if kind == &quot;open&quot; or kind == &quot;close&quot; then
+			updateWings(player)
+		end
+	end)
+	RunService.Heartbeat:Connect(step)
+end
+
+return Glider
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">HUD</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Interface de WINDMAIL : profil (rang, XP), pieces, colis en cours, jauge de vol, evenements,
+-- notifications, ecran de livraison (tampon de note), boutique, album de timbres, classement,
+-- recompense quotidienne et tutoriel des premieres minutes.
+
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Progress = require(ReplicatedStorage.Shared.Progress)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local State = require(script.Parent.State)
+local UI = require(script.Parent.UI)
+local Glider = require(script.Parent.Glider)
+
+local HUD = {}
+
+local player = Players.LocalPlayer
+local C = UI.Colors
+local fmt = Progress.Format
+local screen
+local refs = {}
+
+-- Notifications ----------------------------------------------------------------------------------
+local KIND_COLORS = { info = C.Sky, good = C.Good, gold = C.Gold, danger = C.Bad }
+
+function HUD.Toast(text, kind)
+	local t = UI.panel({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 0.08 }, refs.toasts)
+	UI.pad(t, 10)
+	local bar = UI.new(&quot;Frame&quot;, { Size = UDim2.new(0, 4, 1, 0), BackgroundColor3 = KIND_COLORS[kind] or C.Sky, BorderSizePixel = 0 }, t)
+	UI.corner(bar, 2)
+	UI.text({ Size = UDim2.new(1, -14, 0, 0), Position = UDim2.fromOffset(14, 0), AutomaticSize = Enum.AutomaticSize.Y, Text = text, TextScaled = false, TextSize = 16, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamMedium }, t)
+	local scale = UI.new(&quot;UIScale&quot;, { Scale = 0.6 }, t)
+	UI.tween(scale, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+	task.delay(4.5, function()
+		UI.tween(scale, 0.2, { Scale = 0 })
+		task.wait(0.22)
+		t:Destroy()
+	end)
+end
+
+-- Profil, pieces ---------------------------------------------------------------------------------
+local function buildProfile()
+	local card = UI.panel({ Size = UDim2.fromOffset(290, 84), Position = UDim2.fromOffset(16, 14) }, screen)
+	local badge = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(62, 62), Position = UDim2.fromOffset(11, 11), BackgroundColor3 = C.Post, BorderSizePixel = 0 }, card)
+	UI.corner(badge, 31)
+	UI.gradient(badge, Color3.fromRGB(255, 205, 110), Color3.fromRGB(230, 120, 40), 90)
+	UI.stroke(badge, Color3.new(1, 1, 1), 2.5, 0.1)
+	refs.rank = UI.text({ Size = UDim2.fromScale(0.8, 0.6), Position = UDim2.fromScale(0.1, 0.2), Text = &quot;1&quot;, TextColor3 = Color3.new(1, 1, 1) }, badge)
+	refs.title = UI.text({ Size = UDim2.fromOffset(200, 22), Position = UDim2.fromOffset(84, 12), Text = &quot;Apprenti facteur&quot;, TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local bar
+	bar, refs.setXP = UI.bar({ Size = UDim2.fromOffset(194, 12), Position = UDim2.fromOffset(84, 40) }, card, C.Sky)
+	refs.xpText = UI.text({ Size = UDim2.fromOffset(194, 16), Position = UDim2.fromOffset(84, 56), Text = &quot;&quot;, TextColor3 = C.Sub, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left }, card)
+
+	local coins = UI.panel({ Size = UDim2.fromOffset(190, 50), Position = UDim2.new(1, -206, 0, 14) }, screen)
+	UI.text({ Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(8, 7), Text = &quot;🪙&quot; }, coins)
+	refs.coins = UI.text({ Size = UDim2.new(1, -60, 0, 30), Position = UDim2.fromOffset(50, 10), Text = &quot;0&quot;, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left }, coins)
+	local deliv = UI.panel({ Size = UDim2.fromOffset(190, 36), Position = UDim2.new(1, -206, 0, 70) }, screen)
+	refs.deliveries = UI.text({ Size = UDim2.new(1, -20, 0, 20), Position = UDim2.fromOffset(10, 8), Text = &quot;📦 0 livraisons&quot;, TextColor3 = C.Text, Font = Enum.Font.GothamMedium }, deliv)
+end
+
+-- Colis en cours ---------------------------------------------------------------------------------
+local function buildParcels()
+	local holder = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(270, 400), Position = UDim2.new(1, -286, 0, 118), BackgroundTransparency = 1 }, screen)
+	UI.new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
+	refs.parcels = holder
+	refs.parcelCards = {}
+end
+
+local function renderParcels()
+	for _, c in ipairs(refs.parcelCards) do
+		c.frame:Destroy()
+	end
+	refs.parcelCards = {}
+	for i, p in ipairs(State.parcels) do
+		local def = Config.ParcelById[p.type]
+		local card = UI.panel({ Size = UDim2.new(1, 0, 0, 76), LayoutOrder = i }, refs.parcels)
+		if i == 1 then
+			UI.stroke(card, Color3.new(1, 1, 1), 2, 0.2)
+		end
+		local strip = UI.new(&quot;Frame&quot;, { Size = UDim2.new(0, 8, 1, -14), Position = UDim2.fromOffset(7, 7), BackgroundColor3 = def.color, BorderSizePixel = 0 }, card)
+		UI.corner(strip, 4)
+		UI.text({ Size = UDim2.new(1, -86, 0, 20), Position = UDim2.fromOffset(24, 8), Text = def.name, TextColor3 = def.color, TextXAlignment = Enum.TextXAlignment.Left }, card)
+		local zone = Config.ZoneById[p.zone]
+		UI.text({ Size = UDim2.new(1, -86, 0, 18), Position = UDim2.fromOffset(24, 30), Text = p.owner .. &quot;  ·  &quot; .. (zone and zone.name or &quot;&quot;), TextColor3 = C.Text, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left }, card)
+		local timer = UI.text({ Size = UDim2.fromOffset(60, 22), Position = UDim2.new(1, -68, 0, 8), Text = &quot;&quot;, TextXAlignment = Enum.TextXAlignment.Right }, card)
+		local gradeL = UI.text({ Size = UDim2.fromOffset(60, 28), Position = UDim2.new(1, -68, 0, 32), Text = &quot;S&quot;, TextXAlignment = Enum.TextXAlignment.Right }, card)
+		local integ
+		if def.fragile then
+			local _, set = UI.bar({ Size = UDim2.new(1, -100, 0, 8), Position = UDim2.fromOffset(24, 56) }, card, C.Good)
+			set(p.integrity, true)
+			integ = set
+		else
+			UI.text({ Size = UDim2.new(1, -100, 0, 14), Position = UDim2.fromOffset(24, 53), Text = def.desc, TextColor3 = C.Sub, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left }, card)
+		end
+		table.insert(refs.parcelCards, { frame = card, parcel = p, timer = timer, grade = gradeL })
+	end
+end
+
+local function updateParcelTimers()
+	local now = workspace:GetServerTimeNow()
+	for _, c in ipairs(refs.parcelCards) do
+		local p = c.parcel
+		if p.deadline then
+			local left = math.max(0, p.deadline - now)
+			c.timer.Text = string.format(&quot;⏱ %d s&quot;, math.ceil(left))
+			c.timer.TextColor3 = left &lt; 15 and C.Bad or C.Post
+		else
+			c.timer.Text = string.format(&quot;%d s&quot;, math.floor(now - p.start))
+			c.timer.TextColor3 = C.Sub
+		end
+		local ratio = (now - p.start) / p.par
+		for _, g in ipairs(Config.Delivery.Grades) do
+			if ratio &lt;= g.max then
+				c.grade.Text = g.grade
+				c.grade.TextColor3 = g.color
+				break
+			end
+		end
+	end
+end
+
+-- Jauge de vol -----------------------------------------------------------------------------------
+local function buildFlight()
+	local f = UI.panel({ Size = UDim2.fromOffset(300, 62), Position = UDim2.new(0.5, -150, 1, -150), Visible = false }, screen)
+	refs.flight = f
+	refs.speed = UI.text({ Size = UDim2.fromOffset(110, 40), Position = UDim2.fromOffset(12, 10), Text = &quot;0&quot;, TextColor3 = C.Text, TextXAlignment = Enum.TextXAlignment.Left }, f)
+	UI.text({ Size = UDim2.fromOffset(60, 14), Position = UDim2.fromOffset(12, 44), Text = &quot;studs/s&quot;, TextColor3 = C.Sub, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left }, f)
+	UI.text({ Size = UDim2.fromOffset(160, 14), Position = UDim2.fromOffset(126, 12), Text = &quot;ELAN (Shift)&quot;, TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Left }, f)
+	local _, set, fill = UI.bar({ Size = UDim2.fromOffset(160, 14), Position = UDim2.fromOffset(126, 32) }, f, C.Sky)
+	refs.setStamina = set
+	refs.updraft = UI.text({ Size = UDim2.fromOffset(300, 22), Position = UDim2.new(0, 0, 0, -28), Text = &quot;↑ Colonne de vent&quot;, TextColor3 = Color3.fromRGB(170, 230, 255), TextStrokeTransparency = 0.4, Visible = false }, f)
+	refs.hint = UI.text({ Size = UDim2.fromOffset(520, 26), Position = UDim2.new(0.5, -260, 1, -186), Text = &quot;&quot;, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.35, Visible = false }, screen)
+end
+
+local function updateFlight()
+	local g = Glider.Gliding
+	refs.flight.Visible = g
+	if g then
+		refs.speed.Text = tostring(math.floor(Glider.Speed))
+		refs.setStamina(Glider.Stamina / math.max(Glider.MaxStamina, 0.1), true)
+		refs.updraft.Visible = Glider.InUpdraft
+	end
+	local hint = &quot;&quot;
+	if not g and Glider.Airborne then
+		hint = &quot;[Espace] ou [Q] : ouvrir le planeur&quot;
+	elseif g then
+		hint = &quot;&quot;
+	end
+	refs.hint.Text = hint
+	refs.hint.Visible = hint ~= &quot;&quot;
+end
+
+-- Evenements -------------------------------------------------------------------------------------
+local function buildEvent()
+	local e = UI.panel({ Size = UDim2.fromOffset(420, 64), Position = UDim2.new(0.5, -210, 0, 14), Visible = false }, screen)
+	refs.event = e
+	refs.eventStroke = e:FindFirstChildOfClass(&quot;UIStroke&quot;)
+	refs.eventTitle = UI.text({ Size = UDim2.new(1, -110, 0, 24), Position = UDim2.fromOffset(14, 8), Text = &quot;&quot;, TextXAlignment = Enum.TextXAlignment.Left }, e)
+	refs.eventDesc = UI.text({ Size = UDim2.new(1, -110, 0, 18), Position = UDim2.fromOffset(14, 36), Text = &quot;&quot;, TextColor3 = C.Sub, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left }, e)
+	refs.eventTime = UI.text({ Size = UDim2.fromOffset(90, 30), Position = UDim2.new(1, -100, 0, 16), Text = &quot;&quot;, TextXAlignment = Enum.TextXAlignment.Right }, e)
+	local bar
+	bar, refs.setEventProgress = UI.bar({ Size = UDim2.new(1, -28, 0, 6), Position = UDim2.new(0, 14, 1, -10), Visible = false }, e, C.Good)
+	refs.eventBar = bar
+end
+
+local function onEvent(kind, d)
+	if kind == &quot;start&quot; then
+		State.event = d
+		refs.event.Visible = true
+		refs.eventTitle.Text = &quot;✨ &quot; .. d.name
+		refs.eventTitle.TextColor3 = d.color
+		refs.eventDesc.Text = d.desc
+		refs.eventStroke.Color = d.color
+		refs.eventBar.Visible = d.goal ~= nil
+		if d.goal then
+			refs.setEventProgress((d.count or 0) / d.goal)
+			refs.eventDesc.Text = d.desc .. &quot;  (&quot; .. (d.count or 0) .. &quot;/&quot; .. d.goal .. &quot;)&quot;
+		end
+		HUD.Toast(&quot;Evenement : &quot; .. d.name .. &quot; ! &quot; .. d.desc, &quot;gold&quot;)
+		local scale = refs.event:FindFirstChildOfClass(&quot;UIScale&quot;) or UI.new(&quot;UIScale&quot;, {}, refs.event)
+		scale.Scale = 0.5
+		UI.tween(scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+		if d.target then
+			HUD.MarkBalloon(d.target)
+		end
+	elseif kind == &quot;balloon&quot; then
+		HUD.MarkBalloon(d.target)
+	elseif kind == &quot;progress&quot; and State.event then
+		refs.setEventProgress(d.count / d.goal)
+		refs.eventDesc.Text = State.event.desc .. &quot;  (&quot; .. d.count .. &quot;/&quot; .. d.goal .. &quot;)&quot;
+	elseif kind == &quot;end&quot; then
+		State.event = nil
+		refs.event.Visible = false
+	end
+end
+
+function HUD.MarkBalloon(model)
+	if not model or not model.PrimaryPart then
+		return
+	end
+	local bb = UI.new(&quot;BillboardGui&quot;, { Size = UDim2.fromOffset(160, 50), AlwaysOnTop = true, Adornee = model.PrimaryPart, StudsOffsetWorldSpace = Vector3.new(0, 14, 0), LightInfluence = 0 }, player.PlayerGui)
+	UI.text({ Size = UDim2.fromScale(1, 1), Text = &quot;🎈 Ballon egare !&quot;, TextColor3 = Color3.fromRGB(255, 160, 180), TextStrokeTransparency = 0.3 }, bb)
+	model.Destroying:Connect(function()
+		bb:Destroy()
+	end)
+end
+
+-- Ecrans de recompense ----------------------------------------------------------------------------
+function HUD.ShowDelivery(d)
+	local f = UI.panel({ Size = UDim2.fromOffset(380, 250), Position = UDim2.new(0.5, -190, 0.5, -170), BackgroundTransparency = 0.05 }, screen)
+	f.ZIndex = 20
+	local stamp = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(110, 110), Position = UDim2.new(0.5, -55, 0, -55), BackgroundColor3 = d.gradeColor, BorderSizePixel = 0, ZIndex = 22, Rotation = -14 }, f)
+	UI.corner(stamp, 55)
+	UI.stroke(stamp, Color3.new(1, 1, 1), 4, 0)
+	UI.text({ Size = UDim2.fromScale(0.7, 0.7), Position = UDim2.fromScale(0.15, 0.15), Text = d.grade, TextColor3 = Color3.new(1, 1, 1), ZIndex = 23 }, stamp)
+	UI.text({ Size = UDim2.new(1, -30, 0, 28), Position = UDim2.fromOffset(15, 62), Text = &quot;Livre a &quot; .. d.owner .. &quot; !&quot;, ZIndex = 21 }, f)
+	local lines = {
+		{ &quot;🪙 Pieces&quot;, &quot;+&quot; .. fmt(d.coins), C.Gold },
+		{ &quot;⭐ Experience&quot;, &quot;+&quot; .. fmt(d.xp), C.Sky },
+		{ &quot;⏱ Temps&quot;, string.format(&quot;%.1f s (par %d s)&quot;, d.time, math.floor(d.par)), C.Text },
+	}
+	if d.integrity &lt; 1 then
+		table.insert(lines, { &quot;📦 Etat du colis&quot;, math.floor(d.integrity * 100) .. &quot; %&quot;, C.Bad })
+	end
+	if d.convoy &gt; 0 then
+		table.insert(lines, { &quot;🤝 Convoi&quot;, &quot;+30 % (&quot; .. d.convoy .. &quot; ami&quot; .. (d.convoy &gt; 1 and &quot;s&quot; or &quot;&quot;) .. &quot;)&quot;, C.Good })
+	end
+	if d.event then
+		table.insert(lines, { &quot;✨ Vent dore&quot;, &quot;x2&quot;, C.Gold })
+	end
+	for i, l in ipairs(lines) do
+		local y = 96 + (i - 1) * 26
+		UI.text({ Size = UDim2.new(0.5, -15, 0, 22), Position = UDim2.fromOffset(20, y), Text = l[1], TextColor3 = C.Sub, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 21 }, f)
+		UI.text({ Size = UDim2.new(0.5, -15, 0, 22), Position = UDim2.new(0.5, 0, 0, y), Text = l[2], TextColor3 = l[3], TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 21 }, f)
+	end
+	f.Size = UDim2.fromOffset(380, 110 + #lines * 26)
+	local scale = UI.new(&quot;UIScale&quot;, { Scale = 0.4 }, f)
+	UI.tween(scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+	stamp.Size = UDim2.fromOffset(220, 220)
+	stamp.Position = UDim2.new(0.5, -110, 0, -110)
+	UI.tween(stamp, 0.3, { Size = UDim2.fromOffset(110, 110), Position = UDim2.new(0.5, -55, 0, -55) }, Enum.EasingStyle.Back)
+	task.delay(3.4, function()
+		UI.tween(scale, 0.25, { Scale = 0 })
+		task.wait(0.3)
+		f:Destroy()
+	end)
+end
+
+function HUD.ShowBig(title, sub, color)
+	local f = UI.panel({ Size = UDim2.fromOffset(420, 100), Position = UDim2.new(0.5, -210, 0.25, 0), BackgroundTransparency = 0.05 }, screen)
+	f.ZIndex = 25
+	UI.stroke(f, color, 3, 0)
+	UI.text({ Size = UDim2.new(1, -30, 0, 44), Position = UDim2.fromOffset(15, 12), Text = title, TextColor3 = color, ZIndex = 26 }, f)
+	UI.text({ Size = UDim2.new(1, -30, 0, 26), Position = UDim2.fromOffset(15, 60), Text = sub, TextColor3 = C.Text, Font = Enum.Font.GothamMedium, ZIndex = 26 }, f)
+	local scale = UI.new(&quot;UIScale&quot;, { Scale = 0.3 }, f)
+	UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+	task.delay(3, function()
+		UI.tween(scale, 0.25, { Scale = 0 })
+		task.wait(0.3)
+		f:Destroy()
+	end)
+end
+
+-- Fenetres (boutique, album, classement) ------------------------------------------------------------
+local modal, modalTitle, modalBody, current
+
+local function buildModal()
+	modal = UI.panel({ Size = UDim2.fromOffset(700, 470), Position = UDim2.new(0.5, -350, 0.5, -235), Visible = false, BackgroundTransparency = 0.04 }, screen)
+	modal.ZIndex = 10
+	modalTitle = UI.text({ Size = UDim2.new(1, -120, 0, 36), Position = UDim2.fromOffset(22, 14), Text = &quot;&quot;, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 11 }, modal)
+	local close = UI.button({ Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -54, 0, 12), Text = &quot;✕&quot;, ZIndex = 12 }, modal, C.Bad)
+	close.Activated:Connect(function()
+		HUD.Close()
+	end)
+	modalBody = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, -36, 1, -76), Position = UDim2.fromOffset(18, 62), BackgroundTransparency = 1, ZIndex = 11 }, modal)
+	UI.new(&quot;UISizeConstraint&quot;, { MaxSize = Vector2.new(700, 470) }, modal)
+	local scale = UI.new(&quot;UIScale&quot;, {}, modal)
+	refs.modalScale = scale
+	local function fit()
+		local vs = workspace.CurrentCamera.ViewportSize
+		scale.Scale = math.min(1, (vs.X - 30) / 700, (vs.Y - 30) / 470)
+	end
+	fit()
+	workspace.CurrentCamera:GetPropertyChangedSignal(&quot;ViewportSize&quot;):Connect(fit)
+end
+
+function HUD.Close()
+	modal.Visible = false
+	current = nil
+end
+
+local function scrolling(parent, size, pos)
+	local s = UI.new(&quot;ScrollingFrame&quot;, { Size = size, Position = pos or UDim2.new(), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 6, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ZIndex = 11 }, parent)
+	return s
+end
+
+local function statBar(parent, y, label, ratio, color)
+	UI.text({ Size = UDim2.fromOffset(80, 14), Position = UDim2.fromOffset(12, y), Text = label, TextColor3 = C.Sub, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, parent)
+	local b, set = UI.bar({ Size = UDim2.new(1, -110, 0, 8), Position = UDim2.fromOffset(96, y + 3), ZIndex = 13 }, parent, color)
+	b.ZIndex = 13
+	set(ratio, true)
+end
+
+local shopTab = &quot;Planeurs&quot;
+
+local function renderShop()
+	modalBody:ClearAllChildren()
+	local tabs = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1, ZIndex = 11 }, modalBody)
+	UI.new(&quot;UIListLayout&quot;, { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
+	for _, name in ipairs({ &quot;Planeurs&quot;, &quot;Sacoches&quot;, &quot;Trainees&quot; }) do
+		local b = UI.button({ Size = UDim2.fromOffset(140, 36), Text = name, ZIndex = 12 }, tabs, name == shopTab and C.Post or C.Panel2)
+		b.Activated:Connect(function()
+			shopTab = name
+			renderShop()
+		end)
+	end
+	local list = scrolling(modalBody, UDim2.new(1, 0, 1, -48), UDim2.fromOffset(0, 48))
+	UI.new(&quot;UIGridLayout&quot;, { CellSize = UDim2.fromOffset(204, 176), CellPadding = UDim2.fromOffset(10, 10) }, list)
+	local data = State.data
+	local function card(title, color, owned, equipped, buttonText, buttonColor, onClick, fill)
+		local c = UI.panel({ BackgroundColor3 = C.Panel2, ZIndex = 12 }, list)
+		local head = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, -16, 0, 6), Position = UDim2.fromOffset(8, 8), BackgroundColor3 = color, BorderSizePixel = 0, ZIndex = 13 }, c)
+		UI.corner(head, 3)
+		UI.text({ Size = UDim2.new(1, -20, 0, 22), Position = UDim2.fromOffset(10, 20), Text = title, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, c)
+		fill(c)
+		local b = UI.button({ Size = UDim2.new(1, -20, 0, 34), Position = UDim2.new(0, 10, 1, -44), Text = buttonText, ZIndex = 13 }, c, buttonColor)
+		if onClick then
+			b.Activated:Connect(onClick)
+		end
+	end
+	if shopTab == &quot;Planeurs&quot; then
+		for _, g in ipairs(Config.Gliders) do
+			local owned = data.gliders[g.id]
+			local equipped = data.glider == g.id
+			local locked = data.rank &lt; g.rank
+			local text = equipped and &quot;EQUIPE&quot; or owned and &quot;EQUIPER&quot; or locked and (&quot;Rang &quot; .. g.rank .. &quot; requis&quot;) or (&quot;🪙 &quot; .. fmt(g.price))
+			local color = equipped and C.Good or owned and C.Sky or locked and Color3.fromRGB(80, 85, 100) or (data.coins &gt;= g.price and C.Post or Color3.fromRGB(120, 100, 80))
+			card(g.name, g.color, owned, equipped, text, color, function()
+				if owned then
+					Remotes.Request:FireServer(&quot;equipGlider&quot;, g.id)
+				elseif not locked then
+					Remotes.Request:FireServer(&quot;buyGlider&quot;, g.id)
+				end
+			end, function(c)
+				statBar(c, 50, &quot;Vitesse&quot;, g.cruise / 60, C.Sky)
+				statBar(c, 70, &quot;Pointe&quot;, g.max / 120, C.Post)
+				statBar(c, 90, &quot;Portance&quot;, (10 - g.sink) / 6, C.Good)
+				statBar(c, 110, &quot;Elan&quot;, g.stamina / 8, C.Gold)
+			end)
+		end
+	elseif shopTab == &quot;Sacoches&quot; then
+		for _, s in ipairs(Config.Satchels) do
+			local owned = data.satchel &gt;= s.level
+			local isNext = data.satchel + 1 == s.level
+			local locked = (s.rank or 1) &gt; data.rank
+			local text = owned and &quot;POSSEDEE&quot; or (not isNext) and &quot;Achete la precedente&quot; or locked and (&quot;Rang &quot; .. s.rank .. &quot; requis&quot;) or (&quot;🪙 &quot; .. fmt(s.price))
+			local color = owned and C.Good or (isNext and not locked) and C.Post or Color3.fromRGB(80, 85, 100)
+			card(s.name, Color3.fromRGB(170, 120, 75), owned, owned, text, color, function()
+				if isNext and not locked then
+					Remotes.Request:FireServer(&quot;buySatchel&quot;)
+				end
+			end, function(c)
+				UI.text({ Size = UDim2.new(1, -20, 0, 50), Position = UDim2.fromOffset(10, 52), Text = s.capacity .. &quot; colis\na la fois&quot;, TextColor3 = C.Text, ZIndex = 13 }, c)
+			end)
+		end
+	else
+		local setTrails = Progress.SetBonuses(data.stamps).trails
+		for _, t in ipairs(Config.Trails) do
+			local owned = data.trails[t.id] or setTrails[t.id]
+			local equipped = data.trail == t.id
+			local text = equipped and &quot;EQUIPEE&quot; or owned and &quot;EQUIPER&quot; or t.stampSet and (&quot;Collection &quot; .. t.stampSet) or (&quot;🪙 &quot; .. fmt(t.price))
+			local color = equipped and C.Good or owned and C.Sky or t.stampSet and Color3.fromRGB(80, 85, 100) or C.Post
+			card(t.name, t.color or Color3.fromRGB(120, 120, 130), owned, equipped, text, color, function()
+				if owned then
+					Remotes.Request:FireServer(&quot;equipTrail&quot;, t.id)
+				elseif t.price then
+					Remotes.Request:FireServer(&quot;buyTrail&quot;, t.id)
+				end
+			end, function(c)
+				local sw = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, -20, 0, 50), Position = UDim2.fromOffset(10, 56), BackgroundColor3 = t.color or Color3.fromRGB(60, 60, 70), BorderSizePixel = 0, ZIndex = 13 }, c)
+				UI.corner(sw, 10)
+				if t.color2 then
+					UI.gradient(sw, t.color, t.color2, 0)
+				end
+			end)
+		end
+	end
+end
+
+local RARITY_LABEL = { Commun = &quot;Commun&quot;, Rare = &quot;Rare&quot;, Epique = &quot;Epique&quot;, Legendaire = &quot;Legendaire&quot;, Secret = &quot;Secret&quot; }
+local SOURCE_HINT = { mystery = &quot;Colis mystere&quot;, secret = &quot;Cache quelque part...&quot;, event = &quot;Evenement&quot; }
+
+local function renderAlbum()
+	modalBody:ClearAllChildren()
+	local list = scrolling(modalBody, UDim2.fromScale(1, 1))
+	UI.new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	local bonuses = Progress.SetBonuses(State.data.stamps)
+	for i, set in ipairs(Config.StampSets) do
+		local section = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = i, ZIndex = 11 }, list)
+		local done = bonuses.done[set.id]
+		UI.text({ Size = UDim2.new(1, 0, 0, 24), Text = (done and &quot;✅ &quot; or &quot;&quot;) .. set.name .. &quot;   —   &quot; .. set.bonus, TextColor3 = done and C.Good or C.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 12 }, section)
+		local grid = UI.new(&quot;Frame&quot;, { Size = UDim2.new(1, 0, 0, 0), Position = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 11 }, section)
+		UI.new(&quot;UIGridLayout&quot;, { CellSize = UDim2.fromOffset(150, 96), CellPadding = UDim2.fromOffset(8, 8) }, grid)
+		for _, s in ipairs(Config.Stamps) do
+			if s.set == set.id then
+				local count = State.data.stamps[s.id]
+				local rc = Config.StampRarity[s.rarity].color
+				local tile = UI.panel({ BackgroundColor3 = count and Color3.fromRGB(245, 235, 215) or C.Panel2, ZIndex = 12 }, grid)
+				UI.stroke(tile, rc, 3, count and 0 or 0.5)
+				UI.text({ Size = UDim2.new(1, -12, 0, 22), Position = UDim2.fromOffset(6, 10), Text = count and s.name or &quot;???&quot;, TextColor3 = count and Color3.fromRGB(40, 35, 30) or C.Sub, ZIndex = 13 }, tile)
+				UI.text({ Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 40), Text = RARITY_LABEL[s.rarity], TextColor3 = rc, ZIndex = 13 }, tile)
+				UI.text({ Size = UDim2.new(1, -12, 0, 14), Position = UDim2.fromOffset(6, 64), Text = count and (&quot;x&quot; .. count) or SOURCE_HINT[s.source], TextColor3 = count and Color3.fromRGB(90, 80, 70) or C.Sub, Font = Enum.Font.GothamMedium, ZIndex = 13 }, tile)
+			end
+		end
+	end
+end
+
+local function renderRanking()
+	modalBody:ClearAllChildren()
+	UI.text({ Size = UDim2.new(1, 0, 0, 22), Text = &quot;Facteurs de ce serveur  ·  le classement mondial est affiche dans la Poste des Vents&quot;, TextColor3 = C.Sub, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 12 }, modalBody)
+	local list = scrolling(modalBody, UDim2.new(1, 0, 1, -32), UDim2.fromOffset(0, 32))
+	UI.new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	local rows = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		local ls = p:FindFirstChild(&quot;leaderstats&quot;)
+		table.insert(rows, { name = p.DisplayName, deliveries = ls and ls.Livraisons.Value or 0, rank = ls and ls.Rang.Value or 1, me = p == player })
+	end
+	table.sort(rows, function(a, b)
+		return a.deliveries &gt; b.deliveries
+	end)
+	for i, r in ipairs(rows) do
+		local row = UI.panel({ Size = UDim2.new(1, -10, 0, 46), LayoutOrder = i, BackgroundColor3 = r.me and Color3.fromRGB(40, 60, 90) or C.Panel2, ZIndex = 12 }, list)
+		local medal = ({ &quot;🥇&quot;, &quot;🥈&quot;, &quot;🥉&quot; })[i] or (&quot;#&quot; .. i)
+		UI.text({ Size = UDim2.fromOffset(50, 28), Position = UDim2.fromOffset(10, 9), Text = medal, ZIndex = 13 }, row)
+		UI.text({ Size = UDim2.new(0.5, 0, 0, 24), Position = UDim2.fromOffset(70, 11), Text = r.name, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13 }, row)
+		UI.text({ Size = UDim2.new(0.4, -20, 0, 22), Position = UDim2.new(0.6, 0, 0, 12), Text = &quot;Rang &quot; .. r.rank .. &quot;  ·  &quot; .. fmt(r.deliveries) .. &quot; livraisons&quot;, TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 13 }, row)
+	end
+end
+
+local RENDER = { Boutique = renderShop, Album = renderAlbum, Classement = renderRanking }
+
+function HUD.Open(name)
+	if current == name then
+		return HUD.Close()
+	end
+	current = name
+	modalTitle.Text = ({ Boutique = &quot;🛒 Boutique de la Poste&quot;, Album = &quot;✉️ Album de timbres&quot;, Classement = &quot;🏆 Classement&quot; })[name]
+	modal.Visible = true
+	RENDER[name]()
+	local s = refs.modalScale.Scale
+	refs.modalScale.Scale = s * 0.85
+	UI.tween(refs.modalScale, 0.2, { Scale = s }, Enum.EasingStyle.Back)
+end
+
+local function buildMenu()
+	local col = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(74, 330), Position = UDim2.new(0, 16, 0.5, -150), BackgroundTransparency = 1 }, screen)
+	UI.new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 10) }, col)
+	local items = { { &quot;Boutique&quot;, &quot;🛒&quot;, C.Post }, { &quot;Album&quot;, &quot;✉️&quot;, Color3.fromRGB(170, 120, 255) }, { &quot;Classement&quot;, &quot;🏆&quot;, C.Gold }, { &quot;Cadeau&quot;, &quot;🎁&quot;, C.Good } }
+	for _, it in ipairs(items) do
+		local b = UI.button({ Size = UDim2.fromOffset(70, 70), Text = &quot;&quot;, Radius = 18 }, col, it[3])
+		UI.stroke(b, Color3.new(1, 1, 1), 2, 0.3)
+		UI.text({ Size = UDim2.new(1, 0, 0, 34), Position = UDim2.fromOffset(0, 6), Text = it[2] }, b)
+		UI.text({ Size = UDim2.new(1, -6, 0, 16), Position = UDim2.new(0, 3, 1, -22), Text = it[1], TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.5 }, b)
+		if it[1] == &quot;Cadeau&quot; then
+			refs.dailyDot = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -12, 0, -4), BackgroundColor3 = C.Bad, Visible = false }, b)
+			UI.corner(refs.dailyDot, 8)
+			refs.dailyTimer = b:FindFirstChildWhichIsA(&quot;TextLabel&quot;)
+			b.Activated:Connect(function()
+				Remotes.Request:FireServer(&quot;daily&quot;)
+			end)
+		else
+			b.Activated:Connect(function()
+				HUD.Open(it[1])
+			end)
+		end
+	end
+end
+
+-- Tutoriel ---------------------------------------------------------------------------------------
+local tutorialStep = 0
+local tutorialCard, tutorialText
+
+local function buildTutorial()
+	tutorialCard = UI.panel({ Size = UDim2.fromOffset(330, 92), Position = UDim2.new(0, 100, 1, -120), Visible = false }, screen)
+	UI.stroke(tutorialCard, C.Post, 2, 0)
+	UI.text({ Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(12, 8), Text = &quot;📮 Premiere tournee&quot;, TextColor3 = C.Post, TextXAlignment = Enum.TextXAlignment.Left }, tutorialCard)
+	tutorialText = UI.text({ Size = UDim2.new(1, -24, 0, 56), Position = UDim2.fromOffset(12, 30), Text = &quot;&quot;, TextScaled = false, TextSize = 15, TextWrapped = true, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, tutorialCard)
+end
+
+local TUTORIAL = {
+	&quot;Va au guichet de la Poste des Vents (suis la fleche) et prends ton premier colis.&quot;,
+	&quot;Cours jusqu'au Tremplin ou au bord de la falaise, saute puis appuie sur ESPACE pour planer. Regarde vers le bas pour accelerer !&quot;,
+	&quot;Suis le ruban de vent jusqu'a la boite aux lettres. Atterris a cote et appuie sur E pour livrer.&quot;,
+	&quot;Bravo ! Plus tu livres vite, meilleure est ta note. Les colonnes de vent te font remonter. Ameliore ton planeur dans la Boutique !&quot;,
+}
+
+local function updateTutorial()
+	if State.data.tutorial or not State.ready then
+		tutorialCard.Visible = false
+		return
+	end
+	local step = 1
+	if #State.parcels &gt; 0 then
+		step = Glider.Gliding and 3 or 2
+	end
+	if State.data.deliveries &gt; 0 then
+		step = 4
+	end
+	if step ~= tutorialStep then
+		tutorialStep = step
+		tutorialCard.Visible = true
+		tutorialText.Text = TUTORIAL[step]
+		if step == 4 then
+			task.delay(9, function()
+				Remotes.Request:FireServer(&quot;tutorialDone&quot;)
+			end)
+		end
+	end
+end
+
+-- Mise a jour ------------------------------------------------------------------------------------
+local function refreshProfile()
+	local d = State.data
+	refs.rank.Text = tostring(d.rank)
+	refs.title.Text = Progress.Title(d.rank)
+	refs.setXP(d.xpIn / math.max(d.xpNeed, 1))
+	refs.xpText.Text = fmt(d.xpIn) .. &quot; / &quot; .. fmt(d.xpNeed) .. &quot; XP&quot;
+	refs.coins.Text = fmt(d.coins)
+	refs.deliveries.Text = &quot;📦 &quot; .. fmt(d.deliveries) .. &quot; livraisons&quot;
+	if current then
+		RENDER[current]()
+	end
+end
+
+function HUD.Init()
+	screen = UI.new(&quot;ScreenGui&quot;, { Name = &quot;WindmailHUD&quot;, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, player:WaitForChild(&quot;PlayerGui&quot;))
+	refs.screen = screen
+	buildProfile()
+	buildParcels()
+	buildFlight()
+	buildEvent()
+	buildModal()
+	buildMenu()
+	buildTutorial()
+	refs.toasts = UI.new(&quot;Frame&quot;, { Size = UDim2.fromOffset(360, 300), Position = UDim2.new(0.5, -180, 0, 90), BackgroundTransparency = 1 }, screen)
+	UI.new(&quot;UIListLayout&quot;, { Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center }, refs.toasts)
+
+	Remotes.Sync.OnClientEvent:Connect(function(d)
+		local before = State.data.coins
+		State.data = d
+		State.ready = true
+		refreshProfile()
+		if before and d.coins &gt; before then
+			local s = refs.coins:FindFirstChildOfClass(&quot;UIScale&quot;) or UI.new(&quot;UIScale&quot;, {}, refs.coins)
+			s.Scale = 1.25
+			UI.tween(s, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+		end
+		State.Changed:Fire(&quot;data&quot;)
+	end)
+	Remotes.Parcels.OnClientEvent:Connect(function(list)
+		State.parcels = list
+		renderParcels()
+		State.Changed:Fire(&quot;parcels&quot;)
+	end)
+	Remotes.Notify.OnClientEvent:Connect(HUD.Toast)
+	Remotes.Event.OnClientEvent:Connect(onEvent)
+	Remotes.FX.OnClientEvent:Connect(function(kind, d)
+		d = d or {}
+		if kind == &quot;Delivered&quot; then
+			HUD.ShowDelivery(d)
+			if d.stamp then
+				task.delay(3.6, function()
+					local s = Config.StampById[d.stamp]
+					HUD.ShowBig(&quot;✉️ &quot; .. s.name, &quot;Timbre &quot; .. s.rarity .. &quot; ajoute a ton album&quot;, Config.StampRarity[s.rarity].color)
+				end)
+			end
+		elseif kind == &quot;RankUp&quot; then
+			task.delay(3.5, HUD.ShowBig, &quot;RANG &quot; .. d.rank, d.title, C.Gold)
+		elseif kind == &quot;Stamp&quot; and d.first then
+			local s = Config.StampById[d.id]
+			HUD.Toast(&quot;Nouveau timbre : &quot; .. s.name .. &quot; (&quot; .. s.rarity .. &quot;)&quot;, &quot;gold&quot;)
+		elseif kind == &quot;Pickup&quot; then
+			HUD.Toast(d.count .. &quot; colis dans ta sacoche ! Suis les fleches.&quot;, &quot;good&quot;)
+		elseif kind == &quot;Purchase&quot; then
+			HUD.Toast(d.name .. &quot; obtenu !&quot;, &quot;good&quot;)
+		elseif kind == &quot;Daily&quot; then
+			HUD.ShowBig(&quot;🎁 +&quot; .. fmt(d.coins) .. &quot; pieces&quot;, &quot;Serie de &quot; .. d.streak .. &quot; jour(s) - reviens demain !&quot;, C.Good)
+		elseif kind == &quot;Splash&quot; then
+			HUD.Toast(d.damaged and &quot;Plouf ! Repeche au quai... ton colis fragile a pris l'eau.&quot; or &quot;Plouf ! Un bateau t'a ramene au quai.&quot;, &quot;info&quot;)
+		elseif kind == &quot;Impact&quot; then
+			HUD.Toast(&quot;Aie ! Le colis fragile s'abime.&quot;, &quot;danger&quot;)
+		end
+	end)
+	local acc = 0
+	RunService.RenderStepped:Connect(function(dt)
+		updateFlight()
+		acc += dt
+		if acc &gt; 0.2 then
+			acc = 0
+			updateParcelTimers()
+			updateTutorial()
+			if State.event and State.event.endsAt then
+				local left = math.max(0, State.event.endsAt - workspace:GetServerTimeNow())
+				refs.eventTime.Text = string.format(&quot;%d:%02d&quot;, left // 60, left % 60)
+			end
+			local ready = (State.data.dailyIn or 1) &lt;= 0
+			refs.dailyDot.Visible = ready
+		end
+	end)
+	-- le compte a rebours du cadeau avance localement entre deux synchronisations
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			if State.data.dailyIn and State.data.dailyIn &gt; 0 then
+				State.data.dailyIn -= 1
+			end
+		end
+	end)
+end
+
+return HUD
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">Navigator</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Guidage : met en valeur les boites aux lettres de destination (contour, etiquette, drapeau leve),
+-- trace un ruban de vent vers la destination principale et une fleche en bord d'ecran.
+-- Sans colis : guide vers le guichet de poste le plus proche.
+
+local CollectionService = game:GetService(&quot;CollectionService&quot;)
+local Players = game:GetService(&quot;Players&quot;)
+local ReplicatedStorage = game:GetService(&quot;ReplicatedStorage&quot;)
+local RunService = game:GetService(&quot;RunService&quot;)
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local State = require(script.Parent.State)
+local UI = require(script.Parent.UI)
+
+local Navigator = {}
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local marks = {} -- [mailbox] = { highlight, billboard, flagCF }
+local beam, a0, a1
+local arrow, arrowLabel
+
+Navigator.Target = nil -- Instance (BasePart) visee
+Navigator.TargetText = &quot;&quot;
+
+local function clearMarks()
+	for m, info in pairs(marks) do
+		info.highlight:Destroy()
+		info.billboard:Destroy()
+		local flag = m:FindFirstChild(&quot;Flag&quot;)
+		if flag and info.flagCF then
+			flag.CFrame = info.flagCF
+		end
+	end
+	marks = {}
+end
+
+local function markMailbox(m, parcel, primary)
+	local def = Config.ParcelById[parcel.type]
+	local h = Instance.new(&quot;Highlight&quot;)
+	h.FillTransparency = 0.75
+	h.FillColor = def.color
+	h.OutlineColor = primary and Color3.fromRGB(255, 255, 255) or def.color
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	h.Adornee = m
+	h.Parent = m
+	local bb = Instance.new(&quot;BillboardGui&quot;)
+	bb.Size = UDim2.fromOffset(190, 54)
+	bb.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
+	bb.AlwaysOnTop = true
+	bb.LightInfluence = 0
+	bb.Adornee = m.PrimaryPart
+	local card = UI.panel({ Size = UDim2.fromScale(1, 1) }, bb)
+	local strip = UI.new(&quot;Frame&quot;, { Size = UDim2.new(0, 6, 1, -12), Position = UDim2.fromOffset(6, 6), BackgroundColor3 = def.color, BorderSizePixel = 0 }, card)
+	UI.corner(strip, 3)
+	UI.text({ Size = UDim2.new(1, -22, 0.5, -2), Position = UDim2.fromOffset(18, 4), Text = parcel.owner, TextXAlignment = Enum.TextXAlignment.Left }, card)
+	local dist = UI.text({ Name = &quot;Dist&quot;, Size = UDim2.new(1, -22, 0.42, 0), Position = UDim2.new(0, 18, 0.52, 0), Text = &quot;&quot;, TextColor3 = UI.Colors.Sub, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left }, card)
+	bb.Parent = player:WaitForChild(&quot;PlayerGui&quot;)
+	local flag = m:FindFirstChild(&quot;Flag&quot;)
+	local info = { highlight = h, billboard = bb, dist = dist, def = def }
+	if flag then
+		info.flagCF = flag.CFrame
+		TweenService:Create(flag, TweenInfo.new(0.4, Enum.EasingStyle.Back), { CFrame = flag.CFrame * CFrame.new(0, 0.6, 0) }):Play()
+	end
+	marks[m] = info
+end
+
+local function nearestCounter(pos)
+	local best, bd
+	for _, c in ipairs(CollectionService:GetTagged(&quot;PostCounter&quot;)) do
+		local d = (c.Position - pos).Magnitude
+		if not bd or d &lt; bd then
+			best, bd = c, d
+		end
+	end
+	return best
+end
+
+function Navigator.Refresh()
+	clearMarks()
+	for i, p in ipairs(State.parcels) do
+		if p.mailbox and p.mailbox.Parent and not marks[p.mailbox] then
+			markMailbox(p.mailbox, p, i == 1)
+		end
+	end
+	-- le bouton &quot;Livrer&quot; n'apparait que sur les boites aux lettres attendues
+	for _, m in ipairs(CollectionService:GetTagged(&quot;Mailbox&quot;)) do
+		local prompt = m.PrimaryPart and m.PrimaryPart:FindFirstChildOfClass(&quot;ProximityPrompt&quot;)
+		if prompt then
+			prompt.Enabled = marks[m] ~= nil
+		end
+	end
+end
+
+local function update()
+	local char = player.Character
+	local hrp = char and char:FindFirstChild(&quot;HumanoidRootPart&quot;)
+	if not hrp then
+		return
+	end
+	-- cible principale : premier colis (ou guichet)
+	local target, text, color
+	local first = State.parcels[1]
+	if first and first.mailbox and first.mailbox.PrimaryPart then
+		target = first.mailbox.PrimaryPart
+		text = first.owner
+		color = Config.ParcelById[first.type].color
+	else
+		local c = nearestCounter(hrp.Position)
+		if c then
+			target = c
+			text = &quot;Guichet de poste&quot;
+			color = UI.Colors.Post
+		end
+	end
+	Navigator.Target = target
+	for m, info in pairs(marks) do
+		if m.PrimaryPart then
+			local d = (m.PrimaryPart.Position - hrp.Position).Magnitude
+			info.dist.Text = string.format(&quot;%d m  ·  %s&quot;, math.floor(d), info.def.name)
+		end
+	end
+	if not target then
+		arrow.Visible = false
+		beam.Enabled = false
+		return
+	end
+	-- ruban de vent
+	a0.Parent = hrp
+	a1.Parent = target
+	beam.Color = ColorSequence.new(color)
+	beam.Enabled = (target.Position - hrp.Position).Magnitude &gt; 25
+	-- fleche en bord d'ecran si la cible est hors champ
+	local sp, onScreen = camera:WorldToViewportPoint(target.Position)
+	local vs = camera.ViewportSize
+	local dist = (target.Position - hrp.Position).Magnitude
+	if onScreen and sp.X &gt; 40 and sp.X &lt; vs.X - 40 and sp.Y &gt; 60 and sp.Y &lt; vs.Y - 60 then
+		arrow.Visible = false
+	else
+		arrow.Visible = true
+		local rel = camera.CFrame:PointToObjectSpace(target.Position)
+		local ang = math.atan2(-rel.Y, rel.X)
+		local cx, cy = vs.X / 2, vs.Y / 2
+		local rx, ry = cx - 70, cy - 80
+		local x = cx + math.cos(ang) * rx
+		local y = cy + math.sin(ang) * ry
+		arrow.Position = UDim2.fromOffset(x, y)
+		arrow.Rotation = math.deg(ang) + 90
+		arrowLabel.Rotation = -arrow.Rotation
+		arrowLabel.Text = string.format(&quot;%s\n%d m&quot;, text, math.floor(dist))
+		arrow.TextColor3 = color
+	end
+end
+
+function Navigator.Init(screen)
+	a0 = Instance.new(&quot;Attachment&quot;)
+	a1 = Instance.new(&quot;Attachment&quot;)
+	a1.Position = Vector3.new(0, 1, 0)
+	beam = Instance.new(&quot;Beam&quot;)
+	beam.Attachment0 = a0
+	beam.Attachment1 = a1
+	beam.Width0 = 0.5
+	beam.Width1 = 0.5
+	beam.FaceCamera = true
+	beam.Segments = 20
+	beam.CurveSize0 = 8
+	beam.CurveSize1 = -8
+	beam.LightEmission = 0.6
+	beam.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, 0.55), NumberSequenceKeypoint.new(0.85, 0.55), NumberSequenceKeypoint.new(1, 1) })
+	beam.TextureMode = Enum.TextureMode.Wrap
+	beam.Parent = workspace.Terrain
+	a0.Parent = workspace.Terrain
+	a1.Parent = workspace.Terrain
+	arrow = UI.text({
+		Size = UDim2.fromOffset(46, 46),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Text = &quot;▲&quot;,
+		TextStrokeTransparency = 0.3,
+		Visible = false,
+	}, screen)
+	arrowLabel = UI.text({ Size = UDim2.fromOffset(150, 40), Position = UDim2.new(0.5, -75, 1, 6), TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4, Font = Enum.Font.GothamBold }, arrow)
+	State.Changed.Event:Connect(function(what)
+		if what == &quot;parcels&quot; then
+			Navigator.Refresh()
+		end
+	end)
+	RunService.RenderStepped:Connect(update)
+	task.delay(3, Navigator.Refresh)
+	CollectionService:GetInstanceAddedSignal(&quot;Mailbox&quot;):Connect(function()
+		task.defer(Navigator.Refresh)
+	end)
+end
+
+return Navigator
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">State</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Etat local du joueur (donnees synchronisees + colis en cours).
+local State = {
+	data = { coins = 0, xp = 0, rank = 1, xpIn = 0, xpNeed = 1, deliveries = 0, gliders = { Lin = true }, glider = &quot;Lin&quot;, satchel = 1, trails = { Aucune = true }, trail = &quot;Aucune&quot;, stamps = {}, dailyIn = 0, grades = {} },
+	parcels = {},
+	event = nil,
+	ready = false,
+}
+State.Changed = Instance.new(&quot;BindableEvent&quot;) -- (what)
+return State
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">UI</string><bool name="Disabled">false</bool><ProtectedString name="Source">-- Petits outils d'interface : creation d'objets, coins arrondis, contours, animations.
+local TweenService = game:GetService(&quot;TweenService&quot;)
+
+local UI = {}
+
+UI.Colors = {
+	Panel = Color3.fromRGB(18, 26, 40),
+	Panel2 = Color3.fromRGB(28, 40, 60),
+	Line = Color3.fromRGB(70, 95, 130),
+	Text = Color3.fromRGB(240, 244, 250),
+	Sub = Color3.fromRGB(160, 175, 200),
+	Sky = Color3.fromRGB(90, 180, 255),
+	Post = Color3.fromRGB(255, 170, 60),
+	Gold = Color3.fromRGB(255, 205, 80),
+	Good = Color3.fromRGB(100, 220, 140),
+	Bad = Color3.fromRGB(240, 90, 90),
+}
+
+function UI.new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props or {}) do
+		o[k] = v
+	end
+	if parent then
+		o.Parent = parent
+	end
+	return o
+end
+
+function UI.corner(o, r)
+	return UI.new(&quot;UICorner&quot;, { CornerRadius = UDim.new(0, r or 12) }, o)
+end
+
+function UI.stroke(o, color, t, transp)
+	return UI.new(&quot;UIStroke&quot;, { Color = color or UI.Colors.Line, Thickness = t or 1.5, Transparency = transp or 0.2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, o)
+end
+
+function UI.pad(o, p)
+	return UI.new(&quot;UIPadding&quot;, { PaddingTop = UDim.new(0, p), PaddingBottom = UDim.new(0, p), PaddingLeft = UDim.new(0, p), PaddingRight = UDim.new(0, p) }, o)
+end
+
+function UI.gradient(o, a, b, rot)
+	return UI.new(&quot;UIGradient&quot;, { Color = ColorSequence.new(a, b), Rotation = rot or 90 }, o)
+end
+
+-- Panneau sombre semi-transparent, style &quot;verre&quot;
+function UI.panel(props, parent)
+	local f = UI.new(&quot;Frame&quot;, props, parent)
+	f.BackgroundColor3 = props.BackgroundColor3 or UI.Colors.Panel
+	f.BackgroundTransparency = props.BackgroundTransparency or 0.12
+	f.BorderSizePixel = 0
+	UI.corner(f, 14)
+	UI.stroke(f, UI.Colors.Line, 1.5, 0.35)
+	return f
+end
+
+function UI.text(props, parent)
+	local t = UI.new(&quot;TextLabel&quot;, props, parent)
+	t.BackgroundTransparency = 1
+	t.Font = props.Font or Enum.Font.GothamBold
+	t.TextColor3 = props.TextColor3 or UI.Colors.Text
+	if props.TextSize == nil then
+		t.TextScaled = true
+	end
+	return t
+end
+
+function UI.button(props, parent, color)
+	local b = UI.new(&quot;TextButton&quot;, props, parent)
+	b.AutoButtonColor = false
+	b.BackgroundColor3 = color or UI.Colors.Sky
+	b.BorderSizePixel = 0
+	b.Font = props.Font or Enum.Font.GothamBold
+	b.TextColor3 = props.TextColor3 or Color3.new(1, 1, 1)
+	if props.TextSize == nil then
+		b.TextScaled = true
+	end
+	UI.corner(b, props.Radius or 10)
+	UI.gradient(b, Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 210), 90)
+	local scale = UI.new(&quot;UIScale&quot;, {}, b)
+	b.MouseEnter:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 1.05 }):Play()
+	end)
+	b.MouseLeave:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 1 }):Play()
+	end)
+	b.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.06), { Scale = 0.94 }):Play()
+	end)
+	b.MouseButton1Up:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.1), { Scale = 1.05 }):Play()
+	end)
+	return b
+end
+
+function UI.tween(o, t, props, style, dir)
+	local tw = TweenService:Create(o, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
+	tw:Play()
+	return tw
+end
+
+-- Barre de progression ; renvoie (cadre, fonction set(ratio))
+function UI.bar(props, parent, color)
+	local back = UI.new(&quot;Frame&quot;, props, parent)
+	back.BackgroundColor3 = Color3.fromRGB(10, 15, 25)
+	back.BackgroundTransparency = 0.2
+	back.BorderSizePixel = 0
+	UI.corner(back, 99)
+	local fill = UI.new(&quot;Frame&quot;, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = color or UI.Colors.Sky, BorderSizePixel = 0 }, back)
+	UI.corner(fill, 99)
+	UI.gradient(fill, Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200), 90)
+	return back, function(r, instant)
+		r = math.clamp(r, 0, 1)
+		if instant then
+			fill.Size = UDim2.fromScale(r, 1)
+		else
+			UI.tween(fill, 0.35, { Size = UDim2.fromScale(r, 1) })
+		end
+	end, fill
+end
+
+return UI
+</ProtectedString></Properties></Item></Item></Item></Item></Item>
+</roblox>
