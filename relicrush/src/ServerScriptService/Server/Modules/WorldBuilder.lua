@@ -13,6 +13,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local RelicModel = require(ReplicatedStorage.Shared.RelicModel)
 local Kit = require(script.Parent.MapKit)
 local MapZones = require(script.Parent.MapZones)
+local Decor = require(script.Parent.Decor)
 
 local WorldBuilder = {}
 
@@ -498,26 +499,58 @@ local function treasureCave(parent, c, facing)
 	return inside
 end
 
+-- Emplacements remplacables (portail, arene)
+local function placePortal(parent, pos, facing, target)
+	Decor.Swap("Portail", parent, CFrame.lookAt(pos, pos + facing), { height = 22 }, function(h)
+		portal(h, pos, facing, target)
+	end)
+end
+
+local function placeArena(parent, pos, world)
+	Decor.Swap("Arene", parent, CFrame.new(pos), { width = 68 }, function(h)
+		arena(h, pos, world)
+	end)
+end
+
 -- Starter Village ------------------------------------------------------------------------------------
 local function buildVillage(folder, world)
 	local c = world.center
 	local pal = PALETTES.Village
 	-- reservations
 	plaza(folder, c, 34, Color3.fromRGB(240, 228, 195))
-	fountain(folder, c)
+	Decor.Swap("Fontaine", folder, CFrame.new(c), { height = 16 }, function(h)
+		fountain(h, c)
+	end)
 	path(folder, c + Vector3.new(0, 0, 34), c + Vector3.new(0, 0, 165), 14, pal.path) -- vers la plage
 	path(folder, c + Vector3.new(34, 0, 0), c + Vector3.new(150, 0, 0), 12, pal.path) -- vers le portail
 	path(folder, c + Vector3.new(-34, 0, 0), c + Vector3.new(-100, 0, 40), 12, pal.path) -- vers l'arene
 	path(folder, c + Vector3.new(24, 0, -24), c + Vector3.new(95, 0, -85), 10, pal.path) -- vers la grotte
 	path(folder, c + Vector3.new(-24, 0, -24), c + Vector3.new(-90, 0, -90), 10, pal.path) -- vers la foret
-	crateStand(folder, c + Vector3.new(0, 0, -52), world, Vector3.new(0, 0, 1))
-	shopBuilding(folder, CFrame.lookAt(c + Vector3.new(56, 0, 26), c + Vector3.new(0, 0, 26)))
-	forge(folder, CFrame.lookAt(c + Vector3.new(52, 0, -32), c))
-	rebirthAltar(folder, CFrame.lookAt(c + Vector3.new(-52, 0, -32), c))
-	questBoard(folder, CFrame.lookAt(c + Vector3.new(-40, 0, 26), c))
-	portal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), Config.Worlds[2])
-	arena(folder, c + Vector3.new(-110, 0, 60), world)
-	local caveSpots = treasureCave(folder, c + Vector3.new(105, 0, -100), Vector3.new(-1, 0, 1))
+	Decor.Swap("Caisse", folder, CFrame.lookAt(c + Vector3.new(0, 0, -52), c), { height = 9 }, function(h)
+		crateStand(h, c + Vector3.new(0, 0, -52), world, Vector3.new(0, 0, 1))
+	end)
+	local shopCF = CFrame.lookAt(c + Vector3.new(56, 0, 26), c + Vector3.new(0, 0, 26))
+	Decor.Swap("Boutique", folder, shopCF, { height = 17 }, function(h)
+		shopBuilding(h, shopCF)
+	end)
+	local forgeCF = CFrame.lookAt(c + Vector3.new(52, 0, -32), c)
+	Decor.Swap("Forge", folder, forgeCF, { height = 12 }, function(h)
+		forge(h, forgeCF)
+	end)
+	local altarCF = CFrame.lookAt(c + Vector3.new(-52, 0, -32), c)
+	Decor.Swap("Autel", folder, altarCF, { height = 16 }, function(h)
+		rebirthAltar(h, altarCF)
+	end)
+	local questCF = CFrame.lookAt(c + Vector3.new(-40, 0, 26), c)
+	Decor.Swap("TableauQuetes", folder, questCF, { height = 10 }, function(h)
+		questBoard(h, questCF)
+	end)
+	placePortal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), Config.Worlds[2])
+	placeArena(folder, c + Vector3.new(-110, 0, 60), world)
+	local cavePos = c + Vector3.new(105, 0, -100)
+	local caveSpots = Decor.Swap("Grotte", folder, CFrame.lookAt(cavePos, cavePos + Vector3.new(-1, 0, 1)), { width = 66 }, function(h)
+		return treasureCave(h, cavePos, Vector3.new(-1, 0, 1))
+	end)
 	-- lampadaires et bancs autour de la place
 	for i = 0, 9 do
 		local a = i / 10 * math.pi * 2 + 0.3
@@ -583,14 +616,16 @@ local function buildOther(folder, world)
 	plaza(folder, c, 26, pal.path)
 	path(folder, c + Vector3.new(-26, 0, 0), c + Vector3.new(-150, 0, 0), 12, pal.path)
 	path(folder, c + Vector3.new(0, 0, 26), c + Vector3.new(0, 0, 70), 12, pal.path)
-	crateStand(folder, c + Vector3.new(0, 0, -44), world, Vector3.new(0, 0, 1))
-	portal(folder, c + Vector3.new(-152, 0, 0), Vector3.new(1, 0, 0), Config.Worlds[1])
+	Decor.Swap("Caisse", folder, CFrame.lookAt(c + Vector3.new(0, 0, -44), c), { height = 9 }, function(h)
+		crateStand(h, c + Vector3.new(0, 0, -44), world, Vector3.new(0, 0, 1))
+	end)
+	placePortal(folder, c + Vector3.new(-152, 0, 0), Vector3.new(1, 0, 0), Config.Worlds[1])
 	local nextW = Config.Worlds[world.index + 1]
 	if nextW then
 		path(folder, c + Vector3.new(26, 0, 0), c + Vector3.new(150, 0, 0), 12, pal.path)
-		portal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), nextW)
+		placePortal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), nextW)
 	end
-	arena(folder, c + Vector3.new(0, 0, 105), world)
+	placeArena(folder, c + Vector3.new(0, 0, 105), world)
 	for i = 0, 7 do
 		local a = i / 8 * math.pi * 2 + 0.39
 		Kit.lantern(folder, c + Vector3.new(math.cos(a) * 30, 0, math.sin(a) * 30), world.color:Lerp(WHITE, 0.4))
@@ -642,6 +677,7 @@ function WorldBuilder.Build()
 		local folder = Instance.new("Folder")
 		folder.Name = w.id
 		folder.Parent = root
+		Decor.World = w.id
 		island(folder, w)
 		spawns[w.id] = CFrame.new(w.center + (w.id == "Village" and Config.SpawnOffset or Vector3.new(-120, 4, 0)))
 		local extra

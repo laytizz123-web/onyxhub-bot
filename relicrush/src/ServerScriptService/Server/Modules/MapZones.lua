@@ -64,6 +64,9 @@ end
 -- FORET ----------------------------------------------------------------------------------------
 
 local function bigOak(parent, pos, scale)
+	if Kit.TryDecor("GrandArbre", parent, pos, { height = 21 * (scale or 1) }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 6 * scale, 0)), 12 * scale, 1.8 * scale, Color3.fromRGB(110, 72, 42), parent, Enum.Material.Wood)
 	for k = 1, 3 do
 		local a = k * 2.1
@@ -79,6 +82,9 @@ local function bigOak(parent, pos, scale)
 end
 
 local function cabin(parent, cf)
+	if Kit.TryDecor("Chalet", parent, cf.Position, { height = 14, cf = cf }) then
+		return
+	end
 	local logC = Color3.fromRGB(150, 98, 58)
 	for i = 0, 6 do
 		for _, z in ipairs({ -5, 5 }) do
@@ -123,6 +129,9 @@ local function campfire(parent, pos)
 end
 
 local function tent(parent, cf, color)
+	if Kit.TryDecor("Tente", parent, cf.Position, { height = 6, cf = cf }) then
+		return
+	end
 	for _, s in ipairs({ -1, 1 }) do
 		wedge({ Size = Vector3.new(7, 6, 4), CFrame = cf * CFrame.new(0, 3, s * 2) * CFrame.Angles(0, s > 0 and math.pi or 0, 0), Color = color }, parent)
 	end
@@ -189,6 +198,9 @@ end
 -- DESERT ---------------------------------------------------------------------------------------
 
 local function pyramid(parent, pos, size)
+	if Kit.TryDecor("Pyramide", parent, pos, { height = size }) then
+		return
+	end
 	local steps = 7
 	for s = 0, steps - 1 do
 		local w = size * (1 - s / steps)
@@ -200,6 +212,9 @@ local function pyramid(parent, pos, size)
 end
 
 local function cactus(parent, pos)
+	if Kit.TryDecor("Cactus", parent, pos, { height = 9 }) then
+		return
+	end
 	local h = R(5, 9)
 	local g = Color3.fromRGB(80, 175, 90)
 	cylinder(CFrame.new(pos + Vector3.new(0, h / 2, 0)), h, 1, g, parent)
@@ -215,6 +230,9 @@ local function cactus(parent, pos)
 end
 
 local function obelisk(parent, pos)
+	if Kit.TryDecor("Obelisque", parent, pos, { height = 20 }) then
+		return
+	end
 	part({ Size = Vector3.new(5, 1.5, 5), CFrame = CFrame.new(pos + Vector3.new(0, 0.75, 0)), Color = Color3.fromRGB(210, 170, 110) }, parent)
 	part({ Size = Vector3.new(3, 16, 3), CFrame = CFrame.new(pos + Vector3.new(0, 9.5, 0)), Color = Color3.fromRGB(235, 200, 135) }, parent)
 	wedge({ Size = Vector3.new(3, 2.5, 1.5), CFrame = CFrame.new(pos + Vector3.new(0, 18.75, -0.75)), Color = Config.Colors.Gold }, parent)
@@ -238,6 +256,9 @@ local function ruins(parent, pos)
 end
 
 local function sphinxStatue(parent, pos, facing)
+	if Kit.TryDecor("Sphinx", parent, pos, { height = 18, cf = CFrame.lookAt(pos, pos + facing) }) then
+		return
+	end
 	local cf = CFrame.lookAt(pos, pos + facing)
 	local sand = Color3.fromRGB(230, 195, 125)
 	part({ Size = Vector3.new(14, 3, 26), CFrame = cf * CFrame.new(0, 1.5, 0), Color = Color3.fromRGB(205, 170, 110) }, parent)
@@ -286,6 +307,9 @@ end
 -- PLAGE ----------------------------------------------------------------------------------------
 
 local function umbrella(parent, pos, color)
+	if Kit.TryDecor("Parasol", parent, pos, { height = 8.5 }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 4, 0)), 8, 0.25, WHITE, parent)
 	for k = 0, 7 do
 		local w = part({ Size = Vector3.new(3.4, 0.3, 4.4), CFrame = CFrame.new(pos + Vector3.new(0, 8, 0)) * CFrame.Angles(0, k * math.pi / 4, 0) * CFrame.new(0, -0.6, -2) * CFrame.Angles(math.rad(-20), 0, 0), Color = (k % 2 == 0) and color or WHITE, CanCollide = false }, parent)
@@ -310,6 +334,9 @@ local function sandcastle(parent, pos)
 end
 
 local function lighthouse(parent, pos)
+	if Kit.TryDecor("Phare", parent, pos, { height = 40 }) then
+		return
+	end
 	part({ Size = Vector3.new(14, 3, 14), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)), Color = Color3.fromRGB(150, 150, 160), Material = Enum.Material.Slate }, parent)
 	for i = 0, 6 do
 		cylinder(CFrame.new(pos + Vector3.new(0, 3 + i * 4 + 2, 0)), 4, 4.6 - i * 0.3, (i % 2 == 0) and Color3.fromRGB(235, 60, 60) or WHITE, parent)
@@ -554,6 +581,9 @@ end
 local SNOW = Color3.fromRGB(248, 252, 255)
 
 local function snowPine(parent, pos, scale)
+	if Kit.TryDecor("SapinNeige", parent, pos, { height = 17 * (scale or 1) }) then
+		return
+	end
 	Kit.pineTree(parent, pos, scale)
 	for k = 0, 3 do
 		local r = (5.5 - k * 1.2) * scale
@@ -565,6 +595,9 @@ local function snowPine(parent, pos, scale)
 end
 
 local function snowman(parent, pos)
+	if Kit.TryDecor("BonhommeNeige", parent, pos, { height = 13 }) then
+		return
+	end
 	ball(CFrame.new(pos + Vector3.new(0, 2.6, 0)), 5.5, SNOW, parent)
 	ball(CFrame.new(pos + Vector3.new(0, 6.4, 0)), 4.2, SNOW, parent)
 	ball(CFrame.new(pos + Vector3.new(0, 9.4, 0)), 3.2, SNOW, parent)
@@ -582,6 +615,9 @@ local function snowman(parent, pos)
 end
 
 local function igloo(parent, pos, facing)
+	if Kit.TryDecor("Igloo", parent, pos, { height = 9, cf = CFrame.lookAt(pos, pos + facing) }) then
+		return
+	end
 	local dome = ball(CFrame.new(pos), 18, SNOW, parent)
 	sphereMesh(dome, Vector3.new(1, 1, 1))
 	local cf = CFrame.lookAt(pos, pos + facing)
@@ -594,6 +630,9 @@ local function igloo(parent, pos, facing)
 end
 
 local function iceCrystal(parent, pos, scale)
+	if Kit.TryDecor("CristalGlace", parent, pos, { height = 7 * (scale or 1) }) then
+		return
+	end
 	for k = 1, 4 do
 		local h = R(4, 9) * scale
 		part({ Size = Vector3.new(1.4, h, 1.4) * Vector3.new(scale, 1, scale), CFrame = CFrame.new(pos) * CFrame.Angles(R(-0.4, 0.4), R(0, 6.28), R(-0.4, 0.4)) * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(170, 230, 255), Material = Enum.Material.Glass, Transparency = 0.2, CanCollide = false }, parent)
@@ -648,6 +687,9 @@ end
 local MYST = { Color3.fromRGB(190, 90, 255), Color3.fromRGB(80, 220, 255), Color3.fromRGB(255, 90, 210), Color3.fromRGB(120, 255, 200) }
 
 local function glowCrystal(parent, pos, scale, color)
+	if Kit.TryDecor("Cristal", parent, pos, { height = 9 * (scale or 1) }) then
+		return
+	end
 	for k = 1, 5 do
 		local h = R(4, 11) * scale
 		local w = R(1.2, 2.2) * scale
@@ -663,6 +705,9 @@ local function glowCrystal(parent, pos, scale, color)
 end
 
 local function glowMushroom(parent, pos, scale, color)
+	if Kit.TryDecor("ChampignonMagique", parent, pos, { height = 9 * (scale or 1) }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 3 * scale, 0)), 6 * scale, 0.9 * scale, Color3.fromRGB(230, 220, 255), parent)
 	local cap = ball(CFrame.new(pos + Vector3.new(0, 6.5 * scale, 0)), 8 * scale, color, parent, Enum.Material.Neon)
 	sphereMesh(cap, Vector3.new(1, 0.55, 1))
@@ -678,6 +723,9 @@ local function glowMushroom(parent, pos, scale, color)
 end
 
 local function magicTree(parent, pos, scale)
+	if Kit.TryDecor("ArbreMagique", parent, pos, { height = 14 * (scale or 1) }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 5 * scale, 0)), 10 * scale, 1 * scale, Color3.fromRGB(70, 50, 100), parent)
 	local col = MYST[rng:NextInteger(1, #MYST)]
 	for k = 1, 5 do
@@ -785,6 +833,9 @@ local function tower(parent, pos, radius, height, roof)
 end
 
 local function castle(parent, pos, facing)
+	if Kit.TryDecor("Chateau", parent, pos, { width = 70, cf = CFrame.lookAt(pos, pos + facing) }) then
+		return
+	end
 	local cf = CFrame.lookAt(pos, pos + facing)
 	local W, D, H = 60, 40, 22
 	-- remparts
@@ -814,6 +865,9 @@ local function castle(parent, pos, facing)
 end
 
 local function topiary(parent, pos)
+	if Kit.TryDecor("Topiaire", parent, pos, { height = 10 }) then
+		return
+	end
 	part({ Size = Vector3.new(3, 2, 3), CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)), Color = Color3.fromRGB(220, 120, 80) }, parent)
 	cylinder(CFrame.new(pos + Vector3.new(0, 3.5, 0)), 3, 0.3, Kit.WOOD_DARK, parent)
 	ball(CFrame.new(pos + Vector3.new(0, 6, 0)), 4.5, Color3.fromRGB(70, 170, 70), parent, Enum.Material.Grass)
@@ -896,6 +950,9 @@ end
 -- MONDE DE LAVE ----------------------------------------------------------------------------------
 
 local function volcano(parent, pos)
+	if Kit.TryDecor("Volcan", parent, pos, { height = 45 }) then
+		return
+	end
 	local rock = Color3.fromRGB(70, 55, 55)
 	for i = 0, 5 do
 		local r = 36 - i * 5.5
@@ -922,6 +979,9 @@ local function volcano(parent, pos)
 end
 
 local function obsidianSpike(parent, pos, scale)
+	if Kit.TryDecor("Obsidienne", parent, pos, { height = 8 * (scale or 1) }) then
+		return
+	end
 	for k = 1, 3 do
 		local h = R(4, 10) * scale
 		part({ Size = Vector3.new(1.6 * scale, h, 1.6 * scale), CFrame = CFrame.new(pos) * CFrame.Angles(R(-0.35, 0.35), R(0, 6.28), R(-0.35, 0.35)) * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(35, 25, 45), Material = Enum.Material.Glass, Reflectance = 0.3 }, parent)
@@ -930,6 +990,9 @@ local function obsidianSpike(parent, pos, scale)
 end
 
 local function deadTree(parent, pos, scale)
+	if Kit.TryDecor("ArbreMort", parent, pos, { height = 11 * (scale or 1) }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 5 * scale, 0)), 10 * scale, 0.8 * scale, Color3.fromRGB(45, 35, 35), parent, Enum.Material.Wood)
 	for k = 1, 3 do
 		local a = k * 2.1

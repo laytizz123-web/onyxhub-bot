@@ -11,6 +11,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 local Targets = require(script.Parent.Targets)
 local WorldBuilder = require(script.Parent.WorldBuilder)
+local Decor = require(script.Parent.Decor)
 
 local TreasureService = {}
 
@@ -36,8 +37,16 @@ end
 
 local GOLD = Color3.fromRGB(255, 200, 60)
 
+local TREASURE_HEIGHT = { Vase = 4.6, Coffre = 4, Tresor = 4.5 }
+
 local function buildVisual(model, def, world, base)
 	local s = def.scale
+	-- modele personnalise (dossier Decor) : Vase, Coffre, TresorGeant (ou Vase_Forest...)
+	local slot = def.id == "Tresor" and "TresorGeant" or def.id
+	local placed, size = Decor.Place(slot, model, base, { height = TREASURE_HEIGHT[def.id] * s, collide = false, query = false, world = world.id })
+	if placed then
+		return size
+	end
 	local gem = world.color:Lerp(Color3.fromRGB(150, 220, 255), 0.3)
 	if def.id == "Vase" then
 		local clay = world.id == "Frozen" and Color3.fromRGB(170, 210, 240) or (world.id == "Lava" and Color3.fromRGB(80, 60, 60) or Color3.fromRGB(205, 120, 75))

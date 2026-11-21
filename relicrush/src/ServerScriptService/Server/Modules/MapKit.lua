@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Decor = require(script.Parent.Decor)
 
 local Kit = {}
 
@@ -32,6 +33,17 @@ function Kit.avoidSegment(a, b, radius)
 		avoidCircle(a + d * (i / n), radius)
 	end
 end
+-- Utilise le modele "name" du dossier Decor s'il existe (sinon renvoie nil et le decor genere est construit)
+function Kit.TryDecor(name, parent, pos, opts)
+	opts = opts or {}
+	local cf = opts.cf or (CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+	local model, size = Decor.Place(name, parent, cf, opts)
+	if model then
+		avoidCircle(pos, math.max(size.X, size.Z) / 2 + 1)
+	end
+	return model
+end
+
 function Kit.isFree(pos, margin)
 	margin = margin or 0
 	for _, av in ipairs(avoid) do
@@ -150,6 +162,9 @@ end
 local LEAF_COLORS = { Color3.fromRGB(95, 200, 75), Color3.fromRGB(120, 220, 85), Color3.fromRGB(75, 180, 70) }
 
 local function roundTree(parent, pos, scale)
+	if Kit.TryDecor("Arbre", parent, pos, { height = 14 * (scale or 1) }) then
+		return
+	end
 	scale = scale or 1
 	cylinder(CFrame.new(pos + Vector3.new(0, 4 * scale, 0)), 8 * scale, 0.9 * scale, Color3.fromRGB(120, 80, 45), parent, Enum.Material.Wood)
 	local base = pos + Vector3.new(0, 9 * scale, 0)
@@ -166,6 +181,9 @@ local function roundTree(parent, pos, scale)
 end
 
 local function pineTree(parent, pos, scale)
+	if Kit.TryDecor("Sapin", parent, pos, { height = 17 * (scale or 1) }) then
+		return
+	end
 	scale = scale or 1
 	cylinder(CFrame.new(pos + Vector3.new(0, 3 * scale, 0)), 6 * scale, 0.8 * scale, Color3.fromRGB(100, 65, 40), parent, Enum.Material.Wood)
 	for k = 0, 3 do
@@ -177,6 +195,9 @@ local function pineTree(parent, pos, scale)
 end
 
 local function palmTree(parent, pos, scale)
+	if Kit.TryDecor("Palmier", parent, pos, { height = 15 * (scale or 1) }) then
+		return
+	end
 	scale = scale or 1
 	local lean = R(-0.25, 0.25)
 	local cf = CFrame.new(pos) * CFrame.Angles(0, R(0, 6.28), 0)
@@ -194,6 +215,9 @@ local function palmTree(parent, pos, scale)
 end
 
 local function bush(parent, pos, scale, flowerColor)
+	if Kit.TryDecor("Buisson", parent, pos, { height = 4 * (scale or 1), collide = false }) then
+		return
+	end
 	scale = scale or 1
 	for k = 1, 3 do
 		ballPart(CFrame.new(pos + Vector3.new((k - 2) * 1.6 * scale, 1.2 * scale, R(-0.6, 0.6))), R(2.8, 3.6) * scale, LEAF_COLORS[rng:NextInteger(1, 3)], parent, Enum.Material.Grass)
@@ -206,6 +230,9 @@ local function bush(parent, pos, scale, flowerColor)
 end
 
 local function flowerPatch(parent, pos)
+	if Kit.TryDecor("Fleurs", parent, pos, { height = 1.6, collide = false }) then
+		return
+	end
 	local colors = { Color3.fromRGB(255, 120, 170), Color3.fromRGB(255, 230, 80), Color3.fromRGB(150, 140, 255), Color3.new(1, 1, 1) }
 	for k = 1, 6 do
 		local p = pos + Vector3.new(R(-3, 3), 0, R(-3, 3))
@@ -215,11 +242,17 @@ local function flowerPatch(parent, pos)
 end
 
 local function rock(parent, pos, scale, color)
+	if Kit.TryDecor("Rocher", parent, pos, { height = 3 * (scale or 1) }) then
+		return
+	end
 	scale = scale or 1
 	part({ Size = Vector3.new(R(3, 5), R(2, 3.5), R(3, 5)) * scale, CFrame = CFrame.new(pos + Vector3.new(0, 0.6 * scale, 0)) * CFrame.Angles(R(-0.3, 0.3), R(0, 6.28), R(-0.3, 0.3)), Color = color or Color3.fromRGB(140, 140, 155), Material = Enum.Material.Slate }, parent)
 end
 
 local function mushroom(parent, pos, scale)
+	if Kit.TryDecor("Champignon", parent, pos, { height = 3.2 * (scale or 1), collide = false }) then
+		return
+	end
 	scale = scale or 1
 	cylinder(CFrame.new(pos + Vector3.new(0, 1 * scale, 0)), 2 * scale, 0.45 * scale, Color3.fromRGB(245, 235, 220), parent)
 	local cap = part({ Shape = Enum.PartType.Ball, Size = Vector3.new(3, 3, 3) * scale, CFrame = CFrame.new(pos + Vector3.new(0, 2.2 * scale, 0)), Color = Color3.fromRGB(235, 60, 70), CanCollide = false }, parent)
@@ -234,6 +267,9 @@ local function mushroom(parent, pos, scale)
 end
 
 local function lamp(parent, pos)
+	if Kit.TryDecor("Lampadaire", parent, pos, { height = 10 }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 0.3, 0)), 0.6, 0.8, Color3.fromRGB(50, 50, 60), parent, Enum.Material.Metal)
 	cylinder(CFrame.new(pos + Vector3.new(0, 4.5, 0)), 9, 0.25, Color3.fromRGB(50, 50, 60), parent, Enum.Material.Metal)
 	local bulb = ballPart(CFrame.new(pos + Vector3.new(0, 9.4, 0)), 1.6, Color3.fromRGB(255, 230, 170), parent, Enum.Material.Neon)
@@ -261,6 +297,9 @@ local HOUSE_WALLS = { Color3.fromRGB(255, 225, 180), Color3.fromRGB(190, 225, 25
 local HOUSE_ROOFS = { Color3.fromRGB(220, 75, 65), Color3.fromRGB(70, 120, 210), Color3.fromRGB(230, 140, 50), Color3.fromRGB(150, 80, 190) }
 
 local function house(parent, cf, k)
+	if Kit.TryDecor("Maison", parent, cf.Position, { height = 16, cf = cf }) then
+		return
+	end
 	local w, d, h = 14, 12, 9
 	local wall = HOUSE_WALLS[(k % #HOUSE_WALLS) + 1]
 	local roof = HOUSE_ROOFS[(k % #HOUSE_ROOFS) + 1]
@@ -365,6 +404,9 @@ local WHITE = Color3.new(1, 1, 1)
 
 -- Banc en bois oriente (face = -Z de cf)
 local function bench(parent, cf)
+	if Kit.TryDecor("Banc", parent, cf.Position, { height = 4, cf = cf }) then
+		return
+	end
 	for _, z in ipairs({ -0.5, 0.5 }) do
 		part({ Size = Vector3.new(6, 0.35, 0.9), CFrame = cf * CFrame.new(0, 1.6, z), Color = WOOD }, parent)
 	end
@@ -379,6 +421,9 @@ end
 
 -- Lanterne sur poteau (style jardin), couleur de lumiere au choix
 local function lantern(parent, pos, color)
+	if Kit.TryDecor("Lanterne", parent, pos, { height = 7.5 }) then
+		return
+	end
 	color = color or Color3.fromRGB(255, 210, 140)
 	cylinder(CFrame.new(pos + Vector3.new(0, 2.5, 0)), 5, 0.35, WOOD_DARK, parent, Enum.Material.Wood)
 	part({ Size = Vector3.new(1.6, 0.3, 1.6), CFrame = CFrame.new(pos + Vector3.new(0, 5.1, 0)), Color = WOOD_DARK }, parent)
@@ -466,6 +511,9 @@ end
 
 -- Kiosque / gloriette
 local function gazebo(parent, pos, roofColor)
+	if Kit.TryDecor("Kiosque", parent, pos, { height = 15 }) then
+		return
+	end
 	cylinder(CFrame.new(pos + Vector3.new(0, 0.5, 0)), 1, 9, STONE, parent, Enum.Material.Marble)
 	for k = 1, 6 do
 		local a = k / 6 * math.pi * 2
@@ -483,6 +531,9 @@ end
 
 -- Moulin a vent avec pales qui tournent
 local function windmill(parent, pos, facing)
+	if Kit.TryDecor("Moulin", parent, pos, { height = 26, cf = CFrame.lookAt(pos, pos + facing) }) then
+		return
+	end
 	local cf = CFrame.lookAt(pos, pos + facing)
 	cylinder(cf * CFrame.new(0, 9, 0), 18, 5, Color3.fromRGB(250, 240, 220), parent)
 	local roof = part({ Shape = Enum.PartType.Ball, Size = Vector3.new(11, 11, 11), CFrame = cf * CFrame.new(0, 18, 0), Color = Color3.fromRGB(220, 75, 65) }, parent)
@@ -505,6 +556,9 @@ end
 -- Echoppe de marche decorative (auvent raye + caisses de fruits)
 local STALL_COLORS = { Color3.fromRGB(255, 100, 120), Color3.fromRGB(80, 170, 255), Color3.fromRGB(255, 190, 40), Color3.fromRGB(130, 210, 90) }
 local function stall(parent, cf, k)
+	if Kit.TryDecor("Echoppe", parent, cf.Position, { height = 8.5, cf = cf }) then
+		return
+	end
 	local color = STALL_COLORS[(k % #STALL_COLORS) + 1]
 	part({ Size = Vector3.new(8, 3, 3.5), CFrame = cf * CFrame.new(0, 1.5, 0), Color = WOOD, Material = Enum.Material.WoodPlanks }, parent)
 	for _, x in ipairs({ -3.8, 3.8 }) do
@@ -525,6 +579,9 @@ end
 
 -- Statue doree de pet (patte geante sur socle) ou d'oeuf
 local function statue(parent, pos, kind, color)
+	if Kit.TryDecor("Statue", parent, pos, { height = 10 }) then
+		return
+	end
 	color = color or Config.Colors.Gold
 	local top
 	part({ Size = Vector3.new(7, 3, 7), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)), Color = STONE, Material = Enum.Material.Marble }, parent)
