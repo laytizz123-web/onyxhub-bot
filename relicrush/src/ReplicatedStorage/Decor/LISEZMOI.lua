@@ -6,14 +6,15 @@
     - Variantes au hasard : Arbre, Arbre2, Arbre3 ... Arbre9
     - Version pour un seul monde : ajoute _Village, _Forest, _Cave, _Desert, _Frozen, _Lava ou _Celestial
       (ex. "Caisse_Lava", "Arbre_Forest"). Elle passe avant la version generale dans ce monde.
-    - Taille automatique (hauteur indiquee). Pour garder la taille d'origine : attribut KeepScale = true.
+    - Taille automatique (hauteur indiquee). Pour agrandir / reduire : attribut Taille (nombre),
+      ex. 0.5 = moitie, 1.5 = une fois et demie. Pour garder la taille d'origine : attribut KeepScale = true.
     - Les scripts contenus dans les modeles sont supprimes automatiquement (securite).
     - Sans modele, le decor genere par le jeu reste en place.
 
   BATIMENTS ET GAMEPLAY (les boutons et panneaux restent fonctionnels)
     Fontaine (16)  Caisse (9)  Boutique (17)  Forge (12)  Autel (16)  TableauQuetes (10)
-    Portail (22)  Arene (68 de large)  Grotte (66 de large, doit etre creuse : les tresors sont dedans)
-    Boss (30)  Vase (4.6)  Coffre (4)  TresorGeant (4.5)
+    Portail (22)  Arene (68 de large)  Grotte (50 de large, doit etre creuse : les tresors sont dedans)
+    Boss (20)  Vase (4.6)  Coffre (4)  TresorGeant (4.5)
 
   NATURE ET PROPS
     Arbre (14)  GrandArbre (21)  Sapin (17)  SapinNeige (17)  Palmier (15)  ArbreMagique (14)  ArbreMort (11)

@@ -4,6 +4,7 @@
 --   * Variantes choisies au hasard : Arbre, Arbre2, Arbre3 ... Arbre9
 --   * Version propre a un monde : Arbre_Forest, Caisse_Lava ... (prioritaire dans ce monde)
 --   * Le modele est mis a l'echelle automatiquement (hauteur ou largeur de l'emplacement) et pose au sol.
+--     Attribut Taille (nombre) pour agrandir / reduire : 0.5 = moitie, 2 = double.
 --     Attribut KeepScale = true sur le modele pour garder sa taille d'origine.
 --   * Par securite, tous les scripts contenus dans ces modeles sont supprimes.
 -- Si aucun modele n'est trouve, le jeu garde le decor genere.
@@ -109,13 +110,21 @@ function Decor.Place(name, parent, cf, opts)
 	end
 	model:PivotTo(CFrame.new())
 	local _, size = model:GetBoundingBox()
-	if not template:GetAttribute("KeepScale") then
+	if template:GetAttribute("KeepScale") then
+		local t = tonumber(template:GetAttribute("Taille"))
+		if t and t > 0 then
+			pcall(function()
+				model:ScaleTo(model:GetScale() * t)
+			end)
+		end
+	else
 		local factor
 		if opts.width then
 			factor = opts.width / math.max(size.X, size.Z, 0.01)
 		elseif opts.height then
 			factor = opts.height / math.max(size.Y, 0.01)
 		end
+		factor = (factor or 1) * (tonumber(template:GetAttribute("Taille")) or 1)
 		if factor and factor > 0 then
 			pcall(function()
 				model:ScaleTo(model:GetScale() * factor)

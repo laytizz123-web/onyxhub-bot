@@ -15,6 +15,7 @@ Un modèle placé là avec le **nom d'un emplacement** remplace automatiquement 
 | Remplacer partout | `Arbre` |
 | Plusieurs variantes tirées au hasard | `Arbre`, `Arbre2`, `Arbre3`… (jusqu'à 9) |
 | Un modèle pour un seul monde | `Arbre_Forest`, `Caisse_Lava`, `Boss_Celestial`… |
+| Agrandir / réduire | ajoute l'attribut `Taille` (nombre) : `0.5` = moitié, `1.5` = une fois et demie |
 | Garder la taille d'origine | ajoute l'attribut `KeepScale` (booléen, coché) au modèle |
 
 - Mondes : `Village`, `Forest`, `Cave`, `Desert`, `Frozen`, `Lava`, `Celestial`.
@@ -34,8 +35,8 @@ Un modèle placé là avec le **nom d'un emplacement** remplace automatiquement 
 | `TableauQuetes` | 10 haut | village |
 | `Portail` | 22 haut | portails entre mondes |
 | `Arene` | 68 large | arène de boss de chaque monde |
-| `Grotte` | 66 large | grotte aux trésors (doit être creuse, car les trésors sont à l'intérieur) |
-| `Boss` | 30 haut | boss (les morceaux s'envolent quand il est vaincu) |
+| `Grotte` | 50 large | grotte aux trésors (doit être creuse, car les trésors sont à l'intérieur) |
+| `Boss` | 20 haut | boss (les morceaux s'envolent quand il est vaincu) |
 | `Vase` | 4,6 haut | trésor |
 | `Coffre` | 4 haut | trésor |
 | `TresorGeant` | 4,5 haut | trésor |

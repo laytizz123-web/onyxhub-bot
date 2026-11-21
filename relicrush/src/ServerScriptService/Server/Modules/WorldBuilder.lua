@@ -444,37 +444,37 @@ end
 -- Grotte aux tresors (village) : dome de rochers avec entree, cristaux lumineux a l'interieur
 local function treasureCave(parent, c, facing)
 	local rock = Color3.fromRGB(120, 110, 130)
-	local R0 = 30
+	local R0 = 22
 	local cf = CFrame.lookAt(c, c + facing)
-	for i = 0, 27 do
-		local a = i / 28 * math.pi * 2
+	for i = 0, 21 do
+		local a = i / 22 * math.pi * 2
 		local local_ = Vector3.new(math.cos(a), 0, math.sin(a))
 		local lp = cf:VectorToObjectSpace(local_)
 		if not (lp.Z < -0.8) then -- ouverture face a l'entree
 			local p = c + local_ * R0
-			part({ Size = Vector3.new(9, R(16, 22), 9), CFrame = CFrame.new(p + Vector3.new(0, 9, 0)) * CFrame.Angles(R(-0.2, 0.2), R(0, 3), R(-0.2, 0.2)), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.15)), Material = Enum.Material.Slate }, parent)
+			part({ Size = Vector3.new(7, R(11, 14), 7), CFrame = CFrame.new(p + Vector3.new(0, 6, 0)) * CFrame.Angles(R(-0.15, 0.15), R(0, 3), R(-0.15, 0.15)), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.15)), Material = Enum.Material.Slate }, parent)
 		end
 	end
-	-- toit
-	for i = 1, 9 do
-		local a = R(0, math.pi * 2)
-		local r = R(0, R0 * 0.7)
-		local b = ball(CFrame.new(c + Vector3.new(math.cos(a) * r, 22 + R(0, 4), math.sin(a) * r)), R(18, 26), rock, parent, Enum.Material.Slate)
-		b.CanCollide = true
+	-- toit : dalles de roche inclinees vers le centre (plus de boules geantes)
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		local p = c + Vector3.new(math.cos(a) * R0 * 0.55, 13, math.sin(a) * R0 * 0.55)
+		part({ Size = Vector3.new(14, 2.5, R0 * 0.9), CFrame = CFrame.lookAt(p, c + Vector3.new(0, 16, 0)) * CFrame.Angles(math.rad(-8), 0, 0), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.12)), Material = Enum.Material.Slate }, parent)
 	end
+	part({ Size = Vector3.new(14, 3, 14), CFrame = CFrame.new(c + Vector3.new(0, 15.5, 0)), Color = rock, Material = Enum.Material.Slate }, parent)
 	-- arche d'entree
 	local entrance = (cf * CFrame.new(0, 0, -R0)).Position
 	for _, x in ipairs({ -7, 7 }) do
-		part({ Size = Vector3.new(4, 16, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(x, 8, 0), Color = rock, Material = Enum.Material.Slate }, parent)
+		part({ Size = Vector3.new(4, 11, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(x, 5.5, 0), Color = rock, Material = Enum.Material.Slate }, parent)
 	end
-	part({ Size = Vector3.new(18, 4, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(0, 16, 0), Color = rock, Material = Enum.Material.Slate }, parent)
-	billboard(part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(entrance + Vector3.new(0, 18, 0)), Transparency = 1, CanCollide = false }, parent), "GROTTE AUX TRESORS", "Gros butin a l'interieur !", Color3.fromRGB(150, 220, 255), 3)
+	part({ Size = Vector3.new(18, 3, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(0, 12.5, 0), Color = rock, Material = Enum.Material.Slate }, parent)
+	billboard(part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(entrance + Vector3.new(0, 18, 0)), Transparency = 1, CanCollide = false }, parent), "GROTTE AUX TRESORS", "Gros butin a l'interieur !", Color3.fromRGB(150, 220, 255), 0)
 	-- cristaux lumineux
 	local cols = { Color3.fromRGB(90, 200, 255), Color3.fromRGB(180, 100, 255), Color3.fromRGB(255, 120, 220) }
 	for i = 1, 16 do
 		local a = R(0, math.pi * 2)
-		local r = R(R0 - 7, R0 - 3)
-		local p = c + Vector3.new(math.cos(a) * r, R(0, 8), math.sin(a) * r)
+		local r = R(R0 - 6, R0 - 3)
+		local p = c + Vector3.new(math.cos(a) * r, R(0, 5), math.sin(a) * r)
 		local col = cols[rng:NextInteger(1, 3)]
 		for k = 1, 3 do
 			local h = R(3, 7)
@@ -492,7 +492,7 @@ local function treasureCave(parent, c, facing)
 	local inside = {}
 	for i = 1, 6 do
 		local a = i / 6 * math.pi * 2
-		table.insert(inside, c + Vector3.new(math.cos(a) * 14, 0, math.sin(a) * 14))
+		table.insert(inside, c + Vector3.new(math.cos(a) * 11, 0, math.sin(a) * 11))
 	end
 	table.insert(inside, c)
 	avoidCircle(c, R0 + 6)
@@ -548,7 +548,7 @@ local function buildVillage(folder, world)
 	placePortal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), Config.Worlds[2])
 	placeArena(folder, c + Vector3.new(-110, 0, 60), world)
 	local cavePos = c + Vector3.new(105, 0, -100)
-	local caveSpots = Decor.Swap("Grotte", folder, CFrame.lookAt(cavePos, cavePos + Vector3.new(-1, 0, 1)), { width = 66 }, function(h)
+	local caveSpots = Decor.Swap("Grotte", folder, CFrame.lookAt(cavePos, cavePos + Vector3.new(-1, 0, 1)), { width = 50 }, function(h)
 		return treasureCave(h, cavePos, Vector3.new(-1, 0, 1))
 	end)
 	-- lampadaires et bancs autour de la place

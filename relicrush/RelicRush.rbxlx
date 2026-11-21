@@ -7,14 +7,15 @@
     - Variantes au hasard : Arbre, Arbre2, Arbre3 ... Arbre9
     - Version pour un seul monde : ajoute _Village, _Forest, _Cave, _Desert, _Frozen, _Lava ou _Celestial
       (ex. &quot;Caisse_Lava&quot;, &quot;Arbre_Forest&quot;). Elle passe avant la version generale dans ce monde.
-    - Taille automatique (hauteur indiquee). Pour garder la taille d'origine : attribut KeepScale = true.
+    - Taille automatique (hauteur indiquee). Pour agrandir / reduire : attribut Taille (nombre),
+      ex. 0.5 = moitie, 1.5 = une fois et demie. Pour garder la taille d'origine : attribut KeepScale = true.
     - Les scripts contenus dans les modeles sont supprimes automatiquement (securite).
     - Sans modele, le decor genere par le jeu reste en place.
 
   BATIMENTS ET GAMEPLAY (les boutons et panneaux restent fonctionnels)
     Fontaine (16)  Caisse (9)  Boutique (17)  Forge (12)  Autel (16)  TableauQuetes (10)
-    Portail (22)  Arene (68 de large)  Grotte (66 de large, doit etre creuse : les tresors sont dedans)
-    Boss (30)  Vase (4.6)  Coffre (4)  TresorGeant (4.5)
+    Portail (22)  Arene (68 de large)  Grotte (50 de large, doit etre creuse : les tresors sont dedans)
+    Boss (20)  Vase (4.6)  Coffre (4)  TresorGeant (4.5)
 
   NATURE ET PROPS
     Arbre (14)  GrandArbre (21)  Sapin (17)  SapinNeige (17)  Palmier (15)  ArbreMagique (14)  ArbreMort (11)
@@ -1451,13 +1452,13 @@ local function buildGolem(world, pos)
 	model.Name = &quot;Boss_&quot; .. world.id
 	local base = CFrame.new(pos)
 	-- boss personnalise (dossier Decor) : &quot;Boss&quot; ou &quot;Boss_Lava&quot;...
-	local custom, csize = Decor.Place(&quot;Boss&quot;, model, base, { height = 30, collide = false, world = world.id })
+	local custom, csize = Decor.Place(&quot;Boss&quot;, model, base, { height = 20, collide = false, world = world.id })
 	if custom then
 		local hit = part(model, { Name = &quot;Hitbox&quot;, Size = csize + Vector3.new(2, 0, 2), CFrame = base * CFrame.new(0, csize.Y / 2, 0), Transparency = 1, CanQuery = true })
 		model.PrimaryPart = hit
 		return model
 	end
-	local S = 1.6
+	local S = 1.1
 	local function rock(size, cf, color, mat)
 		return part(model, { Size = size * S, CFrame = base * CFrame.new(cf.Position * S) * cf.Rotation, Color = color or stone, Material = mat or Enum.Material.Slate })
 	end
@@ -1484,7 +1485,7 @@ local function buildGolem(world, pos)
 	light.Range = 30
 	light.Brightness = 2
 	light.Parent = model:GetChildren()[1]
-	local hit = part(model, { Name = &quot;Hitbox&quot;, Size = Vector3.new(18, 30, 14), CFrame = base * CFrame.new(0, 15, 0), Transparency = 1, CanQuery = true })
+	local hit = part(model, { Name = &quot;Hitbox&quot;, Size = Vector3.new(18, 30, 14) * S / 1.6, CFrame = base * CFrame.new(0, 15 * S / 1.6, 0), Transparency = 1, CanQuery = true })
 	model.PrimaryPart = hit
 	return model
 end
@@ -1983,6 +1984,7 @@ return DataService
 --   * Variantes choisies au hasard : Arbre, Arbre2, Arbre3 ... Arbre9
 --   * Version propre a un monde : Arbre_Forest, Caisse_Lava ... (prioritaire dans ce monde)
 --   * Le modele est mis a l'echelle automatiquement (hauteur ou largeur de l'emplacement) et pose au sol.
+--     Attribut Taille (nombre) pour agrandir / reduire : 0.5 = moitie, 2 = double.
 --     Attribut KeepScale = true sur le modele pour garder sa taille d'origine.
 --   * Par securite, tous les scripts contenus dans ces modeles sont supprimes.
 -- Si aucun modele n'est trouve, le jeu garde le decor genere.
@@ -2088,13 +2090,21 @@ function Decor.Place(name, parent, cf, opts)
 	end
 	model:PivotTo(CFrame.new())
 	local _, size = model:GetBoundingBox()
-	if not template:GetAttribute(&quot;KeepScale&quot;) then
+	if template:GetAttribute(&quot;KeepScale&quot;) then
+		local t = tonumber(template:GetAttribute(&quot;Taille&quot;))
+		if t and t &gt; 0 then
+			pcall(function()
+				model:ScaleTo(model:GetScale() * t)
+			end)
+		end
+	else
 		local factor
 		if opts.width then
 			factor = opts.width / math.max(size.X, size.Z, 0.01)
 		elseif opts.height then
 			factor = opts.height / math.max(size.Y, 0.01)
 		end
+		factor = (factor or 1) * (tonumber(template:GetAttribute(&quot;Taille&quot;)) or 1)
 		if factor and factor &gt; 0 then
 			pcall(function()
 				model:ScaleTo(model:GetScale() * factor)
@@ -5543,37 +5553,37 @@ end
 -- Grotte aux tresors (village) : dome de rochers avec entree, cristaux lumineux a l'interieur
 local function treasureCave(parent, c, facing)
 	local rock = Color3.fromRGB(120, 110, 130)
-	local R0 = 30
+	local R0 = 22
 	local cf = CFrame.lookAt(c, c + facing)
-	for i = 0, 27 do
-		local a = i / 28 * math.pi * 2
+	for i = 0, 21 do
+		local a = i / 22 * math.pi * 2
 		local local_ = Vector3.new(math.cos(a), 0, math.sin(a))
 		local lp = cf:VectorToObjectSpace(local_)
 		if not (lp.Z &lt; -0.8) then -- ouverture face a l'entree
 			local p = c + local_ * R0
-			part({ Size = Vector3.new(9, R(16, 22), 9), CFrame = CFrame.new(p + Vector3.new(0, 9, 0)) * CFrame.Angles(R(-0.2, 0.2), R(0, 3), R(-0.2, 0.2)), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.15)), Material = Enum.Material.Slate }, parent)
+			part({ Size = Vector3.new(7, R(11, 14), 7), CFrame = CFrame.new(p + Vector3.new(0, 6, 0)) * CFrame.Angles(R(-0.15, 0.15), R(0, 3), R(-0.15, 0.15)), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.15)), Material = Enum.Material.Slate }, parent)
 		end
 	end
-	-- toit
-	for i = 1, 9 do
-		local a = R(0, math.pi * 2)
-		local r = R(0, R0 * 0.7)
-		local b = ball(CFrame.new(c + Vector3.new(math.cos(a) * r, 22 + R(0, 4), math.sin(a) * r)), R(18, 26), rock, parent, Enum.Material.Slate)
-		b.CanCollide = true
+	-- toit : dalles de roche inclinees vers le centre (plus de boules geantes)
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		local p = c + Vector3.new(math.cos(a) * R0 * 0.55, 13, math.sin(a) * R0 * 0.55)
+		part({ Size = Vector3.new(14, 2.5, R0 * 0.9), CFrame = CFrame.lookAt(p, c + Vector3.new(0, 16, 0)) * CFrame.Angles(math.rad(-8), 0, 0), Color = rock:Lerp(Color3.new(0, 0, 0), R(0, 0.12)), Material = Enum.Material.Slate }, parent)
 	end
+	part({ Size = Vector3.new(14, 3, 14), CFrame = CFrame.new(c + Vector3.new(0, 15.5, 0)), Color = rock, Material = Enum.Material.Slate }, parent)
 	-- arche d'entree
 	local entrance = (cf * CFrame.new(0, 0, -R0)).Position
 	for _, x in ipairs({ -7, 7 }) do
-		part({ Size = Vector3.new(4, 16, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(x, 8, 0), Color = rock, Material = Enum.Material.Slate }, parent)
+		part({ Size = Vector3.new(4, 11, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(x, 5.5, 0), Color = rock, Material = Enum.Material.Slate }, parent)
 	end
-	part({ Size = Vector3.new(18, 4, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(0, 16, 0), Color = rock, Material = Enum.Material.Slate }, parent)
-	billboard(part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(entrance + Vector3.new(0, 18, 0)), Transparency = 1, CanCollide = false }, parent), &quot;GROTTE AUX TRESORS&quot;, &quot;Gros butin a l'interieur !&quot;, Color3.fromRGB(150, 220, 255), 3)
+	part({ Size = Vector3.new(18, 3, 5), CFrame = CFrame.lookAt(entrance, entrance + facing) * CFrame.new(0, 12.5, 0), Color = rock, Material = Enum.Material.Slate }, parent)
+	billboard(part({ Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(entrance + Vector3.new(0, 18, 0)), Transparency = 1, CanCollide = false }, parent), &quot;GROTTE AUX TRESORS&quot;, &quot;Gros butin a l'interieur !&quot;, Color3.fromRGB(150, 220, 255), 0)
 	-- cristaux lumineux
 	local cols = { Color3.fromRGB(90, 200, 255), Color3.fromRGB(180, 100, 255), Color3.fromRGB(255, 120, 220) }
 	for i = 1, 16 do
 		local a = R(0, math.pi * 2)
-		local r = R(R0 - 7, R0 - 3)
-		local p = c + Vector3.new(math.cos(a) * r, R(0, 8), math.sin(a) * r)
+		local r = R(R0 - 6, R0 - 3)
+		local p = c + Vector3.new(math.cos(a) * r, R(0, 5), math.sin(a) * r)
 		local col = cols[rng:NextInteger(1, 3)]
 		for k = 1, 3 do
 			local h = R(3, 7)
@@ -5591,7 +5601,7 @@ local function treasureCave(parent, c, facing)
 	local inside = {}
 	for i = 1, 6 do
 		local a = i / 6 * math.pi * 2
-		table.insert(inside, c + Vector3.new(math.cos(a) * 14, 0, math.sin(a) * 14))
+		table.insert(inside, c + Vector3.new(math.cos(a) * 11, 0, math.sin(a) * 11))
 	end
 	table.insert(inside, c)
 	avoidCircle(c, R0 + 6)
@@ -5647,7 +5657,7 @@ local function buildVillage(folder, world)
 	placePortal(folder, c + Vector3.new(152, 0, 0), Vector3.new(-1, 0, 0), Config.Worlds[2])
 	placeArena(folder, c + Vector3.new(-110, 0, 60), world)
 	local cavePos = c + Vector3.new(105, 0, -100)
-	local caveSpots = Decor.Swap(&quot;Grotte&quot;, folder, CFrame.lookAt(cavePos, cavePos + Vector3.new(-1, 0, 1)), { width = 66 }, function(h)
+	local caveSpots = Decor.Swap(&quot;Grotte&quot;, folder, CFrame.lookAt(cavePos, cavePos + Vector3.new(-1, 0, 1)), { width = 50 }, function(h)
 		return treasureCave(h, cavePos, Vector3.new(-1, 0, 1))
 	end)
 	-- lampadaires et bancs autour de la place

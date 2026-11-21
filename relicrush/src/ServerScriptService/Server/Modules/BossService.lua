@@ -58,13 +58,13 @@ local function buildGolem(world, pos)
 	model.Name = "Boss_" .. world.id
 	local base = CFrame.new(pos)
 	-- boss personnalise (dossier Decor) : "Boss" ou "Boss_Lava"...
-	local custom, csize = Decor.Place("Boss", model, base, { height = 30, collide = false, world = world.id })
+	local custom, csize = Decor.Place("Boss", model, base, { height = 20, collide = false, world = world.id })
 	if custom then
 		local hit = part(model, { Name = "Hitbox", Size = csize + Vector3.new(2, 0, 2), CFrame = base * CFrame.new(0, csize.Y / 2, 0), Transparency = 1, CanQuery = true })
 		model.PrimaryPart = hit
 		return model
 	end
-	local S = 1.6
+	local S = 1.1
 	local function rock(size, cf, color, mat)
 		return part(model, { Size = size * S, CFrame = base * CFrame.new(cf.Position * S) * cf.Rotation, Color = color or stone, Material = mat or Enum.Material.Slate })
 	end
@@ -91,7 +91,7 @@ local function buildGolem(world, pos)
 	light.Range = 30
 	light.Brightness = 2
 	light.Parent = model:GetChildren()[1]
-	local hit = part(model, { Name = "Hitbox", Size = Vector3.new(18, 30, 14), CFrame = base * CFrame.new(0, 15, 0), Transparency = 1, CanQuery = true })
+	local hit = part(model, { Name = "Hitbox", Size = Vector3.new(18, 30, 14) * S / 1.6, CFrame = base * CFrame.new(0, 15 * S / 1.6, 0), Transparency = 1, CanQuery = true })
 	model.PrimaryPart = hit
 	return model
 end
