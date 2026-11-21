@@ -49,55 +49,34 @@ end
 local R = Color3.fromRGB
 Config.Relics = {
 	-- Starter Village
-	{ id = "Grimoire", img = "Village1", name = "Grimoire etoile", world = "Village", rarity = "Common", shape = "tome", c1 = R(60, 55, 62), c2 = R(255, 200, 70) },
-	{ id = "PotionAmethyste", img = "Village2", name = "Potion d'amethyste", world = "Village", rarity = "Uncommon", shape = "flask", c1 = R(150, 80, 235), c2 = R(255, 200, 80) },
-	{ id = "GlandOr", img = "Village3", name = "Gland d'or", world = "Village", rarity = "Rare", shape = "acorn", c1 = R(225, 165, 55), c2 = R(245, 205, 95) },
-	{ id = "LanterneAncienne", img = "Village4", name = "Lanterne ancienne", world = "Village", rarity = "Epic", shape = "lantern", c1 = R(70, 60, 58), c2 = R(255, 150, 50) },
-	{ id = "CouronneRoyale", img = "Village5", name = "Couronne royale", world = "Village", rarity = "Legendary", shape = "crown", c1 = R(255, 190, 60), c2 = R(210, 50, 55) },
-	{ id = "EtoileCristal", img = "Village6", name = "Etoile de cristal", world = "Village", rarity = "Mythic", shape = "star8", c1 = R(60, 150, 255), c2 = R(210, 235, 255) },
+	{ id = "LivreEtoile", img = "Village1", name = "Livre etoile", world = "Village", rarity = "Common", shape = "tome", c1 = R(50, 100, 200), c2 = R(255, 200, 70) },
+	{ id = "FioleAzur", img = "Village2", name = "Fiole d'azur", world = "Village", rarity = "Uncommon", shape = "flask", c1 = R(80, 200, 235), c2 = R(230, 240, 255) },
+	{ id = "CouronneRoyale", img = "Village3", name = "Couronne royale", world = "Village", rarity = "Rare", shape = "crown", c1 = R(255, 195, 60), c2 = R(60, 140, 255) },
 	-- Enchanted Forest
-	{ id = "OrbeSylvestre", img = "Forest1", name = "Orbe sylvestre", world = "Forest", rarity = "Common", shape = "cageorb", c1 = R(125, 50, 165), c2 = R(230, 170, 60) },
-	{ id = "ChampignonLunaire", img = "Forest2", name = "Champignon lunaire", world = "Forest", rarity = "Uncommon", shape = "mushroom", c1 = R(90, 150, 255), c2 = R(230, 200, 170) },
-	{ id = "PlumeEnchantee", img = "Forest3", name = "Plume enchantee", world = "Forest", rarity = "Rare", shape = "feather", c1 = R(150, 100, 205), c2 = R(230, 170, 60) },
-	{ id = "CroissantMystique", img = "Forest4", name = "Croissant mystique", world = "Forest", rarity = "Epic", shape = "moon", c1 = R(130, 70, 185), c2 = R(230, 170, 60) },
-	{ id = "CarillonFees", img = "Forest5", name = "Carillon des fees", world = "Forest", rarity = "Legendary", shape = "chime", c1 = R(90, 180, 255), c2 = R(200, 150, 60) },
-	{ id = "EmblemeAile", img = "Forest6", name = "Embleme aile", world = "Forest", rarity = "Mythic", shape = "wings", c1 = R(150, 60, 220), c2 = R(245, 240, 230) },
+	{ id = "GlandAncien", img = "Forest1", name = "Gland ancien", world = "Forest", rarity = "Common", shape = "acorn", c1 = R(215, 120, 45), c2 = R(110, 170, 70) },
+	{ id = "Amanite", img = "Forest2", name = "Amanite enchantee", world = "Forest", rarity = "Uncommon", shape = "toadstool", c1 = R(215, 50, 45), c2 = R(245, 235, 215) },
+	{ id = "LanterneMousse", img = "Forest3", name = "Lanterne moussue", world = "Forest", rarity = "Rare", shape = "lantern", c1 = R(85, 80, 70), c2 = R(255, 180, 60) },
 	-- Crystal Cave
-	{ id = "PierreRune", img = "Cave1", name = "Pierre de rune", world = "Cave", rarity = "Common", shape = "monolith", c1 = R(85, 85, 95), c2 = R(80, 220, 255) },
-	{ id = "OrbeGalactique", img = "Cave2", name = "Orbe galactique", world = "Cave", rarity = "Uncommon", shape = "cageorb", c1 = R(40, 90, 220), c2 = R(220, 160, 60) },
-	{ id = "CouronneCristal", img = "Cave3", name = "Couronne de cristal", world = "Cave", rarity = "Rare", shape = "crystalcrown", c1 = R(80, 170, 255), c2 = R(210, 240, 255) },
-	{ id = "ToupieCristal", img = "Cave4", name = "Toupie de cristal", world = "Cave", rarity = "Epic", shape = "top", c1 = R(110, 150, 170), c2 = R(220, 160, 60) },
-	{ id = "BlasonAmethyste", img = "Cave5", name = "Blason d'amethyste", world = "Cave", rarity = "Legendary", shape = "shield", c1 = R(120, 80, 150), c2 = R(220, 165, 60) },
-	{ id = "AnneauRoyal", img = "Cave6", name = "Anneau royal", world = "Cave", rarity = "Mythic", shape = "ring", c1 = R(225, 165, 60), c2 = R(160, 60, 220) },
+	{ id = "Amethyste", img = "Cave1", name = "Amas d'amethyste", world = "Cave", rarity = "Uncommon", shape = "cluster", c1 = R(160, 80, 240), c2 = R(110, 105, 110) },
+	{ id = "PiocheCristal", img = "Cave2", name = "Pioche de cristal", world = "Cave", rarity = "Rare", shape = "pickaxe", c1 = R(150, 150, 165), c2 = R(170, 80, 240) },
+	{ id = "LanterneCristal", img = "Cave3", name = "Lanterne de cristal", world = "Cave", rarity = "Epic", shape = "lantern", c1 = R(80, 80, 90), c2 = R(180, 90, 255) },
 	{ id = "Oubliee", name = "Relique oubliee", world = "Cave", rarity = "Secret", shape = "cube", c1 = R(25, 15, 40), c2 = R(200, 120, 255), secret = true },
 	-- Desert Kingdom
-	{ id = "AnkhOr", img = "Desert1", name = "Ankh d'or", world = "Desert", rarity = "Common", shape = "ankh", c1 = R(240, 185, 60), c2 = R(60, 200, 230) },
-	{ id = "ParcheminSolaire", img = "Desert2", name = "Parchemin solaire", world = "Desert", rarity = "Uncommon", shape = "scroll", c1 = R(240, 225, 190), c2 = R(230, 170, 60) },
-	{ id = "CalicePharaon", img = "Desert3", name = "Calice du pharaon", world = "Desert", rarity = "Rare", shape = "chalice", c1 = R(230, 170, 60), c2 = R(150, 60, 210) },
-	{ id = "SablierTemps", img = "Desert4", name = "Sablier du temps", world = "Desert", rarity = "Epic", shape = "hourglass", c1 = R(215, 160, 70), c2 = R(240, 200, 130) },
-	{ id = "EtendardDesert", img = "Desert5", name = "Etendard du desert", world = "Desert", rarity = "Legendary", shape = "banner", c1 = R(240, 130, 40), c2 = R(220, 160, 60) },
-	{ id = "SoleilOr", img = "Desert6", name = "Soleil d'or", world = "Desert", rarity = "Mythic", shape = "sun", c1 = R(255, 185, 40), c2 = R(255, 240, 180) },
+	{ id = "SablierOr", img = "Desert1", name = "Sablier d'or", world = "Desert", rarity = "Rare", shape = "hourglass", c1 = R(220, 160, 60), c2 = R(245, 205, 130) },
+	{ id = "AnkhOr", img = "Desert2", name = "Ankh d'or", world = "Desert", rarity = "Epic", shape = "ankh", c1 = R(240, 185, 60), c2 = R(60, 160, 240) },
+	{ id = "ScarabeeAile", img = "Desert3", name = "Scarabee aile", world = "Desert", rarity = "Legendary", shape = "scarab", c1 = R(240, 180, 50), c2 = R(60, 150, 240) },
 	-- Frozen World
-	{ id = "FloconEternel", img = "Frozen1", name = "Flocon eternel", world = "Frozen", rarity = "Common", shape = "snowflake", c1 = R(120, 200, 255), c2 = R(240, 250, 255) },
-	{ id = "ClocheGivre", img = "Frozen2", name = "Cloche de givre", world = "Frozen", rarity = "Uncommon", shape = "bell", c1 = R(150, 180, 240), c2 = R(110, 220, 255) },
-	{ id = "CouronneGlace", img = "Frozen3", name = "Couronne de glace", world = "Frozen", rarity = "Rare", shape = "crystalcrown", c1 = R(90, 165, 255), c2 = R(230, 245, 255) },
-	{ id = "ChrysalideGlace", img = "Frozen4", name = "Chrysalide de glace", world = "Frozen", rarity = "Epic", shape = "cocoon", c1 = R(80, 120, 230), c2 = R(160, 205, 255) },
-	{ id = "OrbeBoreal", img = "Frozen5", name = "Orbe boreal", world = "Frozen", rarity = "Legendary", shape = "cageorb", c1 = R(40, 110, 225), c2 = R(220, 160, 60) },
-	{ id = "EmblemeArgent", img = "Frozen6", name = "Embleme d'argent", world = "Frozen", rarity = "Mythic", shape = "wings", c1 = R(40, 40, 60), c2 = R(225, 225, 235) },
+	{ id = "FloconEternel", img = "Frozen1", name = "Flocon eternel", world = "Frozen", rarity = "Epic", shape = "snowflake", c1 = R(110, 195, 255), c2 = R(235, 248, 255) },
+	{ id = "ClocheGivre", img = "Frozen2", name = "Cloche de givre", world = "Frozen", rarity = "Legendary", shape = "bell", c1 = R(150, 175, 215), c2 = R(90, 200, 255) },
+	{ id = "CouronneGlace", img = "Frozen3", name = "Couronne de glace", world = "Frozen", rarity = "Mythic", shape = "crystalcrown", c1 = R(120, 190, 255), c2 = R(230, 245, 255) },
 	-- Lava World
-	{ id = "OursinMagma", img = "Lava1", name = "Oursin de magma", world = "Lava", rarity = "Uncommon", shape = "spiky", c1 = R(120, 45, 30), c2 = R(255, 120, 40) },
-	{ id = "CouronneBraise", img = "Lava2", name = "Couronne de braise", world = "Lava", rarity = "Rare", shape = "crown", c1 = R(205, 85, 35), c2 = R(255, 190, 70) },
-	{ id = "EclipseNoire", img = "Lava3", name = "Eclipse noire", world = "Lava", rarity = "Epic", shape = "eclipse", c1 = R(12, 10, 12), c2 = R(255, 120, 30) },
-	{ id = "CoeurLave", img = "Lava4", name = "Coeur de lave", world = "Lava", rarity = "Legendary", shape = "heart", c1 = R(220, 45, 30), c2 = R(70, 35, 35) },
-	{ id = "CouronneVolcan", img = "Lava5", name = "Couronne volcanique", world = "Lava", rarity = "Mythic", shape = "crown", c1 = R(95, 45, 35), c2 = R(255, 120, 40) },
-	{ id = "AnneauFeu", img = "Lava6", name = "Anneau de feu", world = "Lava", rarity = "Celestial", shape = "ring", c1 = R(255, 95, 30), c2 = R(255, 210, 90) },
+	{ id = "RocheMagma", img = "Lava1", name = "Roche de magma", world = "Lava", rarity = "Legendary", shape = "cluster", c1 = R(255, 140, 40), c2 = R(70, 50, 45) },
+	{ id = "CouronneVolcan", img = "Lava2", name = "Couronne volcanique", world = "Lava", rarity = "Mythic", shape = "crown", c1 = R(75, 55, 50), c2 = R(255, 130, 40) },
+	{ id = "MarteauForge", img = "Lava3", name = "Marteau de forge", world = "Lava", rarity = "Celestial", shape = "hammer", c1 = R(100, 90, 95), c2 = R(255, 140, 40) },
 	-- Celestial World
-	{ id = "MedaillonCeleste", img = "Celestial1", name = "Medaillon celeste", world = "Celestial", rarity = "Rare", shape = "amulet", c1 = R(230, 170, 60), c2 = R(150, 60, 220) },
-	{ id = "EtoileAstrale", img = "Celestial2", name = "Etoile astrale", world = "Celestial", rarity = "Epic", shape = "star8", c1 = R(255, 200, 80), c2 = R(80, 210, 255) },
-	{ id = "OrbeCosmos", img = "Celestial3", name = "Orbe du cosmos", world = "Celestial", rarity = "Legendary", shape = "cageorb", c1 = R(140, 60, 225), c2 = R(230, 170, 60) },
-	{ id = "CaliceCeleste", img = "Celestial4", name = "Calice celeste", world = "Celestial", rarity = "Mythic", shape = "chalice", c1 = R(235, 175, 60), c2 = R(150, 60, 220) },
-	{ id = "CouronneCieux", img = "Celestial5", name = "Couronne des cieux", world = "Celestial", rarity = "Celestial", shape = "crown", c1 = R(250, 200, 70), c2 = R(60, 170, 255) },
-	{ id = "OrbeInfini", img = "Celestial6", name = "Orbe infini", world = "Celestial", rarity = "Divine", shape = "cageorb", c1 = R(70, 60, 225), c2 = R(235, 175, 60) },
+	{ id = "PlaneteCeleste", img = "Celestial1", name = "Planete celeste", world = "Celestial", rarity = "Mythic", shape = "planet", c1 = R(110, 60, 220), c2 = R(240, 185, 60) },
+	{ id = "LuneEtoilee", img = "Celestial2", name = "Lune etoilee", world = "Celestial", rarity = "Celestial", shape = "moon", c1 = R(130, 80, 230), c2 = R(245, 190, 60) },
+	{ id = "SoleilCosmique", img = "Celestial3", name = "Soleil cosmique", world = "Celestial", rarity = "Divine", shape = "sun", c1 = R(245, 185, 50), c2 = R(150, 90, 255) },
 	{ id = "Neant", name = "Coeur du neant", world = "Celestial", rarity = "Secret", shape = "heart", c1 = R(20, 10, 30), c2 = R(160, 80, 255), secret = true },
 	-- Reliques de boss (une par monde)
 	{ id = "BossGolem", name = "Noyau de golem", world = "Village", rarity = "Epic", shape = "golem", c1 = R(140, 130, 150), c2 = R(200, 90, 255), boss = true },
@@ -120,13 +99,13 @@ end
 
 -- Caisses (une par monde) : chances par rarete (en %), cout
 Config.Crates = {
-	Village = { name = "Caisse du Village", price = 100, odds = { Common = 58, Uncommon = 28, Rare = 10, Epic = 3.3, Legendary = 0.65, Mythic = 0.05 } },
-	Forest = { name = "Caisse sylvestre", price = 700, odds = { Common = 50, Uncommon = 30, Rare = 14, Epic = 4.8, Legendary = 1.1, Mythic = 0.1 } },
-	Cave = { name = "Caisse de cristal", price = 4000, odds = { Common = 46, Uncommon = 30, Rare = 16, Epic = 6.2, Legendary = 1.6, Mythic = 0.2, Secret = 0.0005 } },
-	Desert = { name = "Caisse royale", price = 25000, odds = { Common = 45, Uncommon = 30, Rare = 16, Epic = 6.5, Legendary = 2.2, Mythic = 0.3 } },
-	Frozen = { name = "Caisse de givre", price = 150000, odds = { Common = 44, Uncommon = 30, Rare = 16, Epic = 7, Legendary = 2.6, Mythic = 0.4 } },
-	Lava = { name = "Caisse volcanique", price = 900000, odds = { Uncommon = 60, Rare = 25, Epic = 10, Legendary = 4, Mythic = 0.9, Celestial = 0.1 } },
-	Celestial = { name = "Caisse celeste", price = 6000000, odds = { Rare = 62, Epic = 26, Legendary = 9, Mythic = 2.5, Celestial = 0.45, Divine = 0.05, Secret = 0.0002 } },
+	Village = { name = "Caisse du Village", price = 100, odds = { Common = 72, Uncommon = 24, Rare = 4 } },
+	Forest = { name = "Caisse sylvestre", price = 700, odds = { Common = 68, Uncommon = 26, Rare = 6 } },
+	Cave = { name = "Caisse de cristal", price = 4000, odds = { Uncommon = 70, Rare = 25, Epic = 5, Secret = 0.0005 } },
+	Desert = { name = "Caisse royale", price = 25000, odds = { Rare = 72, Epic = 24, Legendary = 4 } },
+	Frozen = { name = "Caisse de givre", price = 150000, odds = { Epic = 74, Legendary = 23, Mythic = 3 } },
+	Lava = { name = "Caisse volcanique", price = 900000, odds = { Legendary = 76, Mythic = 22, Celestial = 2 } },
+	Celestial = { name = "Caisse celeste", price = 6000000, odds = { Mythic = 78, Celestial = 20.5, Divine = 1.5, Secret = 0.0002 } },
 }
 
 -- Tresors (objets a detruire) : par monde, 3 tailles. hp et coins x mult du monde
@@ -209,7 +188,7 @@ Config.Milestones = {
 	{ id = "m9", text = "Obtiens une relique Legendaire", stat = "Legendary", goal = 1, coins = 100000 },
 	{ id = "m10", text = "Detruis 5 000 tresors", stat = "Breaks", goal = 5000, coins = 500000 },
 	{ id = "m11", text = "Debloque le Desert Kingdom", stat = "Worlds", goal = 4, coins = 2000000 },
-	{ id = "m12", text = "Decouvre 35 reliques differentes", stat = "Discovered", goal = 35, coins = 20000000 },
+	{ id = "m12", text = "Decouvre 25 reliques differentes", stat = "Discovered", goal = 25, coins = 20000000 },
 }
 
 -- Recompenses quotidiennes (7 jours, x mult du meilleur monde pour les pieces)

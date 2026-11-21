@@ -511,6 +511,53 @@ SHAPES.eclipse = function(m, a, b)
 	end
 end
 
+SHAPES.cluster = function(m, a, b)
+	-- amas de cristaux sur un socle de roche (amethyste, magma)
+	local rock = ball(m, 1.6, CF(0, -0.55, 0), b, Enum.Material.Slate)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = V(1.2, 0.5, 1)
+	mesh.Parent = rock
+	local spikes = { { 0, 0, 0, 1.6, 0.55 }, { -0.45, 0.1, -20, 1.1, 0.42 }, { 0.45, -0.1, 22, 1.2, 0.44 }, { 0.15, 0.35, 8, 0.9, 0.36 }, { -0.25, -0.35, -10, 0.85, 0.34 } }
+	for _, sp in ipairs(spikes) do
+		local x, z, tilt, h, w = sp[1], sp[2], sp[3], sp[4], sp[5]
+		local cf = CF(x, -0.5, z) * ANG(rad(z * 25), 0, rad(tilt)) * CF(0, h / 2, 0)
+		box(m, V(w, h, w), cf * ANG(0, rad(45), 0), a, GLASS)
+		box(m, V(w * 0.5, h * 0.85, w * 0.5), cf * ANG(0, rad(45), 0), a:Lerp(Color3.new(1, 1, 1), 0.4), NEON)
+		box(m, V(w * 0.7, w * 0.7, w * 0.7), cf * CF(0, h / 2, 0) * ANG(rad(45), 0, rad(45)), a, GLASS)
+	end
+end
+SHAPES.pickaxe = function(m, a, b)
+	cyl(m, 2.2, 0.2, CF(0, -0.3, 0), Color3.fromRGB(120, 80, 50), Enum.Material.Wood)
+	for _, y in ipairs({ -0.9, 0.2 }) do
+		cyl(m, 0.18, 0.26, CF(0, y, 0), Color3.fromRGB(90, 60, 40), Enum.Material.Fabric)
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		piece(m, "wedge", V(0.25, 0.35, 1), CF(s * 0.55, 0.85, 0) * ANG(0, rad(90 * s), rad(-12 * s)), a, METAL)
+	end
+	box(m, V(0.5, 0.45, 0.4), CF(0, 0.85, 0), a, METAL)
+	gem(m, 0.45, CF(0, 1.1, 0), b)
+end
+SHAPES.planet = function(m, a, b)
+	ball(m, 1.5, CF(), a, NEON).Transparency = 0.05
+	ball(m, 0.55, CF(0.3, 0.3, -0.4), Color3.fromRGB(200, 160, 255), NEON)
+	ring(m, 1.15, 0.14, CF() * ANG(rad(70), 0, rad(18)), b, METAL, 24)
+	ring(m, 1.3, 0.06, CF() * ANG(rad(70), 0, rad(18)), b:Lerp(Color3.new(1, 1, 1), 0.3), METAL, 24)
+end
+SHAPES.toadstool = function(m, a, b)
+	cyl(m, 1.1, 0.6, CF(0, -0.5, 0), b)
+	local cap = ball(m, 2, CF(0, 0.2, 0), a)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = V(1, 0.55, 1)
+	mesh.Parent = cap
+	for i = 0, 6 do
+		local ang = i * 0.9
+		local r = (i % 2 == 0) and 0.55 or 0.25
+		ball(m, 0.28, CF(math.cos(ang) * r, 0.68 - r * 0.25, math.sin(ang) * r), b)
+	end
+end
+
 -- Effets selon la rarete
 local function effects(model, core, def, rarity)
 	local idx = rarity.index

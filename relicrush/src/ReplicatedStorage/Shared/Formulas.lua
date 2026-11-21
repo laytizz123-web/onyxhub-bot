@@ -99,9 +99,13 @@ end
 function F.CrateOdds(worldId, luck)
 	local crate = Config.Crates[worldId]
 	local list, total = {}, 0
+	local lowest = math.huge
+	for rarityId in pairs(crate.odds) do
+		lowest = math.min(lowest, Config.RarityById[rarityId].index)
+	end
 	for rarityId, pct in pairs(crate.odds) do
 		local r = Config.RarityById[rarityId]
-		local w = pct * ((r.index >= 3) and luck or 1)
+		local w = pct * ((r.index > lowest) and luck or 1)
 		-- il faut au moins une relique de cette rarete dans le monde
 		local found = false
 		for _, rel in ipairs(Config.Relics) do
