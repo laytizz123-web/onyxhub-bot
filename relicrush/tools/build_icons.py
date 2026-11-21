@@ -226,12 +226,23 @@ def encode(path, size):
     return base64.b64encode(bytes(pal)).decode(), base64.b64encode(bytes(rle)).decode()
 
 
+RELICS = os.path.join(ROOT, "assets", "relics")  # reliques et bannieres de monde (planche de reliques)
+
+
 def write_lua():
     entries, total = [], 0
-    for file in sorted(os.listdir(ICONS)):
+    files = [(ICONS, f) for f in sorted(os.listdir(ICONS))]
+    if os.path.isdir(RELICS):
+        files += [(RELICS, f) for f in sorted(os.listdir(RELICS))]
+    for folder, file in files:
         name = file[:-4]
-        size = 200 if name in sum(NAMES, []) else 96
-        pal, rle = encode(os.path.join(ICONS, file), size)
+        if name.startswith("world_"):
+            size = 150
+        elif name.startswith("relic_"):
+            size = 112
+        else:
+            size = 200 if name in sum(NAMES, []) else 96
+        pal, rle = encode(os.path.join(folder, file), size)
         total += len(rle)
         entries.append(f'\t{name} = {{ size = {size}, palette = "{pal}", data = "{rle}" }},')
     with open(OUT_LUA, "w") as f:

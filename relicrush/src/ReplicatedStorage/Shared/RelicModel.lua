@@ -352,6 +352,165 @@ SHAPES.golem = function(m, a, b)
 	end
 end
 
+-- Formes de la planche de reliques ------------------------------------------------------------------
+SHAPES.tome = function(m, a, b)
+	box(m, V(1.7, 2, 0.7), CF(), a, Enum.Material.Slate)
+	box(m, V(1.8, 2.1, 0.12), CF(0, 0, -0.36), a:Lerp(Color3.new(0, 0, 0), 0.25), Enum.Material.Slate)
+	for _, x in ipairs({ -0.8, 0.8 }) do
+		for _, y in ipairs({ -0.95, 0.95 }) do
+			box(m, V(0.32, 0.32, 0.8), CF(x, y, 0), b, METAL)
+		end
+	end
+	for i = 0, 3 do
+		piece(m, "wedge", V(0.1, 0.55, 0.22), CF(0, 0, -0.42) * ANG(0, 0, i * math.pi / 2) * CF(0, 0.32, 0) * ANG(0, rad(90), 0), b, NEON)
+	end
+	ball(m, 0.42, CF(0, 0, -0.42), b:Lerp(Color3.new(1, 1, 1), 0.4), NEON)
+	ring(m, 0.62, 0.06, CF(0, 0, -0.43), b, METAL, 16)
+end
+SHAPES.star8 = function(m, a, b)
+	for i = 0, 7 do
+		local len = (i % 2 == 0) and 1.15 or 0.75
+		piece(m, "wedge", V(0.4, len, 0.5), CF() * ANG(0, 0, i * math.pi / 4) * CF(0, len / 2 + 0.25, -0.12), a, GLASS)
+		piece(m, "wedge", V(0.4, len, 0.5), CF() * ANG(0, 0, i * math.pi / 4) * CF(0, len / 2 + 0.25, 0.12) * ANG(0, math.pi, 0), a:Lerp(Color3.new(1, 1, 1), 0.2), GLASS)
+	end
+	ball(m, 0.75, CF(), b, NEON)
+	gem(m, 0.5, CF(), b)
+end
+SHAPES.cageorb = function(m, a, b)
+	ball(m, 1.55, CF(), a, NEON).Transparency = 0.05
+	ball(m, 0.6, CF(0.2, 0.2, -0.35), a:Lerp(Color3.new(1, 1, 1), 0.6), NEON)
+	for i = 0, 3 do
+		ring(m, 0.86, 0.11, CF() * ANG(rad(i * 45), rad(i * 37), rad(i * 20)), b, METAL, 18)
+	end
+end
+SHAPES.chime = function(m, a, b)
+	box(m, V(1.9, 0.22, 0.6), CF(0, 1, 0), b, METAL)
+	cyl(m, 0.3, 0.3, CF(0, 1.25, 0), b, METAL)
+	for i = 0, 3 do
+		local x = -0.66 + i * 0.44
+		local h = 1.1 + (i % 2) * 0.35
+		box(m, V(0.04, 0.3, 0.04), CF(x, 0.78, 0), b, METAL)
+		cyl(m, h, 0.24, CF(x, 0.6 - h / 2, 0), a, GLASS)
+		cyl(m, h * 0.8, 0.12, CF(x, 0.6 - h / 2, 0), a:Lerp(Color3.new(1, 1, 1), 0.5), NEON)
+	end
+end
+SHAPES.wings = function(m, a, b)
+	-- embleme dore avec gemme centrale et deux ailes de plumes
+	box(m, V(0.9, 1.1, 0.35), CF() * ANG(0, 0, rad(45)), GOLD, METAL)
+	gem(m, 0.6, CF(0, 0, -0.15), a)
+	for _, s in ipairs({ -1, 1 }) do
+		for k = 0, 3 do
+			local len = 1.1 - k * 0.18
+			box(m, V(len, 0.26, 0.08), CF(s * (0.55 + len / 2), 0.35 - k * 0.22, 0.05) * ANG(0, 0, rad(s * (25 - k * 14))), b, Enum.Material.SmoothPlastic)
+		end
+		box(m, V(0.5, 0.18, 0.1), CF(s * 0.6, 0.45, 0) * ANG(0, 0, rad(s * 30)), GOLD, METAL)
+	end
+	piece(m, "wedge", V(0.3, 0.45, 0.3), CF(0, -0.75, 0) * ANG(math.pi, 0, 0), GOLD, METAL)
+end
+SHAPES.monolith = function(m, a, b)
+	box(m, V(1.1, 1.9, 0.75), CF(0, -0.15, 0), a, Enum.Material.Slate)
+	piece(m, "wedge", V(1.1, 0.5, 0.38), CF(0, 1.05, -0.19), a, Enum.Material.Slate)
+	piece(m, "wedge", V(1.1, 0.5, 0.38), CF(0, 1.05, 0.19) * ANG(0, math.pi, 0), a, Enum.Material.Slate)
+	gem(m, 0.42, CF(0, 0.15, -0.4), b)
+	box(m, V(0.06, 1.3, 0.05), CF(-0.35, -0.2, -0.39), b, NEON)
+	box(m, V(0.06, 1.3, 0.05), CF(0.35, -0.2, -0.39), b, NEON)
+	box(m, V(1.3, 0.25, 0.95), CF(0, -1.15, 0), a:Lerp(Color3.new(0, 0, 0), 0.2), Enum.Material.Slate)
+end
+SHAPES.crystalcrown = function(m, a, b)
+	cyl(m, 0.5, 1.9, CF(0, -0.55, 0), a:Lerp(Color3.new(0, 0, 0), 0.2), GLASS)
+	for i = 0, 7 do
+		local ang = i / 8 * math.pi * 2
+		local h = (i % 2 == 0) and 1.3 or 0.9
+		box(m, V(0.3, h, 0.3), CF(math.cos(ang) * 0.8, -0.3 + h / 2, math.sin(ang) * 0.8) * ANG(0, ang, 0) * ANG(0, rad(45), 0), a, GLASS)
+	end
+	gem(m, 0.55, CF(0, 0.2, 0), b)
+end
+SHAPES.top = function(m, a, b)
+	cyl(m, 0.2, 1.9, CF(0, 0.3, 0), b, METAL)
+	piece(m, "wedge", V(1.6, 0.6, 0.8), CF(0, 0.7, -0.4), a, METAL)
+	piece(m, "wedge", V(1.6, 0.6, 0.8), CF(0, 0.7, 0.4) * ANG(0, math.pi, 0), a, METAL)
+	for i = 0, 5 do
+		piece(m, "wedge", V(0.6, 1, 0.5), CF() * ANG(0, i * math.pi / 3, 0) * CF(0, -0.35, -0.25) * ANG(math.pi, 0, 0), a:Lerp(Color3.new(0, 0, 0), 0.25), METAL)
+	end
+	gem(m, 0.35, CF(0, -0.95, 0), Color3.fromRGB(90, 220, 255))
+	cyl(m, 0.25, 0.25, CF(0, 1.1, 0), b, METAL)
+end
+SHAPES.shield = function(m, a, b)
+	box(m, V(1.7, 1.4, 0.3), CF(0, 0.25, 0), a, METAL)
+	piece(m, "wedge", V(0.85, 0.9, 0.3), CF(-0.425, -0.9, 0) * ANG(math.pi, 0, 0), a, METAL)
+	piece(m, "wedge", V(0.85, 0.9, 0.3), CF(0.425, -0.9, 0) * ANG(math.pi, math.pi, 0), a, METAL)
+	box(m, V(1.85, 0.2, 0.4), CF(0, 0.95, 0), b, METAL)
+	box(m, V(0.2, 2.1, 0.36), CF(0, -0.05, 0), b, METAL)
+	box(m, V(1.75, 0.18, 0.36), CF(0, 0.2, 0), b, METAL)
+	gem(m, 0.55, CF(0, 0.2, -0.2), Color3.fromRGB(170, 70, 255))
+	for _, x in ipairs({ -0.95, 0.95 }) do
+		piece(m, "wedge", V(0.2, 0.5, 0.3), CF(x, 1.05, 0), b, METAL)
+	end
+end
+SHAPES.ring = function(m, a, b)
+	local n = 22
+	for i = 0, n - 1 do
+		local ang = i / n * math.pi * 2
+		box(m, V(0.34, 0.5, 0.18), CF(math.cos(ang) * 1, 0, math.sin(ang) * 1) * ANG(0, -ang, 0), a, METAL)
+	end
+	ring(m, 1.02, 0.07, CF(0, 0.26, 0) * ANG(rad(90), 0, 0), a:Lerp(Color3.new(1, 1, 1), 0.3), METAL, 22)
+	ring(m, 1.02, 0.07, CF(0, -0.26, 0) * ANG(rad(90), 0, 0), a:Lerp(Color3.new(1, 1, 1), 0.3), METAL, 22)
+	for i = 0, 3 do
+		local ang = i / 4 * math.pi * 2
+		gem(m, 0.3, CF(math.cos(ang) * 1.1, 0, math.sin(ang) * 1.1), b)
+	end
+end
+SHAPES.scroll = function(m, a, b)
+	box(m, V(1.6, 1.8, 0.06), CF(), a, Enum.Material.Fabric)
+	for _, y in ipairs({ -1, 1 }) do
+		cyl(m, 1.9, 0.3, CF(0, y * 0.95, 0) * ANG(0, 0, rad(90)), b, METAL)
+		for _, x in ipairs({ -1.05, 1.05 }) do
+			ball(m, 0.36, CF(x, y * 0.95, 0), b, METAL)
+		end
+	end
+	ball(m, 0.5, CF(0, 0, -0.05), Color3.fromRGB(255, 170, 40), NEON)
+	ring(m, 0.38, 0.05, CF(0, 0, -0.06), b, METAL, 12)
+end
+SHAPES.banner = function(m, a, b)
+	cyl(m, 1.9, 0.18, CF(0, 0.95, 0) * ANG(0, 0, rad(90)), b, METAL)
+	for _, x in ipairs({ -1, 1 }) do
+		ball(m, 0.3, CF(x, 0.95, 0), b, METAL)
+	end
+	box(m, V(1.5, 1.4, 0.08), CF(0, 0.2, 0), a, Enum.Material.Fabric)
+	piece(m, "wedge", V(0.08, 0.6, 0.75), CF(-0.375, -0.8, 0) * ANG(math.pi, rad(90), 0), a, Enum.Material.Fabric)
+	piece(m, "wedge", V(0.08, 0.6, 0.75), CF(0.375, -0.8, 0) * ANG(math.pi, rad(-90), 0), a, Enum.Material.Fabric)
+	box(m, V(1.5, 0.3, 0.1), CF(0, 0.3, -0.03), a:Lerp(Color3.fromRGB(255, 220, 120), 0.5), NEON)
+	box(m, V(0.12, 2, 0.12), CF(-0.8, 0.1, 0), b, METAL)
+	box(m, V(0.12, 2, 0.12), CF(0.8, 0.1, 0), b, METAL)
+end
+SHAPES.cocoon = function(m, a, b)
+	for i = 0, 6 do
+		local t = i / 6
+		local d = 0.55 + math.sin(t * math.pi) * 0.55
+		ball(m, d, CF(-1 + t * 2, math.sin(t * math.pi) * 0.2, 0) * ANG(0, 0, rad(-20)), (i % 2 == 0) and a or b, GLASS)
+	end
+	ball(m, 0.9, CF(0, 0.15, 0), b:Lerp(Color3.new(1, 1, 1), 0.3), NEON).Transparency = 0.4
+end
+SHAPES.spiky = function(m, a, b)
+	ball(m, 1.4, CF(), a, Enum.Material.Slate)
+	ball(m, 0.9, CF(0, 0, -0.35), b, NEON).Transparency = 0.3
+	for i = 0, 13 do
+		local yaw = (i * 2.4) % (math.pi * 2)
+		local pitch = math.asin(-1 + 2 * (i + 0.5) / 14)
+		piece(m, "wedge", V(0.18, 0.7, 0.18), CF() * ANG(0, yaw, 0) * ANG(pitch + math.pi / 2, 0, 0) * CF(0, 0.95, 0), Color3.fromRGB(45, 25, 25), METAL)
+	end
+	ring(m, 0.72, 0.08, CF() * ANG(rad(90), 0, 0), b, NEON, 14)
+end
+SHAPES.eclipse = function(m, a, b)
+	ball(m, 1.5, CF(), a, Enum.Material.SmoothPlastic)
+	ring(m, 0.85, 0.22, CF(0, 0, 0.1), b, NEON, 22)
+	ring(m, 1.0, 0.12, CF(0, 0, 0.15), Color3.fromRGB(255, 200, 80), NEON, 22)
+	for i = 0, 11 do
+		local ang = i / 12 * math.pi * 2
+		box(m, V(0.12, 0.45, 0.05), CF(math.cos(ang) * 1.2, math.sin(ang) * 1.2, 0.15) * ANG(0, 0, ang - math.pi / 2), b, NEON)
+	end
+end
+
 -- Effets selon la rarete
 local function effects(model, core, def, rarity)
 	local idx = rarity.index

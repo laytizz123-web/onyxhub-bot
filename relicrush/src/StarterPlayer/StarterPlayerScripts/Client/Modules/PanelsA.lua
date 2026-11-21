@@ -42,7 +42,7 @@ local function relicTile(parent, relicId, opts)
 	UI.corner(tile, 14)
 	UI.gradient(tile, Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 190), 90)
 	UI.stroke(tile, opts.selected and Color3.new(1, 1, 1) or rc, opts.selected and 4 or 3)
-	RelicView.Viewport(relicId, tile, { Size = UDim2.new(1, -10, 1, -30), Position = UDim2.fromOffset(5, 4), ZIndex = Z + 1 }, opts.silhouette, opts.spin)
+	RelicView.Icon(relicId, tile, { Size = UDim2.new(1, -10, 1, -30), Position = UDim2.fromOffset(5, 4), ZIndex = Z + 1 }, opts.silhouette, opts.spin)
 	label(tile, { Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), Text = opts.caption or (opts.silhouette and "???" or F.Format(def.power)), TextColor3 = opts.captionColor or C.Text, ZIndex = Z + 2 })
 	if opts.equipped then
 		Icons.Image("check", tile, { Size = UDim2.fromOffset(28, 28), Position = UDim2.fromOffset(4, 4), ZIndex = Z + 3 })
@@ -120,16 +120,21 @@ Window.Register("Index", {
 		end
 		label(root, { Size = UDim2.new(0.6, 0, 0, 30), Text = "Decouvertes : " .. found .. " / " .. total, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = C.Gold })
 		label(root, { Size = UDim2.new(0.4, 0, 0, 24), Position = UDim2.new(0.6, 0, 0, 4), Text = "Bonus d'index : +" .. math.floor(F.IndexBonus(d) * 100) .. " % puissance", TextColor3 = Color3.fromRGB(215, 160, 255), TextXAlignment = Enum.TextXAlignment.Right })
-		local tabs = UI.new("Frame", { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 36), BackgroundTransparency = 1, ZIndex = Z }, root)
+		local tabs = UI.new("Frame", { Size = UDim2.new(1, 0, 0, 52), Position = UDim2.fromOffset(0, 32), BackgroundTransparency = 1, ZIndex = Z }, root)
 		UI.list(tabs, 6, true)
 		for i, w in ipairs(Config.Worlds) do
-			local b = UI.button({ Size = UDim2.fromOffset(100, 36), Text = w.id, LayoutOrder = i, ZIndex = Z }, tabs, ctx.world == w.id and w.color or C.Navy2)
+			local b = Icons.Button("world_" .. w.id, tabs, { Size = UDim2.fromOffset(100, 46), LayoutOrder = i, ZIndex = Z })
+			if ctx.world ~= w.id then
+				b.ImageColor3 = Color3.fromRGB(150, 145, 170)
+			else
+				UI.new("UIScale", { Scale = 1.12 }, b)
+			end
 			b.Activated:Connect(function()
 				ctx.world = w.id
 				Window.Render()
 			end)
 		end
-		local grid = UI.scroll({ Name = "IndexGrid", Size = UDim2.new(1, 0, 1, -86), Position = UDim2.fromOffset(0, 84), ZIndex = Z }, root)
+		local grid = UI.scroll({ Name = "IndexGrid", Size = UDim2.new(1, 0, 1, -92), Position = UDim2.fromOffset(0, 90), ZIndex = Z }, root)
 		UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(136, 160), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 		for i, r in ipairs(Config.Relics) do
 			if r.world == ctx.world then
@@ -227,7 +232,7 @@ Window.Register("Inventory", {
 		end
 		local def = Config.RelicById[focus.id]
 		local rar = Config.RarityById[def.rarity]
-		RelicView.Viewport(def.id, side, { Size = UDim2.new(1, -20, 0, 150), Position = UDim2.fromOffset(10, 8), ZIndex = Z + 1 }, false, true)
+		RelicView.Icon(def.id, side, { Size = UDim2.new(1, -20, 0, 150), Position = UDim2.fromOffset(10, 8), ZIndex = Z + 1 }, false, true)
 		label(side, { Size = UDim2.new(1, -20, 0, 28), Position = UDim2.fromOffset(10, 160), Text = def.name })
 		label(side, { Size = UDim2.new(1, -20, 0, 22), Position = UDim2.fromOffset(10, 190), Text = rar.name .. "  -  " .. Config.WorldById[def.world].name, TextColor3 = rar.color })
 		label(side, { Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 216), Text = "Puissance " .. F.Format(def.power), TextColor3 = Color3.fromRGB(215, 160, 255) })
@@ -299,8 +304,12 @@ Window.Register("Worlds", {
 			local prev = Config.Worlds[i - 1]
 			local available = not prev or d.Worlds[prev.id]
 			local row = UI.card({ Size = UDim2.new(1, -14, 0, 92), LayoutOrder = i, ZIndex = Z }, list, w.color:Lerp(C.Navy, 0.35))
-			label(row, { Size = UDim2.new(0.5, 0, 0, 36), Position = UDim2.fromOffset(16, 10), Text = w.name, TextXAlignment = Enum.TextXAlignment.Left, StrokeThickness = 3 })
-			label(row, { Size = UDim2.new(0.5, 0, 0, 24), Position = UDim2.fromOffset(16, 52), Text = "Tresors x" .. F.Format(w.mult) .. "  -  Boss : " .. Config.Boss[w.id].name, TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Left })
+			local banner = Icons.Image("world_" .. w.id, row, { Size = UDim2.fromOffset(120, 88), Position = UDim2.fromOffset(4, 2), ZIndex = Z + 1 })
+			if not unlocked then
+				banner.ImageColor3 = Color3.fromRGB(120, 115, 140)
+			end
+			label(row, { Size = UDim2.new(0.45, 0, 0, 36), Position = UDim2.fromOffset(134, 10), Text = w.name, TextXAlignment = Enum.TextXAlignment.Left, StrokeThickness = 3 })
+			label(row, { Size = UDim2.new(0.45, 0, 0, 24), Position = UDim2.fromOffset(134, 52), Text = "Tresors x" .. F.Format(w.mult) .. "  -  Boss : " .. Config.Boss[w.id].name, TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Left })
 			local text, color, fn
 			if unlocked then
 				text, color = "VOYAGER", C.Green

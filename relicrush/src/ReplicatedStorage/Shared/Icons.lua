@@ -87,6 +87,18 @@ local function content(name)
 	return false
 end
 
+-- Vrai si une image existe pour ce nom (ID uploade ou image integree)
+function Icons.Has(name)
+	if Icons.AssetIds[name] then
+		return true
+	end
+	if not IconData then
+		local ok, data = pcall(require, script.Parent:WaitForChild("IconData", 10))
+		IconData = ok and data or {}
+	end
+	return IconData[name] ~= nil and supported
+end
+
 function Icons.Apply(target, name)
 	local id = Icons.AssetIds[name]
 	if id then

@@ -160,7 +160,7 @@ local function crateAnimation(results)
 			UI.gradient(ray, Color3.new(1, 1, 1), Color3.new(1, 1, 1), 90).Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 1) })
 		end
 		TweenService:Create(rays, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { Rotation = 360 }):Play()
-		RelicView.Viewport(r.id, card, { Size = UDim2.fromOffset(200, 200), Position = UDim2.new(0.5, -100, 0.4, -100), ZIndex = 84 }, false, true)
+		RelicView.Icon(r.id, card, { Size = UDim2.fromOffset(200, 200), Position = UDim2.new(0.5, -100, 0.4, -100), ZIndex = 84 }, false, true)
 		UI.text({ Size = UDim2.new(1, 0, 0, 34), Position = UDim2.new(0, 0, 1, -92), Text = def.name, ZIndex = 85, StrokeThickness = 3 }, card)
 		UI.text({ Size = UDim2.new(1, 0, 0, 28), Position = UDim2.new(0, 0, 1, -56), Text = rar.name .. "  -  P " .. F.Format(def.power), TextColor3 = rar.color, ZIndex = 85, StrokeThickness = 3 }, card)
 		if r.first then

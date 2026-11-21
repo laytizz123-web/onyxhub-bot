@@ -410,7 +410,7 @@ local function fountain(parent, c)
 	cylinder(CFrame.new(c + Vector3.new(0, 5, 0)), 6, 2, Color3.fromRGB(235, 232, 245), parent, Enum.Material.Marble)
 	cylinder(CFrame.new(c + Vector3.new(0, 8.3, 0)), 0.8, 6, GOLD, parent, Enum.Material.Metal)
 	-- grande relique doree tournant au sommet
-	local idol = RelicModel.Build("IdoleOr")
+	local idol = RelicModel.Build("CouronneRoyale")
 	idol:ScaleTo(2.6)
 	idol:PivotTo(CFrame.new(c + Vector3.new(0, 13.5, 0)))
 	idol.Parent = parent
