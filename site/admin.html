@@ -60,6 +60,30 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); vertical-align: top; }
 .tablewrap { overflow-x: auto; }
 .muted { color: var(--muted); }
+.card { background: var(--vault); border: 1px solid var(--seam); border-radius: 16px; margin-bottom: 14px; scroll-margin-top: 120px; }
+.card.form, .form.card { padding: 16px; }
+.cardhead { padding: 16px 16px 4px; }
+.cardhead h3 { margin: 0; font-size: 17px; }
+.cardhead p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.card > .form { padding-top: 12px; }
+.jump { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 16px; }
+.jump a { font-size: 13px; color: var(--muted); text-decoration: none; border: 1px solid var(--seam); border-radius: 999px; padding: 5px 10px; }
+.jump a:hover { color: var(--text); border-color: var(--violet); }
+.rowsed { display: grid; gap: 8px; }
+.rowslist { display: grid; gap: 8px; }
+.rowline { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; background: var(--ink); border: 1px solid var(--seam); border-radius: 12px; padding: 10px; }
+.rowline .cell { display: grid; gap: 4px; flex: 1 1 150px; min-width: 0; }
+.rowline .cell span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.rowline .rowtitle { flex: 1 1 100%; font-size: 14px; }
+button.icon { width: 38px; height: 38px; padding: 0; flex: none; }
+button.add { justify-self: start; border-style: dashed; color: var(--muted); }
+button.add:hover { color: var(--text); }
+.pagecard { text-align: left; display: grid; gap: 4px; padding: 14px; border-radius: 14px; }
+.pagecard span { color: var(--muted); font-weight: 500; font-size: 13px; }
+input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px; border: 1px solid var(--seam); background: var(--ink); }
+.top > div { min-width: 0; flex: 1 1 auto; }
+.top b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .btn, .top button { flex: none; padding: 7px 11px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -70,49 +94,61 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
 <script>
 (function () {
   var S = null, tab = "home";
+  /* the pages of the dashboard and the modules on each one */
+  var PAGES = [
+    ["home", "🏠 Accueil"],
+    ["trades", "💱 Trades", ["cross", "index", "vouch", "values", "tickets", "translate"]],
+    ["community", "👥 Communauté", ["welcome", "rules", "supporter", "suggest", "counting", "counters"]],
+    ["levels", "📈 Niveaux", ["levels", "eco", "autoquiz"]],
+    ["moderation", "🛡️ Modération", ["security", "badwords", "commandsOnly", "scam", "logs"]],
+    ["apps", "📝 Candidatures", ["apps"]],
+    ["send", "✉️ Message"],
+    ["scams", "🚨 Scammers"],
+    ["console", "🖥️ Console"]
+  ];
   var SECTIONS = {
-    welcome: ["👋 Bienvenue", "Messages d'arrivée et de départ, rôle automatique"],
+    welcome: ["👋 Bienvenue", "Messages d'arrivée et de départ, rôle donné à l'arrivée"],
     rules: ["📜 Règlement", "Règlement à accepter pour voir le serveur"],
-    levels: ["📈 Niveaux", "XP en écrivant et en vocal, annonces, classement"],
+    levels: ["📈 Niveaux", "XP en écrivant et en vocal, annonces, rôles par niveau"],
     vouch: ["⭐ Vouches", "Salon des vouches, délai, rôles qu'on peut vouch"],
-    tickets: ["🎫 Tickets", "Fermeture automatique des tickets inactifs"],
+    tickets: ["🎫 Tickets inactifs", "Rappel puis fermeture automatique"],
     translate: ["🌐 Traduction", "Traduction FR ⇄ EN dans les tickets"],
-    security: ["🛡️ Sécurité", "Anti-spam, anti-liens"],
-    badwords: ["🤬 Gros mots", "Liste de mots interdits et sanction"],
+    security: ["🛡️ Anti-spam et anti-liens", "Limites, sanctions, exceptions"],
+    badwords: ["🤬 Gros mots", "Mots interdits et sanction"],
     commandsOnly: ["⌨️ Salons commandes", "Salons où on ne peut faire que des commandes"],
     supporter: ["💜 Supporters", "Rôles du tag du serveur et du statut, remerciements"],
-    scam: ["🚨 Scams", "Salon où sont annoncés les scammers"],
+    scam: ["🚨 Alertes scam", "Salon où sont annoncés les scammers"],
     logs: ["🧾 Logs", "Salon des logs des tickets"],
     suggest: ["💡 Suggestions", "Salon des suggestions"],
-    counting: ["🔢 Comptage", "Salon de comptage"],
+    counting: ["🔢 Comptage", "Salon où on compte 1, 2, 3…"],
     counters: ["📊 Compteurs", "Salons vocaux qui affichent les chiffres"],
-    eco: ["💰 Économie", "Pièces par message, daily, boutique"],
-    autoquiz: ["❓ Quiz auto", "Quiz automatique dans un salon"],
+    eco: ["💰 Économie", "Pièces par message, daily, boutique de rôles"],
+    autoquiz: ["❓ Quiz automatique", "Un quiz régulier dans un salon"],
     apps: ["📝 Candidatures", "Rôles et catégorie des candidatures"],
-    cross: ["🔁 Cross-trade", "Catégories de valeur et rôles"],
-    index: ["📖 Index", "Rôles, prix et cautions des index"],
-    values: ["📊 Valeurs", "Valeurs fixées par le serveur"]
+    cross: ["🔁 Cross-trade", "Valeurs des trades et middlemen de chacune"],
+    index: ["📖 Index", "Rôle, prix et caution de chaque index"],
+    values: ["📊 Valeurs du serveur", "Valeurs que tu fixes toi-même (elles passent avant le site)"]
   };
   var HIDDEN = ["msgId", "boardMsgId", "panelMsgId", "stickyMsgId", "nextAt", "n", "last", "best", "everyoneSaw", "opened", "thanks", "panels", "auto", "claim", "channelId_old"];
   var LABELS = {
     on: "Activé", channelId: "Salon", message: "Message", leave: "Message de départ", leaveChannelId: "Salon des départs", autorole: "Rôle donné à l'arrivée",
-    roleId: "Rôle", text: "Texte du règlement", announce: "Annoncer les niveaux", ignored: "Salons sans XP", quizXp: "XP par quiz gagné", stack: "Garder les anciens rôles de niveau",
+    roleId: "Rôle", text: "Texte", announce: "Annoncer les montées de niveau", ignored: "Salons sans XP", quizXp: "XP par quiz gagné", stack: "Garder les anciens rôles de niveau",
     xpChannelId: "Salon des paliers d'XP", xpStep: "Palier d'XP", boardChannelId: "Salon du classement", voiceOn: "XP en vocal", voiceXp: "XP par minute en vocal", voiceMinPeople: "Personnes minimum en vocal",
-    rewards: "Récompenses de niveau", cooldownH: "Délai entre 2 vouches (heures)", panelChannelId: "Salon du top vouches", roles: "Rôles ignorés", excluded: "Exclus",
+    rewards: "Rôles par niveau", cooldownH: "Délai entre 2 vouches (heures)", panelChannelId: "Salon du top vouches", roles: "Rôles ignorés", excluded: "Rôles exclus",
     inactiveH: "Prévenir après (heures sans message)", closeH: "Fermer après (heures de plus)", channels: "Salons ignorés", words: "Mots interdits (un par ligne)", action: "Sanction", minutes: "Minutes",
-    tagRole: "Rôle du tag du serveur", statusRole: "Rôle du statut", statusText: "Texte à avoir dans le statut", langs: "Langue par salon",
-    perMessage: "Pièces par message", dailyMin: "Daily minimum", dailyMax: "Daily maximum", shop: "Boutique",
+    tagRole: "Rôle du tag du serveur", statusRole: "Rôle du statut", statusText: "Texte à avoir dans le statut", langs: "Langue de chaque salon",
+    perMessage: "Pièces par message", dailyMin: "Daily minimum", dailyMax: "Daily maximum", shop: "Boutique de rôles",
     categoryId: "Catégorie", members: "Salon membres", trades: "Salon trades", vouches: "Salon vouches",
-    antiSpam: "Anti-spam", antiLink: "Anti-liens", antiRaid: "Anti-raid", link: "Anti-liens", spam: "Anti-spam", domains: "Sites autorisés (un par ligne)",
+    antiSpam: "Anti-spam activé", antiLink: "Anti-liens", antiRaid: "Anti-raid", link: "Anti-liens", spam: "Anti-spam", domains: "Sites autorisés (un par ligne)",
     messages: "Messages max", seconds: "En (secondes)", mentions: "Mentions max", duplicates: "Messages répétés max", caps: "% de majuscules max", emojis: "Emojis max", clean: "Supprimer les messages du flood",
-    staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs du serveur", cats: "Catégories", prices: "Prix", cautions: "Cautions"
+    staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs", cats: "Valeurs des trades", prices: "Prix", cautions: "Cautions", access: "Accès OG", trade: "Trade OG", shop_: "Shop OG", label: "Nom"
   };
-  var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Membres exclus des vouches", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau" };
+  var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Rôles qu'on ne peut pas vouch", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau", "index.roles": "Rôle de chaque index", "index.prices": "Prix de chaque index", "index.cautions": "Caution de chaque index", "access.shop": "Shop OG", "access.trade": "Trade OG" };
   var CHOICES = {
     action: [["delete", "Supprimer seulement"], ["warn", "Avertissement"], ["timeout", "Sourdine"], ["kick", "Expulsion"], ["ban", "Bannissement"]],
     antiLink: [["off", "Désactivé"], ["invites", "Invitations Discord seulement"], ["all", "Tous les liens"]]
   };
-  var LINE_LISTS = ["domains"];
+  var MUTS = ["Default", "Gold", "Diamond", "Bloodrot", "Candy", "Lava", "Galaxy", "Yin Yang", "Radioactive", "Cursed", "Rainbow", "Divine", "Cyber", "Phantom", "Crystal"];
   var $ = function (s, r) { return (r || document).querySelector(s); };
   function el(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -123,42 +159,117 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
   function toast(msg, ok) { var t = $("#toast"); t.textContent = msg; t.className = "toast " + (ok ? "ok" : "bad"); t.hidden = false; clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 2600); }
   function api(path, body) {
     return fetch(path, { method: body ? "POST" : "GET", headers: { "content-type": "application/json", "x-kz": "1" }, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" })
-      .then(function (r) { return r.json().then(function (j) { if (r.status === 401) { location.reload(); } if (!r.ok) throw new Error(j.error || r.status); return j; }); });
+      .then(function (r) { return r.json().then(function (j) { if (r.status === 401) { location.href = "/admin"; } if (!r.ok) throw new Error(j.error || r.status); return j; }); });
   }
+  var vkey = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, ""); };
   function label(k) { return LABELS[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, function (c) { return c.toUpperCase(); }); }
-  var isChannelKey = function (k) { return /channel(id)?$/i.test(k) || ["members", "trades", "vouches", "panelChannelId", "boardChannelId"].indexOf(k) >= 0; };
+  var isChannelKey = function (k) { return /channel(id)?$/i.test(k) || ["members", "trades", "vouches"].indexOf(k) >= 0; };
   var isCategoryKey = function (k) { return /category/i.test(k); };
   var isRoleKey = function (k) { return /role(id)?$/i.test(k) || k === "autorole"; };
+  var roleOpts = function () { return S.roles.map(function (r) { return [r.id, "@" + r.name]; }); };
   function channelOptions(kind) {
     return S.channels.filter(function (c) { return kind === "category" ? c.type === 4 : kind === "voice" ? c.type === 2 : c.type !== 4; }).map(function (c) { return [c.id, (c.type === 4 ? "📁 " : c.type === 2 ? "🔊 " : "# ") + c.name]; });
   }
-  function select(opts, value, multiple) {
+  function select(opts, value, multiple, none) {
     var s = el("select", multiple ? { multiple: "multiple" } : {});
-    if (!multiple) s.appendChild(el("option", { value: "", text: "— aucun —" }));
+    if (!multiple && none !== false) s.appendChild(el("option", { value: "", text: none || "— aucun —" }));
     opts.forEach(function (o) { var op = el("option", { value: o[0], text: o[1] }); if (multiple ? (value || []).indexOf(o[0]) >= 0 : value === o[0]) op.selected = true; s.appendChild(op); });
     if (!multiple && value && !opts.some(function (o) { return o[0] === value; })) { var op = el("option", { value: value, text: "(supprimé) " + value }); op.selected = true; s.appendChild(op); }
     return s;
   }
+  var picked = function (sel) { return Array.prototype.filter.call(sel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); };
+  /* a list of lines (one per item) with a delete button on each and an "Add" button */
+  function rowsEditor(items, makeRow, blank, addText, hint) {
+    var box = el("div", { class: "rowsed" });
+    var list = el("div", { class: "rowslist" });
+    var rows = [];
+    function add(item) {
+      var r = makeRow(item);
+      var line = el("div", { class: "rowline" }, r.cells.concat([el("button", { type: "button", class: "icon danger", title: "Retirer", "aria-label": "Retirer", text: "✕", onclick: function () { list.removeChild(line); rows.splice(rows.indexOf(entry), 1); } })]));
+      var entry = { read: r.read };
+      rows.push(entry);
+      list.appendChild(line);
+    }
+    (items || []).forEach(add);
+    box.appendChild(list);
+    if (hint) box.appendChild(el("div", { class: "hint", text: hint }));
+    box.appendChild(el("button", { type: "button", class: "add", text: "＋ " + addText, onclick: function () { add(blank()); } }));
+    return [box, function () { return rows.map(function (r) { return r.read(); }).filter(Boolean); }];
+  }
+  var cell = function (lbl, input) { return el("label", { class: "cell" }, [el("span", { text: lbl }), input]); };
+  /* settings that are lists or tables get their own editor (no JSON) */
+  var SPECIAL = {
+    "levels.rewards": function (v) {
+      return rowsEditor((v || []).slice().sort(function (a, b) { return a.level - b.level; }), function (it) {
+        var n = el("input", { type: "number", min: "1", step: "1", value: String(it.level || "") }); var r = select(roleOpts(), it.roleId, false, "— choisir un rôle —");
+        return { cells: [cell("Niveau", n), cell("Rôle donné", r)], read: function () { return n.value && r.value ? { level: Math.max(1, Math.round(Number(n.value))), roleId: r.value } : null; } };
+      }, function () { return { level: "", roleId: "" }; }, "Ajouter un palier", "Quand quelqu'un atteint le niveau, il reçoit le rôle.");
+    },
+    "eco.shop": function (v) {
+      return rowsEditor(v, function (it) {
+        var r = select(roleOpts(), it.roleId, false, "— choisir un rôle —"); var p = el("input", { type: "number", min: "0", step: "1", value: String(it.price == null ? "" : it.price) });
+        return { cells: [cell("Rôle en vente", r), cell("Prix (pièces)", p)], read: function () { return r.value ? { roleId: r.value, price: Math.max(0, Math.round(Number(p.value) || 0)) } : null; } };
+      }, function () { return { roleId: "", price: "" }; }, "Ajouter un rôle à la boutique");
+    },
+    "cross.cats": function (v) {
+      return rowsEditor(v, function (it) {
+        var n = el("input", { type: "text", value: it.label || "", placeholder: "Ex : Dragon value" }); var r = select(roleOpts(), it.roles || [], true);
+        return { cells: [cell("Valeur du trade", n), cell("Middlemen de cette valeur", r)], read: function () { var name = n.value.trim(); return name ? { id: it.id || vkey(name).slice(0, 24) || ("v" + Date.now()), label: name.slice(0, 80), roles: picked(r) } : null; } };
+      }, function () { return { label: "", roles: [] }; }, "Ajouter une valeur", "Pour choisir plusieurs rôles : Ctrl + clic, ou appui long sur téléphone.");
+    },
+    "supporter.langs": function (v) {
+      var items = Object.keys(v || {}).map(function (id) { return { id: id, lang: v[id] }; });
+      return rowsEditor(items, function (it) {
+        var c = select(channelOptions("text"), it.id, false, "— choisir un salon —"); var l = select([["fr", "🇫🇷 Français"], ["en", "🇬🇧 English"]], it.lang || "fr", false, false);
+        return { cells: [cell("Salon", c), cell("Langue", l)], read: function () { return c.value ? [c.value, l.value] : null; } };
+      }, function () { return { id: "", lang: "fr" }; }, "Ajouter un salon");
+    },
+    "values.overrides": function (v) {
+      var items = [];
+      Object.keys(v || {}).forEach(function (k) { var o = v[k] || {}; Object.keys(o).forEach(function (m) { if (m !== "__name") items.push({ name: o.__name || k, mut: m, g: o[m] }); }); });
+      return rowsEditor(items, function (it) {
+        var n = el("input", { type: "text", value: it.name || "", placeholder: "Nom du brainrot" }); var m = select(MUTS.map(function (x) { return [x, x === "Default" ? "Normal" : x]; }), it.mut || "Default", false, false);
+        var g = el("input", { type: "number", min: "0", step: "any", value: it.g == null ? "" : String(it.g), placeholder: "vide = pas échangeable" });
+        return { cells: [cell("Brainrot", n), cell("Mutation", m), cell("Valeur (Garama)", g)], read: function () { var name = n.value.trim(); return name ? { name: name, mut: m.value, g: g.value === "" ? null : Number(g.value) } : null; } };
+      }, function () { return { name: "", mut: "Default", g: "" }; }, "Ajouter une valeur", "1 Dragon = " + (S.valueRate || 20) + " Garama. Laisse la valeur vide pour « pas échangeable ».");
+    },
+    "vouch.excluded": function (v) { var s = select(roleOpts(), v || [], true); return [s, function () { return picked(s); }]; }
+  };
+  /* index: one line per index with its role, price and deposit together */
+  function indexEditor(cur) {
+    var box = el("div", { class: "rowslist" }); var reads = [];
+    (S.indexes || []).forEach(function (ix) {
+      var r = select(roleOpts(), (cur.roles || {})[ix.id] || "", false); var p = el("input", { type: "text", value: (cur.prices || {})[ix.id] || "", placeholder: "Ex : 5€" }); var c = el("input", { type: "text", value: (cur.cautions || {})[ix.id] || "", placeholder: "Ex : 10€" });
+      box.appendChild(el("div", { class: "rowline" }, [el("b", { class: "rowtitle", text: ix.emoji + " " + ix.label }), cell("Rôle", r), cell("Prix", p), cell("Caution", c)]));
+      reads.push(function (o) { if (r.value) o.roles[ix.id] = r.value; if (p.value.trim()) o.prices[ix.id] = p.value.trim(); if (c.value.trim()) o.cautions[ix.id] = c.value.trim(); });
+    });
+    return [box, function () { var o = { roles: {}, prices: {}, cautions: {} }; reads.forEach(function (f) { f(o); }); return o; }];
+  }
   /* one input for one setting; returns [element, read()] */
   function field(key, base, value, where) {
     var box = el("div", { class: "field" });
-    var read;
     var name = PATH_LABELS[where + "." + key] || label(key);
+    var special = SPECIAL[where + "." + key];
+    if (special) {
+      var sp = special(value);
+      box.appendChild(el("label", { text: name })); box.appendChild(sp[0]);
+      return [box, sp[1]];
+    }
+    var read;
     if (typeof base === "boolean") {
       var cb = el("input", { type: "checkbox" }); cb.checked = !!value;
       box.appendChild(el("label", { class: "switch" }, [cb, name]));
-      read = function () { return cb.checked; };
-      return [box, read];
+      return [box, function () { return cb.checked; }];
     }
     box.appendChild(el("label", { text: name }));
     if (typeof base === "string" && CHOICES[key]) {
-      var cs = select(CHOICES[key], value, false); cs.removeChild(cs.firstChild); box.appendChild(cs);
+      var cs = select(CHOICES[key], value, false, false); box.appendChild(cs);
       read = function () { return cs.value; };
     } else if (typeof base === "number") {
       var n = el("input", { type: "number", step: "any", value: String(value) }); box.appendChild(n);
       read = function () { return Number(n.value); };
     } else if (typeof base === "string" && (isChannelKey(key) || isCategoryKey(key) || isRoleKey(key))) {
-      var opts = isRoleKey(key) ? S.roles.map(function (r) { return [r.id, "@" + r.name]; }) : channelOptions(isCategoryKey(key) ? "category" : ["members", "trades", "vouches"].indexOf(key) >= 0 ? "voice" : "text");
+      var opts = isRoleKey(key) ? roleOpts() : channelOptions(isCategoryKey(key) ? "category" : ["members", "trades", "vouches"].indexOf(key) >= 0 ? "voice" : "text");
       var sel = select(opts, value, false); box.appendChild(sel);
       read = function () { return sel.value; };
     } else if (typeof base === "string" || base === null) {
@@ -167,47 +278,59 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
       inp.value = value == null ? "" : String(value); box.appendChild(inp);
       read = function () { return inp.value; };
     } else if (Array.isArray(base) && (key === "channels" || key === "ignored")) {
-      var ms = select(channelOptions("text"), value, true); box.appendChild(ms); box.appendChild(el("div", { class: "hint", text: "Maintiens Ctrl (ou appuie longuement) pour en choisir plusieurs." }));
-      read = function () { return Array.prototype.filter.call(ms.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); };
+      var ms = select(channelOptions("text"), value, true); box.appendChild(ms); box.appendChild(el("div", { class: "hint", text: "Pour en choisir plusieurs : Ctrl + clic, ou appui long sur téléphone." }));
+      read = function () { return picked(ms); };
     } else if (Array.isArray(base) && key === "roles") {
-      var mr = select(S.roles.map(function (r) { return [r.id, "@" + r.name]; }), value, true); box.appendChild(mr);
-      read = function () { return Array.prototype.filter.call(mr.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); };
-    } else if (Array.isArray(base) && (LINE_LISTS.indexOf(key) >= 0 || (key === "words" && where === "badwords"))) {
+      var mr = select(roleOpts(), value, true); box.appendChild(mr);
+      read = function () { return picked(mr); };
+    } else if (Array.isArray(base) && (key === "domains" || key === "words")) {
       var ta = el("textarea", {}); ta.value = (value || []).join("\n"); box.appendChild(ta);
       read = function () { return ta.value.split("\n").map(function (x) { return x.trim(); }).filter(Boolean); };
     } else {
       var js = el("textarea", { class: "json" }); js.value = JSON.stringify(value, null, 2); box.appendChild(js);
-      box.appendChild(el("div", { class: "hint", text: "Réglage avancé (format JSON)." }));
       read = function () { return JSON.parse(js.value); };
     }
     return [box, read];
   }
-  function sectionForm(name) {
-    var base = S.defaults[name], cur = S.cfg[name];
-    var form = el("div", { class: "form" });
+  /* the fields of a group of settings (and of the groups inside it) */
+  function groupFields(container, base, cur, where) {
     var readers = {};
     Object.keys(base).forEach(function (k) {
-      if (HIDDEN.indexOf(k) >= 0) return;
+      if (HIDDEN.indexOf(k) >= 0 || where + "." + k === "supporter.channelId") return;
       var b = base[k];
-      if (b && typeof b === "object" && !Array.isArray(b) && Object.keys(b).length) {
-        var sub = el("div", { class: "sub" }, [el("b", { text: label(k) })]);
-        var subReaders = {};
-        Object.keys(b).forEach(function (sk) { var f = field(sk, b[sk], (cur[k] || {})[sk], k); sub.appendChild(f[0]); subReaders[sk] = f[1]; });
-        form.appendChild(sub);
-        readers[k] = function () { var o = {}; for (var sk in subReaders) o[sk] = subReaders[sk](); return o; };
+      if (b && typeof b === "object" && !Array.isArray(b) && Object.keys(b).length && !SPECIAL[where + "." + k]) {
+        var sub = el("div", { class: "sub" }, [el("b", { text: PATH_LABELS[where + "." + k] || label(k) })]);
+        readers[k] = groupFields(sub, b, (cur || {})[k] || {}, k);
+        container.appendChild(sub);
         return;
       }
-      var f = field(k, b, cur[k], name);
-      form.appendChild(f[0]); readers[k] = f[1];
+      var f = field(k, b, (cur || {})[k], where);
+      container.appendChild(f[0]); readers[k] = f[1];
     });
+    return function () { var o = {}; for (var k in readers) o[k] = readers[k](); return o; };
+  }
+  function sectionCard(name) {
+    var base = S.defaults[name], cur = S.cfg[name];
+    var card = el("section", { class: "card", id: "m-" + name }, [el("div", { class: "cardhead" }, [el("h3", { text: SECTIONS[name][0] }), el("p", { text: SECTIONS[name][1] })])]);
+    var form = el("div", { class: "form" });
+    var read;
+    if (name === "index") {
+      var ix = indexEditor(cur); form.appendChild(ix[0]);
+      read = ix[1];
+    } else read = groupFields(form, base, cur, name);
     var saveBtn = el("button", { class: "main", type: "button", text: "Enregistrer", onclick: function () {
-      var value = {};
-      try { for (var k in readers) value[k] = readers[k](); } catch (e) { toast("Un réglage avancé n'est pas du JSON valide.", false); return; }
+      var value;
+      try { value = read(); } catch (e) { toast("Un réglage n'est pas valide.", false); return; }
+      if (name === "supporter" && Array.isArray(value.langs)) value.langs = Object.fromEntries(value.langs);
+      if (name === "values" && Array.isArray(value.overrides)) {
+        var map = {}; value.overrides.forEach(function (o) { var k = vkey(o.name); if (!k) return; map[k] = map[k] || { __name: o.name }; map[k][o.mut] = o.g; }); value.overrides = map;
+      }
       saveBtn.disabled = true;
       api("/api/cfg", { section: name, value: value }).then(function (r) { S.cfg[name] = r.cfg; toast("Enregistré ✓", true); }).catch(function (e) { toast(e.message, false); }).then(function () { saveBtn.disabled = false; });
     } });
     form.appendChild(el("div", { class: "row" }, [saveBtn]));
-    return form;
+    card.appendChild(form);
+    return card;
   }
   var VIEWS = {
     home: function (v) {
@@ -217,26 +340,19 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
       [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Vouches", S.stats.vouches], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Brainrots (valeurs)", S.stats.values]]
         .forEach(function (x) { g.appendChild(el("div", { class: "tile" }, [el("small", { text: x[0] }), el("b", { text: String(x[1]) })])); });
       v.appendChild(g);
+      var links = el("div", { class: "grid", style: "margin-top:18px" });
+      PAGES.forEach(function (p) { if (!p[2]) return; links.appendChild(el("button", { type: "button", class: "pagecard", onclick: function () { tab = p[0]; draw(); } }, [el("b", { text: p[1] }), el("span", { text: p[2].map(function (n) { return SECTIONS[n][0].replace(/^\S+\s/, ""); }).join(" · ") })])); });
+      v.appendChild(links);
       v.appendChild(el("p", { class: "muted", text: "Les réglages changés ici sont pris en compte tout de suite, sans redémarrer le bot." }));
-    },
-    settings: function (v) {
-      v.appendChild(el("h2", { text: "Réglages" }));
-      Object.keys(SECTIONS).forEach(function (name) {
-        if (!S.defaults[name]) return;
-        var d = el("details", { class: "sec" }, [el("summary", {}, [el("b", { text: SECTIONS[name][0] }), el("span", { text: SECTIONS[name][1] })])]);
-        var built = false;
-        d.addEventListener("toggle", function () { if (d.open && !built) { built = true; d.appendChild(sectionForm(name)); } });
-        v.appendChild(d);
-      });
     },
     send: function (v) {
       v.appendChild(el("h2", { text: "Envoyer un message avec le bot" }));
-      var f = el("div", { class: "form tile" });
-      var ch = select(channelOptions("text"), "", false);
+      var f = el("div", { class: "form card" });
+      var ch = select(channelOptions("text"), "", false, "— choisir un salon —");
       var content = el("textarea", { placeholder: "Texte du message (optionnel)" });
       var title = el("input", { type: "text", placeholder: "Titre de l'embed (optionnel)" });
       var desc = el("textarea", { placeholder: "Texte de l'embed (optionnel)" });
-      var color = el("input", { type: "text", value: "#8f63ff" });
+      var color = el("input", { type: "color", value: "#8f63ff" });
       var ping = el("input", { type: "checkbox" });
       [["Salon", ch], ["Message", content], ["Titre de l'embed", title], ["Texte de l'embed", desc], ["Couleur de l'embed", color]].forEach(function (x) { f.appendChild(el("div", { class: "field" }, [el("label", { text: x[0] }), x[1]])); });
       f.appendChild(el("label", { class: "switch" }, [ping, "Autoriser les mentions (@everyone, rôles)"]));
@@ -250,8 +366,8 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
     },
     scams: function (v) {
       v.appendChild(el("h2", { text: "Liste des scammers" }));
-      var add = el("div", { class: "form tile" });
-      var id = el("input", { type: "text", placeholder: "ID Discord (clic droit → Copier l'identifiant)" }), reason = el("input", { type: "text", placeholder: "Raison" }), proof = el("input", { type: "text", placeholder: "Preuve (lien)" });
+      var add = el("div", { class: "form card" });
+      var id = el("input", { type: "text", placeholder: "Clic droit sur le membre → Copier l'identifiant" }), reason = el("input", { type: "text", placeholder: "Raison" }), proof = el("input", { type: "text", placeholder: "Lien de la preuve" });
       [["ID Discord", id], ["Raison", reason], ["Preuve", proof]].forEach(function (x) { add.appendChild(el("div", { class: "field" }, [el("label", { text: x[0] }), x[1]])); });
       add.appendChild(el("div", { class: "row" }, [el("button", { class: "main", type: "button", text: "Ajouter", onclick: function () { api("/api/scam", { id: id.value, reason: reason.value, proof: proof.value }).then(function () { toast("Ajouté ✓", true); load(); }).catch(function (e) { toast(e.message, false); }); } })]));
       v.appendChild(add);
@@ -271,10 +387,19 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
       v.appendChild(box);
     }
   };
-  var TABS = [["home", "🏠 Accueil"], ["settings", "⚙️ Réglages"], ["send", "✉️ Message"], ["scams", "🚨 Scammers"], ["console", "🖥️ Console"]];
+  function modulePage(page) {
+    return function (v) {
+      v.appendChild(el("h2", { text: page[1] }));
+      var jump = el("div", { class: "jump" });
+      page[2].forEach(function (n) { if (S.defaults[n]) jump.appendChild(el("a", { href: "#m-" + n, text: SECTIONS[n][0] })); });
+      if (page[2].length > 1) v.appendChild(jump);
+      page[2].forEach(function (n) { if (S.defaults[n]) v.appendChild(sectionCard(n)); });
+    };
+  }
+  PAGES.forEach(function (p) { if (p[2]) VIEWS[p[0]] = modulePage(p); });
   function draw() {
     var tabs = $("#tabs"); tabs.textContent = "";
-    TABS.forEach(function (x) { tabs.appendChild(el("button", { type: "button", class: x[0] === tab ? "on" : "", text: x[1], onclick: function () { tab = x[0]; draw(); } })); });
+    PAGES.forEach(function (x) { tabs.appendChild(el("button", { type: "button", class: x[0] === tab ? "on" : "", text: x[1], onclick: function () { tab = x[0]; draw(); window.scrollTo(0, 0); } })); });
     var v = $("#view"); v.textContent = ""; VIEWS[tab](v);
   }
   function load() {
@@ -286,7 +411,7 @@ td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); v
       draw();
     }).catch(function (e) { $("#view").textContent = "Erreur : " + e.message; });
   }
-  $("#logout").addEventListener("click", function () { api("/api/logout", {}).then(function () { location.reload(); }); });
+  $("#logout").addEventListener("click", function () { api("/api/logout", {}).then(function () { location.href = "/"; }); });
   load();
 })();
 </script>

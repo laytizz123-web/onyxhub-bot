@@ -4422,7 +4422,7 @@ const tools = (() => {
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
-      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [] }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
+      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -9531,13 +9531,48 @@ const tools = (() => {
     if (typeof base === "string") return String(v ?? "").slice(0, 4000);
     return undefined;
   }
+  /* the lists and tables edited line by line on the dashboard: each line is checked */
+  const ids = (list) => (Array.isArray(list) ? list : []).map((x) => String(x || "").replace(/\D/g, "")).filter(Boolean);
+  const isMap = (v) => v && typeof v === "object" && !Array.isArray(v);
+  const SHAPES = {
+    "levels.rewards": (v) => (Array.isArray(v) ? v.map((x) => ({ level: Math.round(Number(x?.level)), roleId: String(x?.roleId || "").replace(/\D/g, "") })).filter((x) => Number.isFinite(x.level) && x.level >= 1 && x.roleId).sort((a, b) => a.level - b.level).slice(0, 50) : undefined),
+    "eco.shop": (v) => (Array.isArray(v) ? v.map((x) => ({ roleId: String(x?.roleId || "").replace(/\D/g, ""), price: Math.max(0, Math.round(Number(x?.price) || 0)) })).filter((x) => x.roleId).slice(0, 25) : undefined),
+    "cross.cats": (v) => {
+      if (!Array.isArray(v)) return undefined;
+      const seen = new Set();
+      const out = v.map((x) => ({ id: String(x?.id || "").replace(/[^\w-]/g, "").slice(0, 24), label: String(x?.label || "").trim().slice(0, 80), roles: ids(x?.roles).slice(0, 25) })).filter((x) => x.id && x.label && !seen.has(x.id) && seen.add(x.id)).slice(0, 25);
+      return out.length ? out : undefined; // at least one value
+    },
+    "vouch.excluded": (v) => (Array.isArray(v) ? ids(v).slice(0, 100) : undefined),
+    "supporter.langs": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).map(([k, l]) => [k.replace(/\D/g, ""), l === "en" ? "en" : "fr"]).filter(([k]) => k)) : undefined),
+    "index.roles": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => INDEXES.some((x) => x.id === k)).map(([k, r]) => [k, String(r || "").replace(/\D/g, "")]).filter(([, r]) => r)) : undefined),
+    "index.prices": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => INDEXES.some((x) => x.id === k)).map(([k, p]) => [k, String(p || "").trim().slice(0, 60)]).filter(([, p]) => p)) : undefined),
+    "values.overrides": (v) => {
+      if (!isMap(v)) return undefined;
+      const out = {};
+      for (const [k, muts] of Object.entries(v)) {
+        const key = vkey(k);
+        if (!key || !isMap(muts)) continue;
+        const one = {};
+        for (const [mut, g] of Object.entries(muts)) {
+          if (mut === "__name") one.__name = String(g || "").slice(0, 80);
+          else if (MUTS.includes(mut)) one[mut] = g === null || g === "" ? null : Number.isFinite(Number(g)) && Number(g) >= 0 ? Math.round(Number(g) * 1000) / 1000 : undefined;
+        }
+        for (const m of Object.keys(one)) if (one[m] === undefined) delete one[m];
+        if (Object.keys(one).some((m) => m !== "__name")) out[key] = one;
+      }
+      return out;
+    },
+  };
+  SHAPES["index.cautions"] = SHAPES["index.prices"];
   function cleanSection(section, input) {
     const base = defaults().cfg[section];
     if (!Object.prototype.hasOwnProperty.call(db.cfg, section) || !base || !input || typeof input !== "object") return null;
     const out = {};
     for (const [k, v] of Object.entries(input)) {
       if (!(k in base)) continue;
-      const c = cleanValue(base[k], db.cfg[section][k], v);
+      const shape = SHAPES[`${section}.${k}`];
+      const c = shape ? shape(v) : cleanValue(base[k], db.cfg[section][k], v);
       if (c !== undefined) out[k] = c;
     }
     return out;
@@ -9553,6 +9588,8 @@ const tools = (() => {
       stats: { vouches: vouchCount, xpMembers: Object.keys(db.xp || {}).length, scams: Object.keys(db.scams || {}).length, coins: Object.keys(db.coins || {}).length, values: valItems().length },
       cfg: db.cfg,
       defaults: defaults().cfg,
+      indexes: INDEXES.map((x) => ({ id: x.id, emoji: x.emoji, label: x.label })),
+      valueRate: vals.rate || 20,
       scams: Object.entries(db.scams || {}).map(([id, s]) => ({ id, name: client?.users?.cache?.get?.(id)?.username || "", ...s })),
       channels,
       roles,
@@ -9658,6 +9695,8 @@ const tools = (() => {
       save(true);
       console.log(`🖥️ Dashboard: ${body.section} changé (${Object.keys(clean).join(", ")})`);
       if (body.section === "vouch") refreshVouchPanel(true).catch(() => {});
+      if (body.section === "index") for (const ix of INDEXES) refreshIndexPanels(ix).catch(() => {});
+      if (body.section === "values") refreshValuePanels().catch(() => {});
       return send(res, 200, { ok: true, cfg: db.cfg[body.section] });
     }
     if (url.pathname === "/api/send") {
