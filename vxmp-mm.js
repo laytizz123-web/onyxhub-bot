@@ -9503,6 +9503,7 @@ const tools = (() => {
       if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip.trim())) {
         guessedBase = `http://${ip.trim()}:${DASH_PORT}`;
         console.log(`🖥️ Site address: ${guessedBase} (set DASHBOARD_URL in .env if it does not open)`);
+        if (process.env.DISCORD_CLIENT_SECRET) console.log(`🖥️ Discord login redirect to add in the Developer Portal: ${guessedBase}/auth/callback`);
         return;
       }
     }
@@ -9587,6 +9588,32 @@ const tools = (() => {
   };
   async function dashRequest(req, res) {
     const url = new URL(req.url, "http://x");
+    /* "Se connecter avec Discord": Discord says who you are, only the owner gets in */
+    if (req.method === "GET" && url.pathname === "/auth/discord") {
+      if (!oauthOn()) return send(res, 302, "", "text/plain", { location: "/admin" });
+      const state = crypto.randomBytes(16).toString("hex");
+      const q = new URLSearchParams({ client_id: process.env.CLIENT_ID, response_type: "code", scope: "identify", redirect_uri: redirectUri(), state, prompt: "none" });
+      return send(res, 302, "", "text/plain", { location: `https://discord.com/oauth2/authorize?${q}`, "set-cookie": `kz_state=${state}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600` });
+    }
+    if (req.method === "GET" && url.pathname === "/auth/callback") {
+      const page = (msg, code = 403) => send(res, code, dashLoginPage(msg), "text/html; charset=utf-8");
+      const code = url.searchParams.get("code") || "";
+      const state = url.searchParams.get("state") || "";
+      if (!oauthOn()) return page(t("La connexion Discord n'est pas configurée.", "Discord login is not set up."));
+      if (!code || !state || state !== cookieOf(req).kz_state) return page(t("La connexion a échoué, réessaie.", "Login failed, try again."));
+      const token = await fetch("https://discord.com/api/oauth2/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: process.env.CLIENT_ID, client_secret: process.env.DISCORD_CLIENT_SECRET, grant_type: "authorization_code", code, redirect_uri: redirectUri() }), signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null);
+      if (!token?.access_token) {
+        console.error("⚠️ Dashboard login:", token?.error_description || token?.error || "no answer from Discord", `(redirect: ${redirectUri()})`);
+        return page(t("Discord a refusé la connexion. Vérifie le Client Secret et le lien de redirection dans le Developer Portal.", "Discord refused the login. Check the Client Secret and the redirect link in the Developer Portal."));
+      }
+      const me = await fetch("https://discord.com/api/users/@me", { headers: { authorization: `Bearer ${token.access_token}` }, signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null);
+      const guild = client?.guilds?.cache?.first?.();
+      if (!me?.id || !dashOwnerOk({ id: me.id }, guild)) return page(t(`Accès refusé${me?.username ? ` pour ${me.username}` : ""} : le dashboard est réservé au propriétaire du serveur.`, `Access denied${me?.username ? ` for ${me.username}` : ""}: the dashboard is only for the server owner.`));
+      const sid = crypto.randomBytes(32).toString("hex");
+      dashSessions.set(sid, { user: me.id, exp: Date.now() + 7 * 24 * 3600_000 });
+      console.log(`🖥️ Dashboard: ${me.username} connecté`);
+      return send(res, 302, "", "text/plain", { location: "/admin", "set-cookie": [`kz_session=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}`, "kz_state=; Path=/; Max-Age=0"] });
+    }
     if (req.method === "GET" && url.pathname === "/login") {
       const token = url.searchParams.get("t") || "";
       const entry = dashTokens.get(token);
@@ -9594,7 +9621,7 @@ const tools = (() => {
       if (!entry || entry.exp < Date.now()) return send(res, 403, dashLoginPage(t("Ce lien a expiré ou a déjà servi. Refais /dashboard sur Discord.", "This link expired or was already used. Use /dashboard on Discord again.")), "text/html; charset=utf-8");
       const sid = crypto.randomBytes(32).toString("hex");
       dashSessions.set(sid, { user: entry.user, exp: Date.now() + 7 * 24 * 3600_000 });
-      return send(res, 302, "", "text/plain", { location: "/admin", "set-cookie": `kz_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 3600}` });
+      return send(res, 302, "", "text/plain", { location: "/admin", "set-cookie": `kz_session=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}` });
     }
     const session = sessionOf(req);
     if (req.method === "GET" && (url.pathname === "/admin" || url.pathname === "/admin/")) {
@@ -9653,7 +9680,9 @@ const tools = (() => {
     }
     return send(res, 404, { error: "not found" });
   }
-  const dashLoginPage = (msg) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Kazuki MM · Admin</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}div{max-width:420px;background:#161126;border:1px solid #2a2144;border-radius:16px;padding:24px}h1{font-size:20px;margin:0 0 8px}code{background:#0d0a1a;padding:2px 6px;border-radius:6px;color:#ff5cd6}p{color:#a79fc7;margin:8px 0 0}.e{color:#ff5c7a}</style></head><body><div><h1>🔐 Kazuki MM · Admin</h1>${msg ? `<p class="e">${msg}</p>` : ""}<p>Ce panneau est réservé au propriétaire du serveur. Pour te connecter, tape <code>/dashboard</code> sur Discord et ouvre le lien que le bot t'envoie.</p></div></body></html>`;
+  const oauthOn = () => Boolean(process.env.DISCORD_CLIENT_SECRET && process.env.CLIENT_ID);
+  const redirectUri = () => `${dashBase()}/auth/callback`;
+  const dashLoginPage = (msg) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Kazuki MM · Dashboard</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}div{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 6px}code{background:#0d0a1a;padding:2px 6px;border-radius:6px;color:#ff5cd6;word-break:break-all}p{color:#a79fc7;margin:10px 0 0;font-size:15px}.e{color:#ff5c7a}a.d{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:18px;background:#5865f2;color:#fff;text-decoration:none;font-weight:700;padding:13px 18px;border-radius:12px}a.d:hover{background:#4752c4}a.b{color:#a79fc7;font-size:14px}</style></head><body><div><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Kazuki MM</h1>${msg ? `<p class="e">${msg}</p>` : ""}${oauthOn() ? `<a class="d" href="/auth/discord"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7zM8.3 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm7.4 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>Se connecter avec Discord</a><p>Réservé au propriétaire du serveur. Tu peux aussi taper <code>/dashboard</code> sur Discord.</p>` : `<p>Réservé au propriétaire du serveur. Tape <code>/dashboard</code> sur Discord et ouvre le lien que le bot t'envoie.</p>`}<p><a class="b" href="/">← Retour au site</a></p></div></body></html>`;
   /* the website lives in the "site" folder next to this file: index.html (presentation), admin.html (dashboard), img/ */
   const SITE_DIR = path.join(__dirname, "site");
   const SITE_TYPES = { ".html": "text/html; charset=utf-8", ".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".ico": "image/x-icon", ".json": "application/json" };
@@ -9696,6 +9725,7 @@ const tools = (() => {
     });
     dashServer.listen(DASH_PORT, "0.0.0.0", () => {
       console.log(`🖥️ Website on port ${DASH_PORT}${dashBase() ? ` (${dashBase()})` : ""}`);
+      if (process.env.DASHBOARD_URL && process.env.DISCORD_CLIENT_SECRET) console.log(`🖥️ Discord login redirect to add in the Developer Portal: ${redirectUri()}`);
       guessBase().catch(() => {});
       syncSite().catch(() => {});
     });

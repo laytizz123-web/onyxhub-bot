@@ -47,7 +47,8 @@ a { color: inherit; }
 .nav { display: flex; gap: 22px; margin-left: auto; font-weight: 600; font-size: 14px; color: var(--muted); }
 .nav a { text-decoration: none; }
 .nav a:hover, .nav a:focus-visible { color: var(--text); }
-@media (max-width: 720px) { .nav { display: none; } .bar .btn { margin-left: auto; } }
+@media (max-width: 720px) { .nav { display: none; } #dash-top { margin-left: auto; } }
+@media (max-width: 400px) { #invite-top { display: none; } }
 
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font: 700 15px var(--body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease; white-space: nowrap; }
 .btn:hover { transform: translateY(-1px); }
@@ -166,6 +167,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
       <a href="#commandes">Commandes</a>
       <a href="#emojis">Emojis</a>
     </nav>
+    <a class="btn ghost small" id="dash-top" href="/admin">Dashboard</a>
     <a class="btn main small" id="invite-top" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter le bot</a>
   </div>
 </header>
@@ -180,6 +182,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
         <div class="cta">
           <a class="btn main" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter Kazuki MM</a>
           <a class="btn ghost" href="https://discord.gg/kazukisab" target="_blank" rel="noopener">Rejoindre le serveur</a>
+          <a class="btn ghost" href="/admin">Dashboard</a>
         </div>
         <div class="facts"><span><b>66</b> commandes</span><span><b>FR ⇄ EN</b> dans les tickets</span><span><b>LTC + PayPal</b></span><span><b>2</b> confirmations réseau</span></div>
       </div>
