@@ -1,117 +1,412 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Onyx Hub – Buy a key</title>
-<meta name="description" content="Buy your Onyx Hub key, the script for Steal a Brainrot. Instant delivery.">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kazuki MM</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-:root{--bg:#07080a;--card:#101216;--line:#1d2127;--text:#e8ebef;--mute:#8b94a1;--accent:#28dc78;--accent-d:#1aa85a}
-*{box-sizing:border-box;margin:0}
-body{background:radial-gradient(900px 500px at 50% -10%,#0f2a1c 0,transparent 70%),var(--bg);color:var(--text);font:16px/1.6 system-ui,sans-serif}
-a{color:inherit;text-decoration:none}
-.wrap{max-width:1000px;margin:0 auto;padding:0 16px}
-nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
-.logo{font-weight:800;font-size:20px;letter-spacing:.5px}.logo span{color:var(--accent)}
-.btn{display:inline-block;background:var(--accent);color:#04120a;font-weight:700;padding:12px 24px;border-radius:10px;transition:.15s}
-.btn:hover{background:var(--accent-d);transform:translateY(-1px)}
-.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
-.btn{border:0;cursor:pointer;font:inherit;font-weight:700}.btn:disabled{opacity:.6;cursor:not-allowed}.btn.ghost:hover{border-color:var(--accent);background:transparent}
-.hero{text-align:center;padding:70px 0 50px}
-.hero h1{font-size:clamp(34px,7vw,60px);line-height:1.1;margin-bottom:16px}
-.hero h1 span{color:var(--accent)}
-.hero p{color:var(--mute);max-width:560px;margin:0 auto 28px}
-.hero .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-h2{text-align:center;font-size:28px;margin:60px 0 28px}
-.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
-.card h3{margin-bottom:6px}.card p{color:var(--mute);font-size:14px}
-.grid.single{max-width:340px;margin:0 auto}.plan{text-align:center;display:flex;flex-direction:column;gap:14px}
-.plan.best{border-color:var(--accent);box-shadow:0 0 30px #28dc7822}
-.plan .price{font-size:38px;font-weight:800}
-.plan ul{list-style:none;padding:0;color:var(--mute);font-size:14px}
-.plan li::before{content:"✓ ";color:var(--accent)}
-.tag{align-self:center;background:var(--accent);color:#04120a;font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px}
-details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:10px}
-summary{cursor:pointer;font-weight:600}details p{color:var(--mute);margin-top:10px;font-size:15px}
-footer{text-align:center;color:var(--mute);font-size:13px;padding:60px 0 30px}
+/* Layout: one dark "vault" page. A live escrow ticket is the hero's centrepiece, then features, the trade flow, the command list. */
+:root {
+  --ink: #0d0a1a;          /* page ground */
+  --vault: #161126;        /* raised panels */
+  --seam: #2a2144;         /* borders */
+  --text: #eeeaff;
+  --muted: #a79fc7;
+  --violet: #8f63ff;       /* Kazuki purple */
+  --rose: #ff5cd6;         /* second brand colour */
+  --ltc: #4fb3ff;          /* Litecoin blue */
+  --ok: #3ee08f;
+  --warn: #ffb84d;
+  --display: "Unbounded", "Manrope", system-ui, sans-serif;
+  --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body {
+  background: var(--ink);
+  color: var(--text);
+  font: 16px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ink); }
+a { color: inherit; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--ink) 82%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--seam); }
+.bar .wrap { display: flex; align-items: center; gap: 20px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 17px var(--display); text-decoration: none; letter-spacing: 0.01em; }
+.brand img { width: 34px; height: 34px; }
+.nav { display: flex; gap: 22px; margin-left: auto; font-weight: 600; font-size: 14px; color: var(--muted); }
+.nav a { text-decoration: none; }
+.nav a:hover, .nav a:focus-visible { color: var(--text); }
+@media (max-width: 720px) { .nav { display: none; } .bar .btn { margin-left: auto; } }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font: 700 15px var(--body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease; white-space: nowrap; }
+.btn:hover { transform: translateY(-1px); }
+.btn:focus-visible, .copy:focus-visible, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.btn.main { background: var(--violet); color: #fff; box-shadow: 0 8px 28px -10px var(--violet); }
+.btn.main:hover { background: #9d75ff; }
+.btn.ghost { border-color: var(--seam); color: var(--text); background: var(--vault); }
+.btn.ghost:hover { border-color: var(--violet); }
+.btn.small { padding: 9px 14px; font-size: 14px; }
+
+/* hero */
+.hero { padding-block: 72px 56px; }
+.hero .wrap { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } .hero { padding-block: 44px 32px; } }
+.eyebrow { font: 600 12px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--rose); }
+h1 { font: 800 clamp(34px, 5.6vw, 60px)/1.04 var(--display); letter-spacing: -0.02em; margin: 14px 0 18px; text-wrap: balance; }
+h1 .ltc { color: var(--ltc); }
+.lead { font-size: 18px; color: var(--muted); max-width: 52ch; margin: 0 0 28px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 30px; font: 500 13px var(--mono); color: var(--muted); }
+.facts b { color: var(--text); font-weight: 600; }
+
+/* the escrow ticket: the thing this bot actually shows in Discord */
+.ticket { background: var(--vault); border: 1px solid var(--seam); border-radius: 18px; padding: 18px; box-shadow: 0 30px 80px -40px #000; min-width: 0; }
+.ticket .head { display: flex; align-items: center; gap: 10px; font: 600 13px var(--mono); color: var(--muted); padding-bottom: 12px; border-bottom: 1px dashed var(--seam); }
+.ticket .head img { width: 26px; height: 26px; }
+.ticket .head .hash { margin-left: auto; color: var(--violet); }
+.msg { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding-top: 16px; }
+.msg .ava { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #23193f; }
+.msg .ava img { width: 34px; height: 34px; }
+.who { font-weight: 700; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.tag { font: 700 10px var(--body); background: var(--violet); color: #fff; padding: 1px 5px; border-radius: 4px; letter-spacing: .04em; }
+.embed { margin-top: 8px; border-left: 4px solid var(--ltc); background: #1d1631; border-radius: 6px; padding: 12px 14px; min-width: 0; }
+.embed h4 { margin: 0 0 8px; font: 700 15px var(--body); }
+.rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
+.rows dt { color: var(--muted); }
+.rows dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+.steps { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.step { font: 600 11px var(--mono); padding: 5px 9px; border-radius: 999px; border: 1px solid var(--seam); color: var(--muted); }
+.step.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.step.now { color: var(--ink); background: var(--warn); border-color: var(--warn); animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .65; } }
+.conf { margin-top: 12px; height: 6px; border-radius: 6px; background: #2a2144; overflow: hidden; }
+.conf i { display: block; height: 100%; width: 50%; background: linear-gradient(90deg, var(--ltc), var(--violet)); border-radius: 6px; }
+.small-note { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+
+/* sections */
+section { padding-block: 64px; }
+section + section { border-top: 1px solid var(--seam); }
+h2 { font: 700 clamp(24px, 3.4vw, 34px)/1.15 var(--display); letter-spacing: -0.01em; margin: 10px 0 12px; text-wrap: balance; }
+.intro { color: var(--muted); max-width: 60ch; margin: 0 0 34px; }
+
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .features { grid-template-columns: 1fr; } }
+.feat { padding: 22px; border-radius: 16px; background: var(--vault); border: 1px solid var(--seam); min-width: 0; }
+.feat img { width: 52px; height: 52px; display: block; margin-bottom: 12px; }
+.feat h3 { margin: 0 0 6px; font: 700 17px var(--body); }
+.feat p { margin: 0; color: var(--muted); font-size: 15px; }
+.feat code { font: 12px var(--mono); color: var(--rose); }
+.feat.big { grid-column: span 2; background: linear-gradient(135deg, #1e1538, var(--vault) 60%); }
+@media (max-width: 560px) { .feat.big { grid-column: auto; } }
+
+/* trade flow: a real sequence, so numbered */
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; counter-reset: s; }
+@media (max-width: 900px) { .flow { grid-template-columns: 1fr 1fr; gap: 20px 0; } }
+@media (max-width: 520px) { .flow { grid-template-columns: 1fr; } }
+.flow li { list-style: none; padding: 0 20px 0 0; position: relative; min-width: 0; }
+.flow li::before { counter-increment: s; content: counter(s, decimal-leading-zero); display: block; font: 700 13px var(--mono); color: var(--violet); margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid var(--seam); }
+.flow h3 { margin: 0 0 6px; font: 700 16px var(--body); }
+.flow p { margin: 0; color: var(--muted); font-size: 15px; }
+.flow ol { margin: 0; padding: 0; }
+
+/* commands */
+.cmdtools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+.search { flex: 1 1 240px; min-width: 0; }
+.search input { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--seam); background: var(--vault); color: var(--text); font: 15px var(--body); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--seam); background: transparent; color: var(--muted); font: 600 13px var(--body); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+.cmds { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (max-width: 720px) { .cmds { grid-template-columns: 1fr; } }
+.cmd { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 14px 16px; border-radius: 12px; background: var(--vault); border: 1px solid var(--seam); }
+.cmd b { font: 600 14px var(--mono); color: var(--text); overflow-wrap: anywhere; }
+.cmd span { color: var(--muted); font-size: 14px; grid-column: 1 / -1; }
+.cmd em { font: 600 10px var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .08em; color: var(--rose); }
+.empty { color: var(--muted); padding: 16px 0; }
+
+/* emoji pack strip */
+.pack { display: flex; flex-wrap: wrap; gap: 14px; }
+.pack figure { margin: 0; display: grid; justify-items: center; gap: 6px; width: 86px; }
+.pack img { width: 56px; height: 56px; }
+.pack figcaption { font: 12px var(--mono); color: var(--muted); }
+
+/* final call */
+.final { text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: 34px; border-radius: 20px; background: linear-gradient(120deg, #2a1660, #1a1230 70%); border: 1px solid #3a2a6a; }
+@media (max-width: 720px) { .final { grid-template-columns: 1fr; padding: 24px; } }
+.final h2 { margin-top: 0; }
+.final p { color: var(--muted); margin: 0; }
+.copyline { display: flex; gap: 8px; align-items: center; margin-top: 14px; font: 13px var(--mono); color: var(--muted); flex-wrap: wrap; }
+.copyline code { background: var(--ink); border: 1px solid var(--seam); padding: 6px 10px; border-radius: 8px; color: var(--text); overflow-wrap: anywhere; }
+.copy { border: 1px solid var(--seam); background: transparent; color: var(--text); padding: 6px 10px; border-radius: 8px; font: 600 12px var(--body); cursor: pointer; }
+
+footer { padding-block: 34px 48px; color: var(--muted); font-size: 13px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <nav>
-    <div class="logo">ONYX<span>HUB</span></div>
-    <a class="btn ghost" href="https://discord.gg/onyxhb" target="_blank" rel="noopener">Discord</a>
-  </nav>
 
-  <section class="hero">
-    <h1>The <span>Onyx Hub</span> script<br>for Steal a Brainrot</h1>
-    <p>Full PC and mobile menu: speed, ESP, auto steal, TP, custom keybinds. Your key is delivered automatically after payment.</p>
-    <div class="btns">
-      <a class="btn" href="#plans">Buy a key</a>
-      <a class="btn ghost" href="https://discord.gg/onyxhb" target="_blank" rel="noopener">Join the Discord</a>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="img/kz_kazuki.gif" alt="">Kazuki MM</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#fonctions">Fonctions</a>
+      <a href="#trade">Comment ça marche</a>
+      <a href="#commandes">Commandes</a>
+      <a href="#emojis">Emojis</a>
+    </nav>
+    <a class="btn main small" id="invite-top" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter le bot</a>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <div class="eyebrow">Bot Discord · Steal a Brainrot</div>
+        <h1>Le middleman qui garde les <span class="ltc">LTC</span> pendant ton trade.</h1>
+        <p class="lead">Kazuki MM ouvre un ticket privé, donne une adresse Litecoin unique au payeur, attend les confirmations du réseau et ne libère l'argent que quand les deux côtés ont reçu leur part.</p>
+        <div class="cta">
+          <a class="btn main" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter Kazuki MM</a>
+          <a class="btn ghost" href="https://discord.gg/kazukisab" target="_blank" rel="noopener">Rejoindre le serveur</a>
+        </div>
+        <div class="facts"><span><b>66</b> commandes</span><span><b>FR ⇄ EN</b> dans les tickets</span><span><b>LTC + PayPal</b></span><span><b>2</b> confirmations réseau</span></div>
+      </div>
+
+      <div class="ticket" aria-label="Exemple de ticket middleman">
+        <div class="head"><img src="img/kz_ticket.gif" alt="">#ticket-vxmp <span class="hash">exemple</span></div>
+        <div class="msg">
+          <div class="ava"><img src="img/kz_middleman.gif" alt=""></div>
+          <div style="min-width:0">
+            <div class="who">Kazuki MM <span class="tag">BOT</span></div>
+            <div class="embed">
+              <h4>💱 Paiement en attente</h4>
+              <dl class="rows">
+                <dt>Montant</dt><dd>0.4521 LTC</dd>
+                <dt>Adresse</dt><dd>ltc1q…exemple…7k2m</dd>
+                <dt>Vendeur</dt><dd>@Nova</dd>
+                <dt>Acheteur</dt><dd>@Vxmp</dd>
+              </dl>
+              <div class="conf" role="img" aria-label="1 confirmation sur 2"><i></i></div>
+              <div class="small-note">1 / 2 confirmations</div>
+              <div class="steps">
+                <span class="step done">Ticket</span>
+                <span class="step done">Montant</span>
+                <span class="step now">Paiement</span>
+                <span class="step">Livraison</span>
+                <span class="step">Libéré</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section id="fonctions">
+    <div class="wrap">
+      <div class="eyebrow">Fonctions</div>
+      <h2>Tout ce qu'un serveur de trade utilise chaque jour</h2>
+      <p class="intro">Un seul bot pour les échanges sûrs, les vouches, les valeurs, la modération et l'activité du serveur.</p>
+      <div class="features">
+        <article class="feat big">
+          <img src="img/kz_ltc.gif" alt="">
+          <h3>Middleman Litecoin automatique</h3>
+          <p>Une adresse par trade, le paiement vérifié sur la blockchain, la libération en un clic. Les paliers de montant envoient le ticket au bon middleman. <code>/panel</code> <code>/tiers</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_paypal.gif" alt="">
+          <h3>PayPal vérifié par le staff</h3>
+          <p>Le compte PayPal présent s'affiche au payeur, le staff confirme la réception. <code>/paypal</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_trade.gif" alt="">
+          <h3>Cross-trade et index</h3>
+          <p>Objet contre objet, catégories par valeur (Garama, Dragon, OG), panels d'index avec prix et caution.</p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_value.gif" alt="">
+          <h3>Valeurs des brainrots</h3>
+          <p>Recherche avec propositions, valeur en Dragons et Garama, chaque mutation, demande et exist count. <code>/value</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_vouch.gif" alt="">
+          <h3>Vouches et classement</h3>
+          <p>Seuls les middlemen peuvent être vouchés. Le top se met à jour tout seul. <code>/vouch</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_scam.gif" alt="">
+          <h3>Sécurité</h3>
+          <p>Liste des scammers, anti-liens, anti-spam réglable, gros mots, règlement à accepter. <code>/scamcheck</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_verified.gif" alt="">
+          <h3>Tickets traduits</h3>
+          <p>Chaque message d'un ticket est traduit français ⇄ anglais en petit dessous. Transcription à la fermeture.</p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_og.gif" alt="">
+          <h3>Niveaux, rôles, supporters</h3>
+          <p>XP, cartes de rang, rôles par niveau, rôle pour le tag du serveur et le statut, emojis animés. <code>/supporter</code></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="trade">
+    <div class="wrap">
+      <div class="eyebrow">Un trade Litecoin</div>
+      <h2>Comment se passe un échange</h2>
+      <p class="intro">Le bot garde l'argent entre le paiement et la livraison. Personne n'envoie en premier sans protection.</p>
+      <ol class="flow">
+        <li><h3>Ouvre un ticket</h3><p>Choisis ta langue et ajoute la personne avec qui tu échanges.</p></li>
+        <li><h3>Le payeur envoie</h3><p>Il reçoit une adresse LTC unique et le montant exact à envoyer.</p></li>
+        <li><h3>Le bot vérifie</h3><p>Le paiement est suivi sur le réseau jusqu'aux confirmations demandées.</p></li>
+        <li><h3>Livraison et libération</h3><p>L'objet est donné, puis les LTC partent au vendeur. Un vouch termine le trade.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="commandes">
+    <div class="wrap">
+      <div class="eyebrow">Commandes</div>
+      <h2>Les commandes principales</h2>
+      <p class="intro">Les membres ne voient que les commandes qu'ils peuvent utiliser. Les commandes staff sont réservées aux bonnes permissions.</p>
+      <div class="cmdtools">
+        <div class="search"><input id="cmd-search" type="search" placeholder="Chercher une commande (ex : vouch, value…)" aria-label="Chercher une commande"></div>
+        <div class="chips" id="cmd-chips" role="group" aria-label="Filtrer"></div>
+      </div>
+      <div class="cmds" id="cmd-list"></div>
+      <p class="empty" id="cmd-empty" hidden>Aucune commande ne correspond.</p>
+    </div>
+  </section>
+
+  <section id="emojis">
+    <div class="wrap">
+      <div class="eyebrow">Emojis animés</div>
+      <h2>Le pack Kazuki, en une commande</h2>
+      <p class="intro"><code style="font-family:var(--mono);color:var(--rose)">/emoji pack</code> ajoute ces 13 emojis animés à ton serveur. <code style="font-family:var(--mono);color:var(--rose)">/emoji texte</code> en crée d'autres avec ton texte.</p>
+      <div class="pack" id="pack"></div>
     </div>
   </section>
 
   <section>
-    <h2>Features</h2>
-    <div class="grid">
-      <div class="card"><h3>⚡ Speed</h3><p>3 adjustable speed modes, with a separate speed while you carry a brainrot.</p></div>
-      <div class="card"><h3>👁 ESP</h3><p>Easily spot players and brainrots.</p></div>
-      <div class="card"><h3>🤖 Auto Steal</h3><p>Insta TP, drop, instant reset and turret destroy with one key.</p></div>
-      <div class="card"><h3>🎨 Themes</h3><p>Customizable interface, colored intro, rebindable keybinds.</p></div>
-      <div class="card"><h3>📱 PC & Mobile</h3><p>Works on PC and mobile with a compatible executor.</p></div>
-      <div class="card"><h3>🎫 Support</h3><p>Fast help through tickets on our Discord server.</p></div>
+    <div class="wrap">
+      <div class="final">
+        <div>
+          <h2>Prêt à trader en sécurité ?</h2>
+          <p>Rejoins la communauté Kazuki ou ajoute le bot sur ton serveur.</p>
+          <div class="copyline">Lien du serveur <code id="srv">discord.gg/kazukisab</code> <button class="copy" id="copy-srv" type="button">Copier</button></div>
+        </div>
+        <div class="cta">
+          <a class="btn main" href="https://discord.gg/kazukisab" target="_blank" rel="noopener">Rejoindre</a>
+          <a class="btn ghost" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter le bot</a>
+        </div>
+      </div>
     </div>
   </section>
+</main>
 
-  <section id="plans">
-    <h2>Get your key</h2>
-    <div class="grid" id="plan-grid"></div>
-    <p style="text-align:center;color:var(--mute);font-size:13px;margin-top:16px">Pay with crypto (LTC, BTC, USDT…) · your key is delivered automatically once the payment is confirmed.</p>
-  </section>
-
-  <section>
-    <h2>FAQ</h2>
-    <details><summary>How do I get my key?</summary><p>As soon as the crypto payment is confirmed, it appears on your order page. Bookmark that page: it is where you can find your key again.</p></details>
-    <details><summary>Which devices does it work on?</summary><p>PC and mobile, with an executor that supports file functions, custom assets and proximity prompts.</p></details>
-    <details><summary>Problem with my order?</summary><p>Open a "Purchase" ticket on our Discord and the staff will help you quickly.</p></details>
-  </section>
-
-  <footer>© Onyx Hub · <a href="https://discord.gg/onyxhb" target="_blank" rel="noopener">discord.gg/onyxhb</a><br>Not affiliated with Roblox Corporation.</footer>
-</div>
+<footer>
+  <div class="wrap">
+    <span>Kazuki MM · Middleman et outils pour Steal a Brainrot</span>
+    <span>Les valeurs affichées sont celles de la communauté, à titre indicatif.</span>
+  </div>
+</footer>
 
 <script>
-const grid = document.getElementById("plan-grid");
-const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-async function buy(plan, btn) {
-  btn.disabled = true; btn.textContent = "Redirecting…";
-  try {
-    const r = await fetch("/.netlify/functions/create-order", { method: "POST", body: JSON.stringify({ plan }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "Error");
-    location.href = d.url;
-  } catch (e) {
-    alert(e.message); btn.disabled = false; btn.textContent = "Buy";
+(function () {
+  var CMDS = [
+    ["Trade", "/panel", "Poster le panel des tickets middleman", "staff"],
+    ["Trade", "/tiers", "Paliers de montant et middleman de chacun", "staff"],
+    ["Trade", "/paypal", "Gérer les comptes PayPal présents ou absents", "staff"],
+    ["Trade", "/crosstrade", "Catégories de valeur et rôles des middlemen", "staff"],
+    ["Trade", "/indexadmin", "Rôles, prix et caution de chaque index", "staff"],
+    ["Trade", "/scamcheck", "Vérifier si quelqu'un est un scammer connu", ""],
+    ["Trade", "/mmstats", "Trades et index terminés par middleman", ""],
+    ["Valeurs", "/value", "Valeur d'un brainrot, avec chaque mutation", ""],
+    ["Valeurs", "/valueadmin", "Panel des valeurs et valeurs du serveur", "staff"],
+    ["Vouches", "/vouch", "Laisser un vouch à un middleman", ""],
+    ["Vouches", "/vouchadmin", "Panel du top vouches et salon des vouches", "staff"],
+    ["Niveaux", "/rank", "Ta carte de niveau", ""],
+    ["Niveaux", "/leaderboard", "Le classement XP", ""],
+    ["Niveaux", "/levels", "Réglages des niveaux et classement auto", "staff"],
+    ["Serveur", "/supporter", "Rôles pour le tag du serveur et le statut", "staff"],
+    ["Serveur", "/emoji", "Pack d'emojis animés et emojis texte", "staff"],
+    ["Serveur", "/reglement", "Règlement à accepter pour voir le serveur", "staff"],
+    ["Serveur", "/welcome", "Messages de bienvenue et d'au revoir", "staff"],
+    ["Serveur", "/invites", "Qui a invité qui, et le classement", ""],
+    ["Serveur", "/compteurs", "Salons qui comptent membres, trades, vouches", "staff"],
+    ["Sécurité", "/antispam", "Limite de messages, mentions, majuscules, mots", "staff"],
+    ["Sécurité", "/antilink", "Bloquer les liens, avec exceptions", "staff"],
+    ["Sécurité", "/scam", "Liste noire des scammers", "staff"],
+    ["Sécurité", "/ban", "Bannir un membre", "staff"],
+    ["Fun", "/morpion", "Morpion contre un membre", ""],
+    ["Fun", "/puissance4", "Puissance 4 contre un membre", ""],
+    ["Fun", "/coins", "Solde, daily, boutique de rôles", ""],
+    ["Fun", "/giveaway", "Lancer un giveaway", "staff"],
+    ["Fun", "/poll", "Créer un sondage", ""],
+    ["Serveur", "/help", "Les commandes que tu peux utiliser", ""]
+  ];
+  var groups = ["Tout"].concat(CMDS.map(function (c) { return c[0]; }).filter(function (g, i, a) { return a.indexOf(g) === i; }));
+  var active = "Tout";
+  var list = document.getElementById("cmd-list");
+  var chips = document.getElementById("cmd-chips");
+  var search = document.getElementById("cmd-search");
+  var empty = document.getElementById("cmd-empty");
+  groups.forEach(function (g) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = g;
+    b.setAttribute("aria-pressed", g === active ? "true" : "false");
+    b.addEventListener("click", function () { active = g; chips.querySelectorAll(".chip").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); draw(); });
+    chips.appendChild(b);
+  });
+  function draw() {
+    var q = search.value.trim().toLowerCase();
+    list.textContent = "";
+    var shown = 0;
+    CMDS.forEach(function (c) {
+      if (active !== "Tout" && c[0] !== active) return;
+      if (q && (c[1] + " " + c[2]).toLowerCase().indexOf(q) < 0) return;
+      var d = document.createElement("div"); d.className = "cmd";
+      var n = document.createElement("b"); n.textContent = c[1];
+      var tag = document.createElement("em"); tag.textContent = c[3] ? "staff" : c[0];
+      var s = document.createElement("span"); s.textContent = c[2];
+      d.appendChild(n); d.appendChild(tag); d.appendChild(s); list.appendChild(d); shown++;
+    });
+    empty.hidden = shown > 0;
   }
-}
+  search.addEventListener("input", draw);
+  draw();
 
-fetch("/.netlify/functions/plans").then((r) => r.json()).then((plans) => {
-  grid.classList.toggle("single", plans.length === 1);
-  grid.innerHTML = plans.map((p) => `
-    <div class="card plan${p.best ? " best" : ""}">
-      ${p.best ? '<span class="tag">POPULAR</span>' : ""}
-      <h3>${esc(p.name)}</h3>
-      <div class="price">$${esc(Number(p.price).toFixed(2))}</div>
-      <ul>${p.perks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-      ${p.inStock
-        ? `<button class="btn" data-plan="${esc(p.id)}">Buy</button>`
-        : `<button class="btn ghost" disabled>Out of stock</button>`}
-    </div>`).join("");
-  grid.querySelectorAll("button[data-plan]").forEach((b) => b.onclick = () => buy(b.dataset.plan, b));
-}).catch(() => { grid.innerHTML = '<p style="text-align:center;color:var(--mute)">Could not load the offers.</p>'; });
+  var PACK = [["kazuki", "kz_kazuki"], ["middleman", "kz_middleman"], ["vouch", "kz_vouch"], ["ltc", "kz_ltc"], ["paypal", "kz_paypal"], ["trade", "kz_trade"], ["verified", "kz_verified"], ["scam", "kz_scam"], ["og", "kz_og"], ["ticket", "kz_ticket"], ["value", "kz_value"], ["win", "kz_win"], ["lose", "kz_lose"]];
+  var pack = document.getElementById("pack");
+  PACK.forEach(function (p) {
+    var f = document.createElement("figure");
+    var img = document.createElement("img"); img.src = "img/" + p[1] + ".gif"; img.alt = ":" + p[1] + ":";
+    var cap = document.createElement("figcaption"); cap.textContent = ":" + p[1] + ":";
+    f.appendChild(img); f.appendChild(cap); pack.appendChild(f);
+  });
+
+  var btn = document.getElementById("copy-srv");
+  btn.addEventListener("click", function () {
+    var text = "https://discord.gg/kazukisab";
+    function done() { btn.textContent = "Copié"; setTimeout(function () { btn.textContent = "Copier"; }, 1600); }
+    function fallback() { var r = document.createRange(); r.selectNodeContents(document.getElementById("srv")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Sélectionné"; }
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  });
+})();
 </script>
-
 </body>
 </html>
