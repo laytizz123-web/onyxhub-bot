@@ -5114,6 +5114,7 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir 1 ou 2 salons pour les remerciements (vide = plus de message)", "Pick 1 or 2 thank-you channels (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le 1er salon", "The 1st channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addChannelOption((o) => o.setName("salon2").setDescription(t("Le 2e salon", "The 2nd channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addStringOption((o) => o.setName("langue").setDescription(t("Langue du message dans le 1er salon (français par défaut)", "Message language in the 1st channel (French by default)")).addChoices({ name: "🇫🇷 Français", value: "fr" }, { name: "🇬🇧 English", value: "en" })).addStringOption((o) => o.setName("langue2").setDescription(t("Langue du message dans le 2e salon (français par défaut)", "Message language in the 2nd channel (French by default)")).addChoices({ name: "🇫🇷 Français", value: "fr" }, { name: "🇬🇧 English", value: "en" })))
           .addSubcommand((s) => s.setName("voir").setDescription(t("Voir les rôles supporters", "See the supporter roles")))
+          .addSubcommand((s) => s.setName("verifier").setDescription(t("Voir ce que le bot voit pour un membre (tag, statut) et mettre ses rôles à jour", "See what the bot sees for a member (tag, status) and update their roles")).addUserOption((o) => o.setName("membre").setDescription(t("Le membre (vide = toi)", "The member (empty = you)"))))
           .addSubcommand((s) => s.setName("couper").setDescription(t("Arrêter un des deux rôles", "Stop one of the two roles")).addStringOption((o) => o.setName("type").setDescription(t("Lequel", "Which one")).setRequired(true).addChoices({ name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: "tag" }, { name: t("💬 Statut", "💬 Status"), value: "statut" })))
       ),
       // animated server emojis
@@ -6977,7 +6978,7 @@ const tools = (() => {
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
-      [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter couper`", P.ManageRoles],
+      [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
@@ -9265,9 +9266,9 @@ const tools = (() => {
   /* true when the member shows THIS server's tag next to their name */
   /* The tag is not always sent with every member update: the profile is read again from Discord (at most every 10 minutes per person). */
   const userRead = new Map();
-  async function freshUser(member) {
+  async function freshUser(member, force = false) {
     const id = member?.user?.id;
-    if (!id || member.user.bot || Date.now() - (userRead.get(id) || 0) < 10 * 60_000) return false;
+    if (!id || member.user.bot || (!force && Date.now() - (userRead.get(id) || 0) < 2 * 60_000)) return false;
     userRead.set(id, Date.now());
     if (userRead.size > 5000) userRead.delete(userRead.keys().next().value);
     const user = await Promise.resolve(client?.users?.fetch?.(id, { force: true })).catch(() => null);
@@ -9356,13 +9357,13 @@ const tools = (() => {
   async function scanSupporters(force = false, quiet = false) {
     const cfg = db.cfg.supporter;
     if (!cfg.tagRole && !cfg.statusRole) return { tag: 0, status: 0 };
-    if (!force && Date.now() - supporterScan < 10 * 60_000) return null;
+    if (!force && Date.now() - supporterScan < 5 * 60_000) return null;
     supporterScan = Date.now();
     let tag = 0, status = 0, refreshed = 0;
     for (const guild of client?.guilds?.cache?.values?.() || []) {
       const members = await Promise.resolve(guild.members?.fetch?.()).catch(() => null) || guild.members?.cache;
       for (const member of members?.values?.() || []) {
-        const fresh = refreshed < 30 && Date.now() - (userRead.get(member.id) || 0) >= 10 * 60_000;
+        const fresh = refreshed < 60 && Date.now() - (userRead.get(member.id) || 0) >= 10 * 60_000;
         if (fresh) refreshed++;
         await syncTag(member, quiet, fresh);
         if (cfg.tagRole && wearsTag(member)) tag++;
@@ -9393,6 +9394,27 @@ const tools = (() => {
           { name: t("💬 Statut", "💬 Status"), value: cfg.statusRole ? `<@&${cfg.statusRole}> · \`${cfg.statusText}\`${hasPresence() ? "" : t("\n⚠️ Active l'intent **Presence** dans le Developer Portal", "\n⚠️ Turn on the **Presence** intent in the Developer Portal")}` : t("*coupé*", "*off*"), inline: true }
         );
       return i.reply({ embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "verifier") {
+      const user = i.options.getUser("membre") || i.user;
+      await i.deferReply({ flags: ephemeral });
+      const member = await Promise.resolve(i.guild.members.fetch(user.id)).catch(() => null);
+      if (!member) return i.editReply(no(t("Ce membre n'est pas sur le serveur.", "This member is not on the server.")));
+      await freshUser(member, true);
+      const pg = member.user.primaryGuild;
+      const tagLine = !pg ? t("❌ aucun tag affiché", "❌ no tag shown") : pg.identityGuildId !== i.guild.id ? t(`❌ affiche le tag **${pg.tag || "?"}** d'un **autre serveur**`, `❌ shows the tag **${pg.tag || "?"}** of **another server**`) : pg.identityEnabled === false ? t("❌ tag de ce serveur, mais masqué", "❌ this server's tag, but hidden") : t(`✅ affiche le tag **${pg.tag}** de ce serveur`, `✅ shows this server's tag **${pg.tag}**`);
+      const p = i.guild.presences?.cache?.get?.(member.id) || member.presence;
+      const st = statusText(p);
+      const stLine = !hasPresence() ? t("⚠️ intent Presence coupé", "⚠️ Presence intent off") : !p || p.status === "offline" ? t("⚪ hors ligne (statut invisible)", "⚪ offline (status not visible)") : statusHas(p) ? t(`✅ « ${st.slice(0, 60)} »`, `✅ "${st.slice(0, 60)}"`) : t(`❌ « ${st.slice(0, 60) || "pas de statut"} »`, `❌ "${st.slice(0, 60) || "no status"}"`);
+      const changedTag = cfg.tagRole ? await syncTag(member, false, false) : false;
+      const changedSt = cfg.statusRole && p ? await syncStatus({ ...p, activities: p.activities, status: p.status, member }) : false;
+      const e = embed(0x7c4dff)
+        .setTitle(t(`🔍  ${member.displayName || user.username}`, `🔍  ${member.displayName || user.username}`))
+        .addFields(
+          { name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: `${tagLine}\n${cfg.tagRole ? (member.roles.cache.has(cfg.tagRole) ? t(`a le rôle <@&${cfg.tagRole}>`, `has <@&${cfg.tagRole}>`) : t(`n'a pas <@&${cfg.tagRole}>`, `does not have <@&${cfg.tagRole}>`)) : t("rôle coupé", "role off")}${changedTag ? t(" *(mis à jour)*", " *(updated)*") : ""}` },
+          { name: t("💬 Statut", "💬 Status"), value: `${stLine}\n${cfg.statusRole ? (member.roles.cache.has(cfg.statusRole) ? t(`a le rôle <@&${cfg.statusRole}>`, `has <@&${cfg.statusRole}>`) : t(`n'a pas <@&${cfg.statusRole}>`, `does not have <@&${cfg.statusRole}>`)) : t("rôle coupé", "role off")}${changedSt ? t(" *(mis à jour)*", " *(updated)*") : ""}` }
+        );
+      return i.editReply({ embeds: [e], allowedMentions: { parse: [] } });
     }
     if (sub === "salon") {
       const one = i.options.getChannel("salon"), two = i.options.getChannel("salon2");
@@ -10153,7 +10175,10 @@ const tools = (() => {
     client.on(Events.GuildMemberAdd, (m) => scamOnJoin(m).catch(() => {}));
     client.on(Events.GuildMemberAdd, (m) => trackJoin(m).catch(() => {}));
     client.on(Events.GuildMemberUpdate, (_, m) => syncTag(m).catch(() => {}));
-    client.on(Events.PresenceUpdate, (_, p) => syncStatus(p).catch(() => {}));
+    client.on(Events.PresenceUpdate, async (_, p) => {
+      await syncStatus(p).catch(() => {});
+      if (p?.member) await syncTag(p.member).catch(() => {}); // profile changes (like the server tag) come with presence updates too
+    });
     client.on(Events.GuildMemberRemove, (m) => trackLeave(m));
     client.on(Events.InviteCreate, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
     client.on(Events.InviteDelete, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
