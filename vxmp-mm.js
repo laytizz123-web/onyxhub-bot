@@ -3916,7 +3916,433 @@ const gfx = (() => {
     return c.png();
   }
 
-  return { Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+  /* ---------- animated server emojis: a GIF with a transparent background ---------- */
+  const hsv = (h, s, v) => {
+    h = ((h % 1) + 1) % 1;
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s), q = v * (1 - f * s), u = v * (1 - (1 - f) * s);
+    const [r, g, b] = [[v, u, p], [q, v, p], [p, v, u], [p, q, v], [u, p, v], [v, p, q]][i % 6];
+    return [r * 255, g * 255, b * 255];
+  };
+  const toHsv = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h / 6, mx ? d / mx : 0, mx];
+  };
+  const rgbHex = (c) => "#" + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  /* A transparent picture (premultiplied colours + coverage). */
+  const layer = (w, h) => ({ w, h, c: new Float32Array(w * h * 3), a: new Float32Array(w * h) });
+  /* Draws with the Canvas tools on black and on white: the difference gives the transparency of every pixel. */
+  function matte(w, h, draw) {
+    const k = new Canvas(w, h, "#000000");
+    draw(k);
+    const wh = new Canvas(w, h, "#ffffff");
+    draw(wh);
+    const L = layer(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const a = clamp01(1 - (wh.px[i * 3] - k.px[i * 3] + wh.px[i * 3 + 1] - k.px[i * 3 + 1] + wh.px[i * 3 + 2] - k.px[i * 3 + 2]) / 765);
+      L.a[i] = a;
+      for (let j = 0; j < 3; j++) L.c[i * 3 + j] = Math.max(0, Math.min(255 * a, k.px[i * 3 + j])); // black background: already premultiplied
+    }
+    return L;
+  }
+  /* "over": puts colour col (0-255) with coverage al on top of pixel i */
+  const over = (L, i, r, g, b, al) => {
+    if (al <= 0) return;
+    const keep = 1 - al;
+    L.c[i * 3] = r * al + L.c[i * 3] * keep;
+    L.c[i * 3 + 1] = g * al + L.c[i * 3 + 1] * keep;
+    L.c[i * 3 + 2] = b * al + L.c[i * 3 + 2] * keep;
+    L.a[i] = al + L.a[i] * keep;
+  };
+  /* A decoded image (RGBA) fitted in a square of `size` pixels as a layer; big pictures are averaged first (no jagged edges). */
+  function spriteFromImage(img, size, margin = 6) {
+    const box = size - margin * 2;
+    const scale = Math.min(box / img.w, box / img.h);
+    const tw = Math.max(1, Math.round(img.w * scale)), th = Math.max(1, Math.round(img.h * scale));
+    const L = layer(size, size);
+    const ox = Math.floor((size - tw) / 2), oy = Math.floor((size - th) / 2);
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+      const sx0 = (x / tw) * img.w, sx1 = ((x + 1) / tw) * img.w, sy0 = (y / th) * img.h, sy1 = ((y + 1) / th) * img.h;
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      const stepX = Math.max(1, (sx1 - sx0) / 4), stepY = Math.max(1, (sy1 - sy0) / 4);
+      for (let v = sy0 + stepY / 2; v < sy1; v += stepY) for (let u = sx0 + stepX / 2; u < sx1; u += stepX) {
+        const o = (Math.min(img.h - 1, Math.floor(v)) * img.w + Math.min(img.w - 1, Math.floor(u))) * 4;
+        const pa = img.data[o + 3] / 255;
+        r += img.data[o] * pa; g += img.data[o + 1] * pa; b += img.data[o + 2] * pa; a += pa; n++;
+      }
+      const i = (oy + y) * size + ox + x;
+      L.a[i] = a / n;
+      L.c[i * 3] = r / n; L.c[i * 3 + 1] = g / n; L.c[i * 3 + 2] = b / n;
+    }
+    return L;
+  }
+  const EMOJI_COLORS = {
+    or: [[0, "#fff6c2"], [0.45, "#ffcf3c"], [1, "#ff8a1f"]],
+    feu: [[0, "#fff27a"], [0.5, "#ff8a1f"], [1, "#ff2d2d"]],
+    glace: [[0, "#e9fbff"], [0.5, "#5fd8ff"], [1, "#2a6bff"]],
+    violet: [[0, "#ffd1ff"], [0.5, "#c06bff"], [1, "#6a3dff"]],
+    vert: [[0, "#e6ffd1"], [0.5, "#4dff8a"], [1, "#0bbf6b"]],
+    rose: [[0, "#ffe0f0"], [0.5, "#ff6bc1"], [1, "#ff2d7a"]],
+    blanc: [[0, "#ffffff"], [1, "#d6dcff"]],
+    rainbow: null,
+  };
+  /* The still picture of a text emoji: big letters with a gradient, a dark outline and a soft glow, on an optional badge. */
+  function emojiTextSprite({ text, color = "or", bg = "none", size = 128 }) {
+    const str = String(text || "?").slice(0, 8);
+    return matte(size, size, (c) => {
+      const stops = color in EMOJI_COLORS ? EMOJI_COLORS[color] : EMOJI_COLORS.or;
+      const edge = stops ? stops[stops.length - 1][1] : "#7c4dff";
+      if (bg === "rond" || bg === "carre") {
+        const sdf = bg === "rond" ? (x, y) => Math.hypot(x - size / 2, y - size / 2) - size * 0.46 : roundSdf(size * 0.05, size * 0.05, size * 0.9, size * 0.9, size * 0.22);
+        const dark = rgbHex(hex(edge).map((v) => v * 0.28));
+        c.shape(sdf, 0, 0, size, size, lin(0, 0, size, size, [[0, rgbHex(hex(edge).map((v) => v * 0.55))], [1, dark]]));
+        c.shape((x, y) => Math.abs(sdf(x, y) + size * 0.03) - size * 0.022, 0, 0, size, size, lin(0, 0, 0, size, stops || [[0, "#ffffff"], [1, "#7c4dff"]]), 0.95);
+        c.glow(size * 0.35, size * 0.3, size * 0.3, "#ffffff", 0.12);
+      }
+      const room = bg === "none" ? size * 0.94 : size * 0.72;
+      const fs = fitSize(c, str, room, str.length <= 2 ? size * 0.7 : size * 0.6);
+      const paint = stops ? (top, base) => lin(0, top, 0, base, stops) : (top, base) => (x) => hsv(x / size, 0.85, 1);
+      c.text(str, size / 2, size / 2 + 1, fs, { align: "center", paint, shadow: { blur: Math.max(2, fs * 0.05), dx: 0, dy: Math.max(2, fs * 0.05), color: "#000000", alpha: 0.85 }, glow: { blur: Math.max(3, fs * 0.09), color: "#000000", alpha: 0.9 } });
+    });
+  }
+  /* sample of a layer at (u, v) with bilinear filtering: [r, g, b, a] premultiplied */
+  function sample(S, u, v) {
+    const x0 = Math.floor(u - 0.5), y0 = Math.floor(v - 0.5);
+    const fx = u - 0.5 - x0, fy = v - 0.5 - y0;
+    const out = [0, 0, 0, 0];
+    for (const [x, y, wgt] of [[x0, y0, (1 - fx) * (1 - fy)], [x0 + 1, y0, fx * (1 - fy)], [x0, y0 + 1, (1 - fx) * fy], [x0 + 1, y0 + 1, fx * fy]]) {
+      if (x < 0 || y < 0 || x >= S.w || y >= S.h || wgt <= 0) continue;
+      const i = y * S.w + x;
+      out[0] += S.c[i * 3] * wgt; out[1] += S.c[i * 3 + 1] * wgt; out[2] += S.c[i * 3 + 2] * wgt; out[3] += S.a[i] * wgt;
+    }
+    return out;
+  }
+  const EMOJI_STYLES = ["rainbow", "shine", "pulse", "bounce", "spin", "rotate", "shake", "glitch", "fire"];
+  /* One frame (t from 0 to 1) of an animation of the sprite. */
+  function emojiFrame(S, style, t, seed = 1) {
+    const W = S.w, H = S.h, cx = W / 2, cy = H / 2;
+    const L = layer(W, H);
+    const TAU = Math.PI * 2;
+    let sx = 1, sy = 1, rot = 0, dx = 0, dy = 0;
+    if (style === "pulse") sx = sy = 0.84 + 0.14 * (0.5 - 0.5 * Math.cos(TAU * t));
+    if (style === "bounce") {
+      const hop = Math.abs(Math.sin(Math.PI * t));
+      dy = -hop * H * 0.16;
+      const squash = Math.max(0, 1 - hop * 4); // flattened right when it lands
+      sx = 1 + 0.14 * squash; sy = 1 - 0.14 * squash;
+      dy += (H * 0.07 * squash) * 0.5;
+    }
+    if (style === "spin") sx = Math.cos(TAU * t);
+    if (style === "rotate") rot = TAU * t;
+    if (style === "shake") { rot = 0.2 * Math.sin(TAU * t * 4 + 0.6); dx = Math.sin(TAU * t * 6 + 1.1) * 3; sx = sy = 0.9; }
+    if (style === "glitch") sx = sy = 0.92;
+    if (style === "fire") { sx = sy = 0.7; dy = H * 0.14; }
+    if (style === "bounce") sx *= 0.86, sy *= 0.86;
+    const r = rngOf(String(seed) + style);
+    // behind: flames, a glow, the shadow on the ground
+    /* a crown of flames behind the sprite: tongues of red, orange and yellow that grow, shrink and sway, and embers */
+    const fireCrown = () => {
+      const tongues = 7, mid = (tongues - 1) / 2;
+      const params = Array.from({ length: tongues }, (_, k) => {
+        const rf = rngOf(`${seed}t${k}`);
+        const ph = rf(), sp = 1 + Math.floor(rf() * 2);
+        const wave = Math.sin(TAU * (t * sp + ph));
+        return {
+          x: W * (0.12 + (0.76 * k) / (tongues - 1)),
+          r: W * (0.1 + 0.03 * rf()),
+          h: H * (0.3 + 0.3 * (1 - Math.abs(k - mid) / mid)) * (0.82 + 0.18 * wave),
+          sway: Math.cos(TAU * (t * sp + ph)) * W * 0.05,
+        };
+      });
+      const base = H * 0.7;
+      for (const [shrink, col] of [[1, [225, 40, 20]], [0.7, [255, 135, 20]], [0.42, [255, 232, 100]]]) {
+        for (const p of params) {
+          const r = p.r * shrink, h = p.h * shrink, cyc = base + p.r - r; // the bottoms of the 3 colours line up
+          const x0 = Math.max(0, Math.floor(p.x - r - Math.abs(p.sway) - 2)), x1 = Math.min(W, Math.ceil(p.x + r + Math.abs(p.sway) + 2));
+          for (let y = Math.max(0, Math.floor(cyc - h - 2)); y < Math.min(H, Math.ceil(cyc + r + 2)); y++) {
+            const py = y + 0.5;
+            for (let x = x0; x < x1; x++) {
+              const px = x + 0.5;
+              let d;
+              if (py > cyc) d = Math.hypot(px - p.x, py - cyc) - r;
+              else {
+                const k = clamp01((py - (cyc - h)) / h); // 0 at the tip, 1 at the round part
+                const centre = p.x + p.sway * (1 - k) * (1 - k);
+                d = Math.abs(px - centre) - r * Math.pow(k, 0.75);
+                if (py < cyc - h) d = Math.max(d, cyc - h - py);
+              }
+              const cover = clamp01(0.5 - d);
+              if (cover > 0) over(L, y * W + x, col[0], col[1], col[2], cover);
+            }
+          }
+        }
+      }
+      const re = rngOf(`${seed}embers`);
+      for (let k = 0; k < 9; k++) {
+        const x0 = W * (0.15 + 0.7 * re()), ph = re(), rad = 1.4 + re() * 1.4;
+        const life = (t * 2 + ph) % 1;
+        const px = x0 + Math.sin(TAU * (life + ph)) * 6, py = H * 0.62 - life * H * 0.6;
+        const col = life < 0.5 ? [255, 210, 80] : [255, 110, 30];
+        for (let y = Math.max(0, Math.floor(py - rad - 1)); y < Math.min(H, Math.ceil(py + rad + 1)); y++) for (let x = Math.max(0, Math.floor(px - rad - 1)); x < Math.min(W, Math.ceil(px + rad + 1)); x++) {
+          const cover = clamp01(0.5 - (Math.hypot(x + 0.5 - px, y + 0.5 - py) - rad));
+          if (cover > 0) over(L, y * W + x, col[0], col[1], col[2], cover * (1 - life * 0.5));
+        }
+      }
+    };
+    if (style === "fire") fireCrown();
+    if (style === "pulse") {
+      const glow = 0.25 + 0.35 * (0.5 - 0.5 * Math.cos(TAU * t));
+      const avg = [0, 0, 0];
+      let n = 0;
+      for (let i = 0; i < W * H; i++) if (S.a[i] > 0.5) { avg[0] += S.c[i * 3] / S.a[i]; avg[1] += S.c[i * 3 + 1] / S.a[i]; avg[2] += S.c[i * 3 + 2] / S.a[i]; n++; }
+      const col = n ? avg.map((v) => v / n) : [255, 255, 255];
+      const rad = W * 0.5;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rad;
+        if (d < 1) over(L, y * W + x, col[0], col[1], col[2], glow * (1 - d) ** 2);
+      }
+    }
+    if (style === "bounce") {
+      const hop = Math.abs(Math.sin(Math.PI * t));
+      const rx = W * (0.32 - 0.12 * hop), ry = H * 0.045;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - H * 0.93) / ry);
+        if (d < 1) over(L, y * W + x, 0, 0, 0, 0.45 * (1 - hop * 0.6) * (1 - d));
+      }
+    }
+    // the sprite itself, moved / turned / squashed, with its colour effect
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const back = style === "spin" && Math.cos(TAU * t) < 0;
+    const glitchOn = style === "glitch" && (Math.floor(t * 24) % 6 === 0 || Math.floor(t * 24) % 6 === 3);
+    const split = style === "glitch" ? (glitchOn ? 5 : 1.5) : 0;
+    const rg = rngOf(`${seed}g${Math.floor(t * 24)}`); // the glitch changes at every frame
+    const slice = glitchOn ? Math.floor(rg() * H) : -1;
+    const sweep = -0.4 + t * 1.8; // position of the shine band, from left to right
+    for (let y = 0; y < H; y++) {
+      const shiftRow = glitchOn && Math.abs(y - slice) < 10 ? (slice % 2 ? -8 : 8) : 0;
+      for (let x = 0; x < W; x++) {
+        // destination -> source
+        let ux = x + 0.5 - cx - dx - shiftRow, uy = y + 0.5 - cy - dy;
+        const qx = (ux * cos + uy * sin) / (Math.abs(sx) < 0.04 ? 0.04 : Math.abs(sx)), qy = (-ux * sin + uy * cos) / sy;
+        let u = qx + cx, v = qy + cy;
+        if (style === "fire") u += Math.sin(v * 0.18 + TAU * t * 2) * 1.2;
+        if (u < -1 || v < -1 || u > W + 1 || v > H + 1) continue;
+        let px = sample(S, back ? W - u : u, v);
+        if (split) {
+          const a = sample(S, u + split, v), b = sample(S, u - split, v);
+          px = [a[0], px[1], b[2], Math.max(a[3], px[3], b[3])];
+        }
+        const al = px[3];
+        if (al < 0.01) continue;
+        let col = [px[0] / al, px[1] / al, px[2] / al];
+        if (split) col = [px[0] / Math.max(al, 0.01), px[1] / Math.max(al, 0.01), px[2] / Math.max(al, 0.01)].map((c) => Math.min(255, c));
+        if (style === "rainbow") {
+          const [h, s, vv] = toHsv(col[0], col[1], col[2]);
+          col = s < 0.15 && vv > 0.6 ? hsv(t + u / W * 0.6, 0.65, vv) : hsv(h + t, Math.max(s, 0.35), vv);
+        }
+        if (style === "shine") {
+          const band = Math.exp(-(((u / W - sweep) + (v / H) * 0.45) ** 2) / 0.004);
+          col = col.map((c) => c + (255 - c) * band * 0.85);
+        }
+        if (style === "spin") {
+          const light = 0.65 + 0.35 * Math.abs(Math.cos(TAU * t));
+          col = col.map((c) => c * light);
+        }
+        if (style === "fire") col = [Math.min(255, col[0] * 1.05 + 10), col[1], col[2] * 0.9];
+        over(L, y * W + x, col[0], col[1], col[2], Math.min(1, al));
+      }
+    }
+    // in front: sparkles
+    if (style === "shine" || style === "rainbow") {
+      for (let k = 0; k < 5; k++) {
+        const px = W * (0.12 + 0.76 * r()), py = H * (0.12 + 0.76 * r()), ph = r();
+        const tw = Math.max(0, Math.sin(TAU * (t * 2 + ph)));
+        const len = 4 + 7 * tw;
+        if (tw < 0.05) continue;
+        for (let y = Math.floor(py - len); y <= Math.ceil(py + len); y++) for (let x = Math.floor(px - len); x <= Math.ceil(px + len); x++) {
+          if (x < 0 || y < 0 || x >= W || y >= H) continue;
+          const ax = Math.abs(x + 0.5 - px), ay = Math.abs(y + 0.5 - py);
+          const v = Math.max(clamp01(1 - ay / 1.3) * clamp01(1 - ax / len), clamp01(1 - ax / 1.3) * clamp01(1 - ay / len));
+          if (v > 0) over(L, y * W + x, 255, 255, 240, v * tw);
+        }
+      }
+    }
+    return L;
+  }
+  /* Frames (layers) -> GIF whose background is transparent. Half-covered edge pixels are mixed with Discord's dark grey. */
+  function encodeGifAlpha(frames, delayCs = 5, bgColor = [49, 51, 56]) {
+    const w = frames[0].w, h = frames[0].h;
+    const flat = frames.map((L) => {
+      const rgb = new Uint8Array(w * h * 3);
+      const on = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const a = L.a[i];
+        if (a < 0.4) continue;
+        on[i] = 1;
+        for (let k = 0; k < 3; k++) rgb[i * 3 + k] = Math.max(0, Math.min(255, Math.round(L.c[i * 3 + k] + bgColor[k] * (1 - a))));
+      }
+      return { rgb, on };
+    });
+    const sample = [];
+    const stride = Math.max(1, Math.ceil((w * h * frames.length) / 60000));
+    let n = 0;
+    for (const f of flat) for (let i = 0; i < w * h; i++) if (f.on[i] && n++ % stride === 0) sample.push(f.rgb[i * 3], f.rgb[i * 3 + 1], f.rgb[i * 3 + 2]);
+    if (!sample.length) sample.push(0, 0, 0);
+    const palette = medianCut(Uint8Array.from(sample), 255);
+    while (palette.length < 255) palette.push([0, 0, 0]);
+    const lut = new Int16Array(32768).fill(-1);
+    const nearest = (r, g, b) => {
+      const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+      if (lut[key] >= 0) return lut[key];
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < 255; i++) {
+        const d = (palette[i][0] - r) ** 2 + (palette[i][1] - g) ** 2 + (palette[i][2] - b) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      return (lut[key] = best);
+    };
+    const head = Buffer.alloc(13);
+    head.write("GIF89a", 0, "ascii");
+    head.writeUInt16LE(w, 6);
+    head.writeUInt16LE(h, 8);
+    head[10] = 0xf7;
+    const table = Buffer.alloc(768);
+    palette.forEach((c, i) => { table[i * 3] = c[0]; table[i * 3 + 1] = c[1]; table[i * 3 + 2] = c[2]; });
+    const parts = [head, table, Buffer.from([0x21, 0xff, 0x0b, ...Buffer.from("NETSCAPE2.0", "ascii"), 3, 1, 0, 0, 0])];
+    for (const f of flat) {
+      const idx = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) idx[i] = f.on[i] ? nearest(f.rgb[i * 3], f.rgb[i * 3 + 1], f.rgb[i * 3 + 2]) : 255;
+      // disposal 2 (cleared before the next frame) + transparent colour 255
+      parts.push(Buffer.from([0x21, 0xf9, 0x04, 0x09, delayCs & 255, delayCs >> 8, 255, 0]));
+      const desc = Buffer.alloc(10);
+      desc[0] = 0x2c;
+      desc.writeUInt16LE(w, 5);
+      desc.writeUInt16LE(h, 7);
+      parts.push(desc, Buffer.from([8]), lzw(idx, 8));
+    }
+    parts.push(Buffer.from([0x3b]));
+    return Buffer.concat(parts);
+  }
+
+  /* ---------- the server's own emoji pack: icons drawn for a trading / middleman server ---------- */
+  const scalePoly = (poly, cx, cy, k) => poly.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
+  const starPoly = (cx, cy, ro, ri, n = 5, turn = -Math.PI / 2) => Array.from({ length: n * 2 }, (_, k) => {
+    const a = turn + (Math.PI / n) * k;
+    const r = k % 2 ? ri : ro;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+  });
+  const PURPLE = [[0, "#c9a6ff"], [0.5, "#7c4dff"], [1, "#3f1aa8"]];
+  const GOLDY = [[0, "#fff6c2"], [0.45, "#ffcf3c"], [1, "#e8780f"]];
+  /* a shape with a dark outline, a gradient and a light reflection on its top half */
+  function glossy(c, polys, stops, { outline = "#14092e", width = 5, shine = 0.22 } = {}) {
+    const all = polys.flat();
+    const minY = Math.min(...all.map((p) => p[1])), maxY = Math.max(...all.map((p) => p[1]));
+    const cx = all.reduce((s, p) => s + p[0], 0) / all.length, cy = (minY + maxY) / 2;
+    const k = 1 + width / Math.max(20, (maxY - minY) / 2);
+    c.polygons(polys.map((p) => scalePoly(p, cx, cy, k)), outline);
+    c.polygons(polys, lin(0, minY, 0, maxY, stops));
+    const top = minY + (maxY - minY) * 0.42;
+    if (shine) c.polygons(polys.map((p) => scalePoly(p, cx, cy, 0.86).map(([x, y]) => [x, Math.min(y, top)])), "#ffffff", shine);
+  }
+  const check = (c, pts, w, color = "#ffffff") => {
+    for (let k = 0; k < pts.length - 1; k++) c.segment(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], w + 7, "#14092e");
+    for (let k = 0; k < pts.length - 1; k++) c.segment(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], w, color);
+  };
+  const disc = (c, cx, cy, r, stops, ringStops) => {
+    c.circle(cx, cy, r + 4, "#14092e");
+    c.circle(cx, cy, r, lin(0, cy - r, 0, cy + r, ringStops || stops));
+    c.circle(cx, cy, r * 0.82, lin(0, cy - r, 0, cy + r, stops));
+    c.ellipse(cx, cy - r * 0.42, r * 0.58, r * 0.3, "#ffffff", 0.18);
+  };
+  const EMOJI_PACK = [
+    { id: "kazuki", name: "kazuki", label: "Logo KZ", style: "shine" },
+    { id: "middleman", name: "middleman", label: "Middleman", style: "shine" },
+    { id: "vouch", name: "vouch", label: "Vouch", style: "spin" },
+    { id: "ltc", name: "ltc", label: "Litecoin", style: "spin" },
+    { id: "paypal", name: "paypal", label: "PayPal", style: "bounce" },
+    { id: "trade", name: "trade", label: "Trade", style: "pulse" },
+    { id: "verified", name: "verified", label: "Vérifié", style: "shine" },
+    { id: "scam", name: "scam", label: "Scam", style: "shake" },
+    { id: "og", name: "og", label: "OG", style: "shine" },
+    { id: "ticket", name: "ticket", label: "Ticket", style: "bounce" },
+    { id: "value", name: "value", label: "Valeur", style: "shine" },
+    { id: "win", name: "win", label: "W", style: "pulse" },
+    { id: "lose", name: "lose", label: "L", style: "shake" },
+  ];
+  function emojiIconSprite(id, size = 128) {
+    const S = size, m = S / 2;
+    return matte(S, S, (c) => {
+      const big = (str, y, fs, stops) => c.text(str, m, y, fs, { align: "center", paint: (top, base) => lin(0, top, 0, base, stops), shadow: { blur: 3, dy: 3, color: "#000000", alpha: 0.8 }, glow: { blur: 4, color: "#14092e", alpha: 1 } });
+      if (id === "kazuki") {
+        disc(c, m, m, S * 0.44, [[0, "#5b2bd6"], [1, "#1d0b4f"]], [[0, "#ff7be5"], [0.5, "#b388ff"], [1, "#3ad1ff"]]);
+        big("KZ", m + 2, fitSize(c, "KZ", S * 0.62, S * 0.42), [[0, "#ffffff"], [0.55, "#e2d4ff"], [1, "#b388ff"]]);
+      } else if (id === "middleman" || id === "verified") {
+        if (id === "middleman") {
+          const shield = [[m, S * 0.06], [S * 0.88, S * 0.2], [S * 0.84, S * 0.56], [m, S * 0.95], [S * 0.16, S * 0.56], [S * 0.12, S * 0.2]];
+          glossy(c, [shield], PURPLE);
+          c.polygons([scalePoly(shield, m, S * 0.5, 0.74)], lin(0, 0, 0, S, [[0, "#9b6bff"], [1, "#4a1fb8"]]));
+        } else {
+          glossy(c, [starPoly(m, m, S * 0.46, S * 0.38, 12)], [[0, "#7fe3ff"], [0.5, "#3a8bff"], [1, "#2a3fc0"]]);
+        }
+        check(c, [[S * 0.32, S * 0.5], [S * 0.45, S * 0.64], [S * 0.7, S * 0.36]], S * 0.09);
+      } else if (id === "vouch") {
+        glossy(c, [starPoly(m, S * 0.53, S * 0.46, S * 0.2)], GOLDY, { width: 5, shine: 0.25 });
+      } else if (id === "ltc" || id === "paypal") {
+        disc(c, m, m, S * 0.44, id === "ltc" ? [[0, "#e9eef7"], [1, "#9aa6bd"]] : [[0, "#ffffff"], [1, "#d6e4ff"]], id === "ltc" ? [[0, "#ffffff"], [1, "#5f6f8f"]] : [[0, "#7fb6ff"], [1, "#1f4fbf"]]);
+        const img = logo(id);
+        if (img) c.image(img, m, m, S * 0.58);
+      } else if (id === "trade") {
+        c.round(S * 0.06 - 4, S * 0.06 - 4, S * 0.88 + 8, S * 0.88 + 8, S * 0.24, "#14092e");
+        c.round(S * 0.06, S * 0.06, S * 0.88, S * 0.88, S * 0.22, lin(0, 0, 0, S, [[0, "#8a5cff"], [1, "#3f1aa8"]]));
+        const arrow = (y, dir, stops) => {
+          const x0 = dir > 0 ? S * 0.22 : S * 0.78, x1 = dir > 0 ? S * 0.66 : S * 0.34;
+          const head = [[x1 + dir * S * 0.14, y], [x1, y - S * 0.12], [x1, y + S * 0.12]];
+          c.polygons([scalePoly(head, x1, y, 1.25)], "#14092e");
+          c.segment(x0, y, x1, y, S * 0.13, "#14092e");
+          c.segment(x0, y, x1 + dir * 2, y, S * 0.08, lin(0, y - 8, 0, y + 8, stops));
+          c.polygons([head], lin(0, y - 12, 0, y + 12, stops));
+        };
+        arrow(S * 0.36, 1, [[0, "#b6ffd8"], [1, "#16c47a"]]);
+        arrow(S * 0.64, -1, [[0, "#c6f2ff"], [1, "#1f9bff"]]);
+      } else if (id === "scam") {
+        const tri = [[m, S * 0.08], [S * 0.95, S * 0.88], [S * 0.05, S * 0.88]];
+        glossy(c, [tri], [[0, "#ff9a8a"], [0.5, "#ff3b3b"], [1, "#a30f1f"]]);
+        c.round(m - S * 0.055, S * 0.32, S * 0.11, S * 0.32, S * 0.05, "#ffffff");
+        c.circle(m, S * 0.75, S * 0.065, "#ffffff");
+      } else if (id === "og") {
+        const crown = [[S * 0.08, S * 0.3], [S * 0.3, S * 0.52], [m, S * 0.16], [S * 0.7, S * 0.52], [S * 0.92, S * 0.3], [S * 0.84, S * 0.8], [S * 0.16, S * 0.8]];
+        glossy(c, [crown], GOLDY);
+        c.round(S * 0.16, S * 0.74, S * 0.68, S * 0.12, 4, lin(0, S * 0.74, 0, S * 0.86, [[0, "#ffe27a"], [1, "#c45f0a"]]));
+        for (const [x, y, col] of [[S * 0.08, S * 0.3, "#ff4fd8"], [m, S * 0.16, "#3ad1ff"], [S * 0.92, S * 0.3, "#ff4fd8"]]) { c.circle(x, y, S * 0.075, "#14092e"); c.circle(x, y, S * 0.05, col); }
+        c.circle(m, S * 0.62, S * 0.07, "#14092e"); c.circle(m, S * 0.62, S * 0.05, "#9b6bff");
+      } else if (id === "ticket") {
+        const notch = (x, y) => Math.hypot(x - S * 0.08, y - m) - S * 0.11;
+        const notch2 = (x, y) => Math.hypot(x - S * 0.92, y - m) - S * 0.11;
+        const body = roundSdf(S * 0.08, S * 0.22, S * 0.84, S * 0.56, S * 0.1);
+        const tk = (x, y) => Math.max(body(x, y), -notch(x, y), -notch2(x, y));
+        c.shape((x, y) => tk(x, y) - 4, 0, 0, S, S, "#14092e");
+        c.shape(tk, 0, 0, S, S, lin(0, S * 0.22, 0, S * 0.78, [[0, "#ff8ae8"], [0.5, "#b04dff"], [1, "#5a1fd0"]]));
+        for (let y = S * 0.3; y < S * 0.72; y += 9) c.segment(S * 0.66, y, S * 0.66, y + 4, 3, "#ffffff", 0.6);
+        big("MM", m + 1, S * 0.24, [[0, "#ffffff"], [1, "#ffd1ff"]]);
+      } else if (id === "value") {
+        const gem = [[S * 0.28, S * 0.14], [S * 0.72, S * 0.14], [S * 0.94, S * 0.38], [m, S * 0.92], [S * 0.06, S * 0.38]];
+        glossy(c, [gem], [[0, "#d9fbff"], [0.5, "#38d6ff"], [1, "#1a5fd6"]], { shine: 0 });
+        c.polygons([[[S * 0.06, S * 0.38], [S * 0.94, S * 0.38], [S * 0.72, S * 0.14], [S * 0.28, S * 0.14]]], lin(0, S * 0.14, 0, S * 0.38, [[0, "#ffffff"], [1, "#9cecff"]]), 0.75);
+        c.polygons([[[S * 0.32, S * 0.38], [S * 0.68, S * 0.38], [m, S * 0.92]]], "#ffffff", 0.22);
+        c.segment(S * 0.06, S * 0.38, S * 0.94, S * 0.38, 2, "#14092e", 0.6);
+      } else if (id === "win" || id === "lose") {
+        const green = id === "win";
+        disc(c, m, m, S * 0.44, green ? [[0, "#4dff9a"], [1, "#0a8f4f"]] : [[0, "#ff7a7a"], [1, "#b0122a"]], green ? [[0, "#d6ffe6"], [1, "#0b6b3c"]] : [[0, "#ffd6d6"], [1, "#7a0b1c"]]);
+        big(green ? "W" : "L", m + 2, S * 0.5, [[0, "#ffffff"], [1, green ? "#d6ffe6" : "#ffe0e0"]]);
+      }
+    });
+  }
+
+  return { emojiIconSprite, EMOJI_PACK, emojiTextSprite, spriteFromImage, emojiFrame, encodeGifAlpha, EMOJI_STYLES, Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
