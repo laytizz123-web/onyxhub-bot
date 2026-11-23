@@ -3991,22 +3991,27 @@ const gfx = (() => {
     rainbow: null,
   };
   /* The still picture of a text emoji: big letters with a gradient, a dark outline and a soft glow, on an optional badge. */
-  function emojiTextSprite({ text, color = "or", bg = "none", size = 128 }) {
+  function emojiTextSprite({ text, color = "violet", bg = "rond", size = 128 }) {
     const str = String(text || "?").slice(0, 8);
-    return matte(size, size, (c) => {
-      const stops = color in EMOJI_COLORS ? EMOJI_COLORS[color] : EMOJI_COLORS.or;
-      const edge = stops ? stops[stops.length - 1][1] : "#7c4dff";
-      if (bg === "rond" || bg === "carre") {
-        const sdf = bg === "rond" ? (x, y) => Math.hypot(x - size / 2, y - size / 2) - size * 0.46 : roundSdf(size * 0.05, size * 0.05, size * 0.9, size * 0.9, size * 0.22);
-        const dark = rgbHex(hex(edge).map((v) => v * 0.28));
-        c.shape(sdf, 0, 0, size, size, lin(0, 0, size, size, [[0, rgbHex(hex(edge).map((v) => v * 0.55))], [1, dark]]));
-        c.shape((x, y) => Math.abs(sdf(x, y) + size * 0.03) - size * 0.022, 0, 0, size, size, lin(0, 0, 0, size, stops || [[0, "#ffffff"], [1, "#7c4dff"]]), 0.95);
-        c.glow(size * 0.35, size * 0.3, size * 0.3, "#ffffff", 0.12);
+    const S = size, m = S / 2;
+    return matte(S, S, (c) => {
+      const stops = color in EMOJI_COLORS ? EMOJI_COLORS[color] : EMOJI_COLORS.violet;
+      const ring = stops || [[0, "#ff7be5"], [0.5, "#b388ff"], [1, "#3ad1ff"]];
+      const deep = hex(ring[ring.length - 1][1]);
+      const inner = [[0, rgbHex(deep.map((v) => v * 0.7))], [1, rgbHex(deep.map((v) => v * 0.22))]];
+      if (bg === "rond") disc(c, m, m, S * 0.44, inner, ring);
+      if (bg === "carre") {
+        c.round(S * 0.06 - 4, S * 0.06 - 4, S * 0.88 + 8, S * 0.88 + 8, S * 0.24, "#14092e");
+        c.round(S * 0.06, S * 0.06, S * 0.88, S * 0.88, S * 0.22, lin(0, 0, 0, S, ring));
+        c.round(S * 0.12, S * 0.12, S * 0.76, S * 0.76, S * 0.17, lin(0, 0, 0, S, inner));
+        c.round(S * 0.16, S * 0.14, S * 0.68, S * 0.26, S * 0.12, "#ffffff", 0.12);
       }
-      const room = bg === "none" ? size * 0.94 : size * 0.72;
-      const fs = fitSize(c, str, room, str.length <= 2 ? size * 0.7 : size * 0.6);
-      const paint = stops ? (top, base) => lin(0, top, 0, base, stops) : (top, base) => (x) => hsv(x / size, 0.85, 1);
-      c.text(str, size / 2, size / 2 + 1, fs, { align: "center", paint, shadow: { blur: Math.max(2, fs * 0.05), dx: 0, dy: Math.max(2, fs * 0.05), color: "#000000", alpha: 0.85 }, glow: { blur: Math.max(3, fs * 0.09), color: "#000000", alpha: 0.9 } });
+      const room = bg === "none" ? S * 0.94 : S * 0.66;
+      const fs = fitSize(c, str, room, str.length <= 2 ? S * (bg === "none" ? 0.72 : 0.46) : S * 0.42);
+      // on a badge: light letters; alone: letters in the colour
+      const letters = bg === "none" ? stops : [[0, "#ffffff"], [0.6, "#f1eaff"], [1, rgbHex(hex(ring[0][1]).map((v) => 180 + v * 0.3))]];
+      const paint = letters ? (top, base) => lin(0, top, 0, base, letters) : () => (x) => hsv(x / S, 0.85, 1);
+      c.text(str, m, m + 2, fs, { align: "center", paint, shadow: { blur: 3, dx: 0, dy: 3, color: "#000000", alpha: 0.8 }, glow: { blur: Math.max(3, fs * 0.08), color: "#14092e", alpha: 1 } });
     });
   }
   /* sample of a layer at (u, v) with bilinear filtering: [r, g, b, a] premultiplied */
@@ -5088,6 +5093,27 @@ const tools = (() => {
       ),
       // brainrot values
       ...valueCommands(D),
+      // animated server emojis
+      D(
+        P.ManageGuildExpressions,
+        cmd("emoji", t("Créer des emojis animés pour le serveur", "Make animated emojis for the server"))
+          .addSubcommand((s) =>
+            s
+              .setName("pack")
+              .setDescription(t("Ajouter le pack d'emojis du serveur (middleman, vouch, LTC, OG…)", "Add the server's emoji pack (middleman, vouch, LTC, OG…)"))
+              .addStringOption((o) => o.setName("emoji").setDescription(t("Un seul emoji du pack (vide = tout le pack)", "Only one emoji of the pack (empty = the whole pack)")).addChoices(...gfx.EMOJI_PACK.map((p) => ({ name: p.label, value: p.id }))))
+          )
+          .addSubcommand((s) =>
+            s
+              .setName("texte")
+              .setDescription(t("Créer un emoji animé avec ton texte (GG, KZ, W…)", "Make an animated emoji with your text (GG, KZ, W…)"))
+              .addStringOption((o) => o.setName("texte").setDescription(t("1 à 6 caractères", "1 to 6 characters")).setRequired(true).setMaxLength(6))
+              .addStringOption((o) => o.setName("animation").setDescription(t("L'animation (reflet par défaut)", "The animation (shine by default)")).addChoices(...Object.entries(EMOJI_STYLE_LABELS).map(([value, name]) => ({ name, value }))))
+              .addStringOption((o) => o.setName("couleur").setDescription(t("La couleur (violet par défaut)", "The colour (purple by default)")).addChoices(...Object.entries(EMOJI_COLOR_LABELS).map(([value, name]) => ({ name, value }))))
+              .addStringOption((o) => o.setName("fond").setDescription(t("Le fond (rond par défaut)", "The background (round by default)")).addChoices({ name: t("⭕ Rond", "⭕ Round"), value: "rond" }, { name: t("⬛ Carré arrondi", "⬛ Rounded square"), value: "carre" }, { name: t("✖️ Aucun (juste le texte)", "✖️ None (just the text)"), value: "none" }))
+              .addStringOption((o) => o.setName("nom").setDescription(t("Le nom de l'emoji (vide = kz_texte)", "The emoji name (empty = kz_text)")).setMaxLength(32))
+          )
+      ),
       // index: a role per index for the people who do it
       D(
         P.ManageGuild,
@@ -5274,7 +5300,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6928,6 +6954,7 @@ const tools = (() => {
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
+      [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
       [t("🎮 Jeux", "🎮 Games"), "`/morpion` `/puissance4` `/invites`"],
@@ -9095,6 +9122,120 @@ const tools = (() => {
     if (!it) return reply(i, no(t("Ce brainrot n'existe plus dans la liste.", "This brainrot is no longer in the list.")));
     return i.update({ embeds: [valueCard(it, mut)], components: i.message?.components || [] });
   }
+  /* ---------- /emoji: animated server emojis (the server's pack, or a text in the same style) ---------- */
+  const EMOJI_STYLE_LABELS = { rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow"), shine: t("✨ Reflet", "✨ Shine"), pulse: t("💓 Pulsation", "💓 Pulse"), bounce: t("🦘 Rebond", "🦘 Bounce"), spin: t("🪙 Pièce qui tourne", "🪙 Coin spin"), rotate: t("🌀 Rotation", "🌀 Rotate"), shake: t("😡 Tremblement", "😡 Shake"), glitch: t("⚡ Glitch", "⚡ Glitch"), fire: t("🔥 Feu", "🔥 Fire") };
+  const EMOJI_COLOR_LABELS = { violet: t("💜 Violet (Kazuki)", "💜 Purple (Kazuki)"), or: t("🟡 Or", "🟡 Gold"), feu: t("🔥 Feu", "🔥 Fire"), glace: t("🧊 Glace", "🧊 Ice"), vert: t("🟢 Vert", "🟢 Green"), rose: t("🌸 Rose", "🌸 Pink"), blanc: t("⚪ Blanc", "⚪ White"), rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow") };
+  const emojiPending = new Map(); // id -> { buf, name, opts, user, at }
+  const emojiName = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 32);
+  /* the 24 frames, drawn a few at a time so the bot keeps answering meanwhile */
+  async function renderEmoji(sprite, style) {
+    const frames = [];
+    for (let k = 0; k < 24; k++) {
+      frames.push(gfx.emojiFrame(sprite, style, k / 24, 3));
+      if (k % 4 === 3) await new Promise((r) => setImmediate(r));
+    }
+    let buf = gfx.encodeGifAlpha(frames, 5);
+    if (buf.length > 250_000) buf = gfx.encodeGifAlpha(frames.filter((_, k) => k % 2 === 0), 10); // Discord's limit is 256 KB
+    return buf;
+  }
+  const emojiError = (error) => {
+    const code = error?.code;
+    if (code === 30008) return t("Le serveur n'a plus de place pour les emojis animés. Supprime-en ou booste le serveur pour avoir plus de places.", "The server has no room left for animated emojis. Delete some or boost the server for more slots.");
+    if (code === 50013) return t("Il me manque la permission **Gérer les expressions** (emojis).", "I am missing the **Manage Expressions** permission (emojis).");
+    if (code === 50045 || code === 50138) return t("L'image est trop lourde pour Discord.", "The picture is too big for Discord.");
+    return t(`Discord a refusé l'emoji (${error?.message || error}).`, `Discord refused the emoji (${error?.message || error}).`);
+  };
+  const emojiTag = (e) => `<${e.animated ? "a" : ""}:${e.name}:${e.id}>`;
+  function emojiPreview(id) {
+    const p = emojiPending.get(id);
+    const e = embed(0x7c4dff)
+      .setTitle(t("🎨  Aperçu de l'emoji", "🎨  Emoji preview"))
+      .setDescription(t(`Nom : **:${p.name}:**  ·  ${EMOJI_STYLE_LABELS[p.opts.style]}  ·  ${Math.ceil(p.buf.length / 1024)} Ko\nAppuie sur **Ajouter** pour le mettre sur le serveur.`, `Name: **:${p.name}:**  ·  ${EMOJI_STYLE_LABELS[p.opts.style]}  ·  ${Math.ceil(p.buf.length / 1024)} KB\nPress **Add** to put it on the server.`))
+      .setThumbnail("attachment://emoji.gif");
+    const rows = [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`em:style:${id}`)
+          .setPlaceholder(t("Changer l'animation", "Change the animation"))
+          .addOptions(gfx.EMOJI_STYLES.map((s) => ({ label: EMOJI_STYLE_LABELS[s].replace(/^\S+\s/, ""), emoji: EMOJI_STYLE_LABELS[s].split(" ")[0], value: s, default: s === p.opts.style })))
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`em:add:${id}`).setLabel(t("Ajouter au serveur", "Add to the server")).setEmoji("✅").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`em:no:${id}`).setLabel(t("Annuler", "Cancel")).setStyle(ButtonStyle.Secondary)
+      ),
+    ];
+    return { embeds: [e], files: [new AttachmentBuilder(p.buf, { name: "emoji.gif" })], components: rows, attachments: [] };
+  }
+
+  H.emoji = async (i) => {
+    if (need_perm(i, P.ManageGuildExpressions)) return;
+    const sub = i.options.getSubcommand();
+    for (const [k, p] of emojiPending) if (Date.now() - p.at > 15 * 60_000) emojiPending.delete(k);
+    if (sub === "pack") {
+      const only = i.options.getString("emoji") || "";
+      const list = gfx.EMOJI_PACK.filter((p) => !only || p.id === only);
+      await i.deferReply({ flags: ephemeral });
+      const existing = new Set([...(i.guild.emojis?.cache?.values?.() || [])].map((e) => e.name));
+      const added = [], skipped = [], failed = [];
+      for (const p of list) {
+        const name = `kz_${p.name}`;
+        if (existing.has(name)) { skipped.push(`:${name}:`); continue; }
+        try {
+          const buf = await renderEmoji(gfx.emojiIconSprite(p.id), p.style);
+          const e = await i.guild.emojis.create({ attachment: buf, name, reason: `/emoji pack · ${i.user.username}` });
+          added.push(emojiTag(e));
+        } catch (error) {
+          failed.push(`**${p.label}** : ${emojiError(error)}`);
+          if (error?.code === 30008 || error?.code === 50013) break; // no room / no permission: the next ones would fail too
+        }
+        if (list.length > 1) await i.editReply(t(`⏳ Création du pack… ${added.length + skipped.length + failed.length}/${list.length}`, `⏳ Making the pack… ${added.length + skipped.length + failed.length}/${list.length}`)).catch(() => {});
+      }
+      const lines = [];
+      if (added.length) lines.push(ok(t(`Ajoutés : ${added.join(" ")}`, `Added: ${added.join(" ")}`)));
+      if (skipped.length) lines.push(t(`↪️ Déjà sur le serveur : ${skipped.join(" ")}`, `↪️ Already on the server: ${skipped.join(" ")}`));
+      if (failed.length) lines.push(...failed.map((f) => no(f)));
+      return i.editReply({ content: lines.join("\n").slice(0, 2000) || no(t("Rien à ajouter.", "Nothing to add.")) });
+    }
+    if (sub === "texte") {
+      const text = String(i.options.getString("texte") || "").trim().slice(0, 6);
+      if (!text) return reply(i, no(t("Écris un texte court (1 à 6 caractères).", "Write a short text (1 to 6 characters).")));
+      const opts = { text, color: i.options.getString("couleur") || "violet", bg: i.options.getString("fond") || "rond", style: i.options.getString("animation") || "shine" };
+      const name = emojiName(i.options.getString("nom") || `kz_${text}`);
+      if (name.length < 2) return reply(i, no(t("Le nom doit faire au moins 2 lettres ou chiffres.", "The name needs at least 2 letters or digits.")));
+      await i.deferReply({ flags: ephemeral });
+      const buf = await renderEmoji(gfx.emojiTextSprite(opts), opts.style);
+      const id = `${i.user.id.slice(-6)}${Date.now().toString(36)}`;
+      emojiPending.set(id, { buf, name, opts, user: i.user.id, at: Date.now() });
+      return i.editReply(emojiPreview(id));
+    }
+  };
+  async function emojiButton(i, kind, id) {
+    const p = emojiPending.get(id);
+    if (!p) return reply(i, no(t("Cet aperçu a expiré. Refais `/emoji texte`.", "This preview expired. Use `/emoji texte` again.")));
+    if (p.user !== i.user.id) return reply(i, no(t("Ce n'est pas ton aperçu.", "This is not your preview.")));
+    if (kind === "no") {
+      emojiPending.delete(id);
+      return i.update({ content: t("Annulé.", "Cancelled."), embeds: [], components: [], attachments: [] });
+    }
+    if (kind === "style") {
+      p.opts.style = gfx.EMOJI_STYLES.includes(i.values?.[0]) ? i.values[0] : p.opts.style;
+      await i.deferUpdate();
+      p.buf = await renderEmoji(gfx.emojiTextSprite(p.opts), p.opts.style);
+      return i.editReply(emojiPreview(id));
+    }
+    if (kind === "add") {
+      if (!i.memberPermissions?.has?.(P.ManageGuildExpressions)) return reply(i, no(t("Il faut la permission Gérer les expressions.", "You need the Manage Expressions permission.")));
+      await i.deferUpdate();
+      try {
+        const e = await i.guild.emojis.create({ attachment: p.buf, name: p.name, reason: `/emoji texte · ${i.user.username}` });
+        emojiPending.delete(id);
+        return i.editReply({ content: ok(t(`Emoji ajouté : ${emojiTag(e)}  \`:${e.name}:\``, `Emoji added: ${emojiTag(e)}  \`:${e.name}:\``)), embeds: [], components: [], attachments: [] });
+      } catch (error) {
+        return i.followUp({ content: no(emojiError(error)), flags: ephemeral });
+      }
+    }
+  }
+
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -9688,6 +9829,11 @@ const tools = (() => {
         await valueAutocomplete(i);
         return true;
       }
+      if (typeof i.customId === "string" && i.customId.startsWith("em:")) {
+        const [, kind, id] = i.customId.split(":");
+        await emojiButton(i, kind, id);
+        return true;
+      }
       if (typeof i.customId === "string" && i.customId.startsWith("vl:")) {
         const [, kind, arg] = i.customId.split(":");
         if (i.isButton?.()) await valueButton(i, kind);
@@ -9834,7 +9980,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
