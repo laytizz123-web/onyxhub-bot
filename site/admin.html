@@ -1,43 +1,294 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Admin – Onyx Hub</title>
+<title>Kazuki MM · Admin</title>
 <style>
-:root{--bg:#07080a;--card:#101216;--line:#1d2127;--text:#e8ebef;--mute:#8b94a1;--accent:#28dc78}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,sans-serif;padding:24px 16px}
-.w{max-width:640px;margin:0 auto}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:14px}
-input,textarea{width:100%;background:#0a0c0f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px;font:inherit}
-textarea{min-height:90px;margin:8px 0;font-family:ui-monospace,monospace;font-size:14px}
-button{background:var(--accent);color:#04120a;font-weight:700;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font:inherit;font-weight:700}
-p{color:var(--mute);margin:4px 0 0}button.rep{background:#e5484d;color:#fff}
-</style></head><body><div class="w">
-<h1>Admin – key stock</h1>
-<div class="card"><input id="pw" type="password" placeholder="Admin password"><button id="go" style="margin-top:10px">Log in</button></div>
-<div id="plans"></div>
+:root {
+  --ink: #0d0a1a; --vault: #161126; --vault2: #1d1631; --seam: #2a2144;
+  --text: #eeeaff; --muted: #a79fc7; --violet: #8f63ff; --rose: #ff5cd6; --ok: #3ee08f; --bad: #ff5c7a; --warn: #ffb84d;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ink); color: var(--text); font: 15px/1.5 var(--body); }
+.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--ink) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--seam); padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); display: flex; gap: 12px; align-items: center; }
+.top img { width: 32px; height: 32px; border-radius: 50%; }
+.top b { font-size: 16px; }
+.top .live { font: 12px var(--mono); color: var(--ok); }
+.top button { margin-left: auto; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 10px max(16px, env(safe-area-inset-left)); border-bottom: 1px solid var(--seam); }
+.tabs button { flex: none; }
+main { max-width: 980px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-right)) 60px max(16px, env(safe-area-inset-left)); }
+button, .btn { font: 600 14px var(--body); border-radius: 10px; border: 1px solid var(--seam); background: var(--vault); color: var(--text); padding: 8px 14px; cursor: pointer; }
+button:hover { border-color: var(--violet); }
+button.on, button.main { background: var(--violet); border-color: var(--violet); color: #fff; }
+button.danger { color: var(--bad); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+h2 { font-size: 20px; margin: 6px 0 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.tile { background: var(--vault); border: 1px solid var(--seam); border-radius: 14px; padding: 14px; }
+.tile small { color: var(--muted); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.tile b { font-size: 22px; font-variant-numeric: tabular-nums; }
+details.sec { background: var(--vault); border: 1px solid var(--seam); border-radius: 14px; margin-bottom: 10px; }
+details.sec > summary { cursor: pointer; padding: 14px 16px; font-weight: 700; list-style: none; display: flex; gap: 10px; align-items: center; }
+details.sec > summary::after { content: "▾"; margin-left: auto; color: var(--muted); }
+details.sec[open] > summary::after { content: "▴"; }
+details.sec > summary b { white-space: nowrap; }
+details.sec > summary span { color: var(--muted); font-weight: 500; font-size: 13px; min-width: 0; }
+@media (max-width: 520px) { details.sec > summary { flex-wrap: wrap; } details.sec > summary span { flex-basis: 100%; order: 3; } }
+.form { padding: 0 16px 16px; display: grid; gap: 12px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label { font-size: 13px; color: var(--muted); font-weight: 600; }
+.field .hint { font-size: 12px; color: var(--muted); }
+input[type=text], input[type=number], select, textarea { width: 100%; background: var(--ink); color: var(--text); border: 1px solid var(--seam); border-radius: 10px; padding: 9px 11px; font: 14px var(--body); }
+textarea { min-height: 80px; resize: vertical; font-family: var(--body); }
+textarea.json { font: 12px var(--mono); min-height: 110px; }
+select[multiple] { min-height: 120px; }
+.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.switch input { width: 20px; height: 20px; accent-color: var(--violet); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.sub { border-left: 3px solid var(--seam); padding-left: 12px; display: grid; gap: 12px; }
+.sub > b { font-size: 13px; color: var(--rose); }
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--vault2); border: 1px solid var(--seam); padding: 10px 16px; border-radius: 12px; font-weight: 600; z-index: 9; }
+.toast.ok { border-color: var(--ok); } .toast.bad { border-color: var(--bad); }
+.logs { font: 12px/1.5 var(--mono); background: #07050f; border: 1px solid var(--seam); border-radius: 12px; padding: 12px; max-height: 70vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.logs .error { color: var(--bad); } .logs .warn { color: var(--warn); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--seam); vertical-align: top; }
+.tablewrap { overflow-x: auto; }
+.muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="top"><img id="bot-ava" alt=""><div><b id="bot-name">Kazuki MM</b><div class="live" id="bot-live">…</div></div><a class="btn" href="/" target="_blank" rel="noopener" style="margin-left:auto;text-decoration:none">Voir le site</a><button id="logout" type="button" style="margin-left:0">Déconnexion</button></div>
+<nav class="tabs" id="tabs"></nav>
+<main id="view"></main>
+<div class="toast" id="toast" hidden></div>
 <script>
-let pw = "";
-async function call(body) {
-  const r = await fetch("/.netlify/functions/admin-stock", { method: body ? "POST" : "GET", headers: { "x-admin-token": pw }, body: body && JSON.stringify(body) });
-  const d = await r.json(); if (!r.ok) throw new Error(d.error); return d;
-}
-function render(d) {
-  const root = document.getElementById("plans"); root.innerHTML = "";
-  for (const [id, name] of Object.entries(d.plans)) {
-    const c = document.createElement("div"); c.className = "card";
-    c.innerHTML = `<b>${name}</b><p>Keys in stock: <b>${d.counts[id]}</b></p><textarea placeholder="One key per line"></textarea><button class="add">Add these keys</button> <button class="rep">Replace all stock</button>`;
-    const send = async (replace) => {
-      const keys = c.querySelector("textarea").value.split("\n").filter((k) => k.trim());
-      if (!keys.length) return alert("Paste at least one key first.");
-      if (replace && !confirm(`Delete the ${d.counts[id]} keys in stock and replace them with these ${keys.length} keys?`)) return;
-      try { render(await call({ plan: id, keys, replace })); } catch (e) { alert(e.message); }
-    };
-    c.querySelector(".add").onclick = () => send(false);
-    c.querySelector(".rep").onclick = () => send(true);
-    root.appendChild(c);
+(function () {
+  var S = null, tab = "home";
+  var SECTIONS = {
+    welcome: ["👋 Bienvenue", "Messages d'arrivée et de départ, rôle automatique"],
+    rules: ["📜 Règlement", "Règlement à accepter pour voir le serveur"],
+    levels: ["📈 Niveaux", "XP en écrivant et en vocal, annonces, classement"],
+    vouch: ["⭐ Vouches", "Salon des vouches, délai, rôles qu'on peut vouch"],
+    tickets: ["🎫 Tickets", "Fermeture automatique des tickets inactifs"],
+    translate: ["🌐 Traduction", "Traduction FR ⇄ EN dans les tickets"],
+    security: ["🛡️ Sécurité", "Anti-spam, anti-liens"],
+    badwords: ["🤬 Gros mots", "Liste de mots interdits et sanction"],
+    commandsOnly: ["⌨️ Salons commandes", "Salons où on ne peut faire que des commandes"],
+    supporter: ["💜 Supporters", "Rôles du tag du serveur et du statut, remerciements"],
+    scam: ["🚨 Scams", "Salon où sont annoncés les scammers"],
+    logs: ["🧾 Logs", "Salon des logs des tickets"],
+    suggest: ["💡 Suggestions", "Salon des suggestions"],
+    counting: ["🔢 Comptage", "Salon de comptage"],
+    counters: ["📊 Compteurs", "Salons vocaux qui affichent les chiffres"],
+    eco: ["💰 Économie", "Pièces par message, daily, boutique"],
+    autoquiz: ["❓ Quiz auto", "Quiz automatique dans un salon"],
+    apps: ["📝 Candidatures", "Rôles et catégorie des candidatures"],
+    cross: ["🔁 Cross-trade", "Catégories de valeur et rôles"],
+    index: ["📖 Index", "Rôles, prix et cautions des index"],
+    values: ["📊 Valeurs", "Valeurs fixées par le serveur"]
+  };
+  var HIDDEN = ["msgId", "boardMsgId", "panelMsgId", "stickyMsgId", "nextAt", "n", "last", "best", "everyoneSaw", "opened", "thanks", "panels", "auto", "claim", "channelId_old"];
+  var LABELS = {
+    on: "Activé", channelId: "Salon", message: "Message", leave: "Message de départ", leaveChannelId: "Salon des départs", autorole: "Rôle donné à l'arrivée",
+    roleId: "Rôle", text: "Texte du règlement", announce: "Annoncer les niveaux", ignored: "Salons sans XP", quizXp: "XP par quiz gagné", stack: "Garder les anciens rôles de niveau",
+    xpChannelId: "Salon des paliers d'XP", xpStep: "Palier d'XP", boardChannelId: "Salon du classement", voiceOn: "XP en vocal", voiceXp: "XP par minute en vocal", voiceMinPeople: "Personnes minimum en vocal",
+    rewards: "Récompenses de niveau", cooldownH: "Délai entre 2 vouches (heures)", panelChannelId: "Salon du top vouches", roles: "Rôles ignorés", excluded: "Exclus",
+    inactiveH: "Prévenir après (heures sans message)", closeH: "Fermer après (heures de plus)", channels: "Salons ignorés", words: "Mots interdits (un par ligne)", action: "Sanction", minutes: "Minutes",
+    tagRole: "Rôle du tag du serveur", statusRole: "Rôle du statut", statusText: "Texte à avoir dans le statut", langs: "Langue par salon",
+    perMessage: "Pièces par message", dailyMin: "Daily minimum", dailyMax: "Daily maximum", shop: "Boutique",
+    categoryId: "Catégorie", members: "Salon membres", trades: "Salon trades", vouches: "Salon vouches",
+    antiSpam: "Anti-spam", antiLink: "Anti-liens", antiRaid: "Anti-raid", link: "Anti-liens", spam: "Anti-spam", domains: "Sites autorisés (un par ligne)",
+    messages: "Messages max", seconds: "En (secondes)", mentions: "Mentions max", duplicates: "Messages répétés max", caps: "% de majuscules max", emojis: "Emojis max", clean: "Supprimer les messages du flood",
+    staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs du serveur", cats: "Catégories", prices: "Prix", cautions: "Cautions"
+  };
+  var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Membres exclus des vouches", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau" };
+  var CHOICES = {
+    action: [["delete", "Supprimer seulement"], ["warn", "Avertissement"], ["timeout", "Sourdine"], ["kick", "Expulsion"], ["ban", "Bannissement"]],
+    antiLink: [["off", "Désactivé"], ["invites", "Invitations Discord seulement"], ["all", "Tous les liens"]]
+  };
+  var LINE_LISTS = ["domains"];
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) { if (k === "text") e.textContent = attrs[k]; else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); }
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
   }
-}
-document.getElementById("go").onclick = async () => {
-  pw = document.getElementById("pw").value;
-  try { render(await call()); } catch (e) { alert(e.message); }
-};
-</script></div></body></html>
+  function toast(msg, ok) { var t = $("#toast"); t.textContent = msg; t.className = "toast " + (ok ? "ok" : "bad"); t.hidden = false; clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 2600); }
+  function api(path, body) {
+    return fetch(path, { method: body ? "POST" : "GET", headers: { "content-type": "application/json", "x-kz": "1" }, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { if (r.status === 401) { location.reload(); } if (!r.ok) throw new Error(j.error || r.status); return j; }); });
+  }
+  function label(k) { return LABELS[k] || k.replace(/([A-Z])/g, " $1").replace(/^./, function (c) { return c.toUpperCase(); }); }
+  var isChannelKey = function (k) { return /channel(id)?$/i.test(k) || ["members", "trades", "vouches", "panelChannelId", "boardChannelId"].indexOf(k) >= 0; };
+  var isCategoryKey = function (k) { return /category/i.test(k); };
+  var isRoleKey = function (k) { return /role(id)?$/i.test(k) || k === "autorole"; };
+  function channelOptions(kind) {
+    return S.channels.filter(function (c) { return kind === "category" ? c.type === 4 : kind === "voice" ? c.type === 2 : c.type !== 4; }).map(function (c) { return [c.id, (c.type === 4 ? "📁 " : c.type === 2 ? "🔊 " : "# ") + c.name]; });
+  }
+  function select(opts, value, multiple) {
+    var s = el("select", multiple ? { multiple: "multiple" } : {});
+    if (!multiple) s.appendChild(el("option", { value: "", text: "— aucun —" }));
+    opts.forEach(function (o) { var op = el("option", { value: o[0], text: o[1] }); if (multiple ? (value || []).indexOf(o[0]) >= 0 : value === o[0]) op.selected = true; s.appendChild(op); });
+    if (!multiple && value && !opts.some(function (o) { return o[0] === value; })) { var op = el("option", { value: value, text: "(supprimé) " + value }); op.selected = true; s.appendChild(op); }
+    return s;
+  }
+  /* one input for one setting; returns [element, read()] */
+  function field(key, base, value, where) {
+    var box = el("div", { class: "field" });
+    var read;
+    var name = PATH_LABELS[where + "." + key] || label(key);
+    if (typeof base === "boolean") {
+      var cb = el("input", { type: "checkbox" }); cb.checked = !!value;
+      box.appendChild(el("label", { class: "switch" }, [cb, name]));
+      read = function () { return cb.checked; };
+      return [box, read];
+    }
+    box.appendChild(el("label", { text: name }));
+    if (typeof base === "string" && CHOICES[key]) {
+      var cs = select(CHOICES[key], value, false); cs.removeChild(cs.firstChild); box.appendChild(cs);
+      read = function () { return cs.value; };
+    } else if (typeof base === "number") {
+      var n = el("input", { type: "number", step: "any", value: String(value) }); box.appendChild(n);
+      read = function () { return Number(n.value); };
+    } else if (typeof base === "string" && (isChannelKey(key) || isCategoryKey(key) || isRoleKey(key))) {
+      var opts = isRoleKey(key) ? S.roles.map(function (r) { return [r.id, "@" + r.name]; }) : channelOptions(isCategoryKey(key) ? "category" : ["members", "trades", "vouches"].indexOf(key) >= 0 ? "voice" : "text");
+      var sel = select(opts, value, false); box.appendChild(sel);
+      read = function () { return sel.value; };
+    } else if (typeof base === "string" || base === null) {
+      var long = (value && String(value).length > 60) || /message|leave|text/i.test(key);
+      var inp = long ? el("textarea", {}) : el("input", { type: "text" });
+      inp.value = value == null ? "" : String(value); box.appendChild(inp);
+      read = function () { return inp.value; };
+    } else if (Array.isArray(base) && (key === "channels" || key === "ignored")) {
+      var ms = select(channelOptions("text"), value, true); box.appendChild(ms); box.appendChild(el("div", { class: "hint", text: "Maintiens Ctrl (ou appuie longuement) pour en choisir plusieurs." }));
+      read = function () { return Array.prototype.filter.call(ms.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); };
+    } else if (Array.isArray(base) && key === "roles") {
+      var mr = select(S.roles.map(function (r) { return [r.id, "@" + r.name]; }), value, true); box.appendChild(mr);
+      read = function () { return Array.prototype.filter.call(mr.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); };
+    } else if (Array.isArray(base) && (LINE_LISTS.indexOf(key) >= 0 || (key === "words" && where === "badwords"))) {
+      var ta = el("textarea", {}); ta.value = (value || []).join("\n"); box.appendChild(ta);
+      read = function () { return ta.value.split("\n").map(function (x) { return x.trim(); }).filter(Boolean); };
+    } else {
+      var js = el("textarea", { class: "json" }); js.value = JSON.stringify(value, null, 2); box.appendChild(js);
+      box.appendChild(el("div", { class: "hint", text: "Réglage avancé (format JSON)." }));
+      read = function () { return JSON.parse(js.value); };
+    }
+    return [box, read];
+  }
+  function sectionForm(name) {
+    var base = S.defaults[name], cur = S.cfg[name];
+    var form = el("div", { class: "form" });
+    var readers = {};
+    Object.keys(base).forEach(function (k) {
+      if (HIDDEN.indexOf(k) >= 0) return;
+      var b = base[k];
+      if (b && typeof b === "object" && !Array.isArray(b) && Object.keys(b).length) {
+        var sub = el("div", { class: "sub" }, [el("b", { text: label(k) })]);
+        var subReaders = {};
+        Object.keys(b).forEach(function (sk) { var f = field(sk, b[sk], (cur[k] || {})[sk], k); sub.appendChild(f[0]); subReaders[sk] = f[1]; });
+        form.appendChild(sub);
+        readers[k] = function () { var o = {}; for (var sk in subReaders) o[sk] = subReaders[sk](); return o; };
+        return;
+      }
+      var f = field(k, b, cur[k], name);
+      form.appendChild(f[0]); readers[k] = f[1];
+    });
+    var saveBtn = el("button", { class: "main", type: "button", text: "Enregistrer", onclick: function () {
+      var value = {};
+      try { for (var k in readers) value[k] = readers[k](); } catch (e) { toast("Un réglage avancé n'est pas du JSON valide.", false); return; }
+      saveBtn.disabled = true;
+      api("/api/cfg", { section: name, value: value }).then(function (r) { S.cfg[name] = r.cfg; toast("Enregistré ✓", true); }).catch(function (e) { toast(e.message, false); }).then(function () { saveBtn.disabled = false; });
+    } });
+    form.appendChild(el("div", { class: "row" }, [saveBtn]));
+    return form;
+  }
+  var VIEWS = {
+    home: function (v) {
+      var fmtUp = function (s) { var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + " j " : "") + h + " h " + m + " min"; };
+      v.appendChild(el("h2", { text: S.guild ? S.guild.name : "Serveur" }));
+      var g = el("div", { class: "grid" });
+      [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Vouches", S.stats.vouches], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Brainrots (valeurs)", S.stats.values]]
+        .forEach(function (x) { g.appendChild(el("div", { class: "tile" }, [el("small", { text: x[0] }), el("b", { text: String(x[1]) })])); });
+      v.appendChild(g);
+      v.appendChild(el("p", { class: "muted", text: "Les réglages changés ici sont pris en compte tout de suite, sans redémarrer le bot." }));
+    },
+    settings: function (v) {
+      v.appendChild(el("h2", { text: "Réglages" }));
+      Object.keys(SECTIONS).forEach(function (name) {
+        if (!S.defaults[name]) return;
+        var d = el("details", { class: "sec" }, [el("summary", {}, [el("b", { text: SECTIONS[name][0] }), el("span", { text: SECTIONS[name][1] })])]);
+        var built = false;
+        d.addEventListener("toggle", function () { if (d.open && !built) { built = true; d.appendChild(sectionForm(name)); } });
+        v.appendChild(d);
+      });
+    },
+    send: function (v) {
+      v.appendChild(el("h2", { text: "Envoyer un message avec le bot" }));
+      var f = el("div", { class: "form tile" });
+      var ch = select(channelOptions("text"), "", false);
+      var content = el("textarea", { placeholder: "Texte du message (optionnel)" });
+      var title = el("input", { type: "text", placeholder: "Titre de l'embed (optionnel)" });
+      var desc = el("textarea", { placeholder: "Texte de l'embed (optionnel)" });
+      var color = el("input", { type: "text", value: "#8f63ff" });
+      var ping = el("input", { type: "checkbox" });
+      [["Salon", ch], ["Message", content], ["Titre de l'embed", title], ["Texte de l'embed", desc], ["Couleur de l'embed", color]].forEach(function (x) { f.appendChild(el("div", { class: "field" }, [el("label", { text: x[0] }), x[1]])); });
+      f.appendChild(el("label", { class: "switch" }, [ping, "Autoriser les mentions (@everyone, rôles)"]));
+      var go = el("button", { class: "main", type: "button", text: "Envoyer", onclick: function () {
+        go.disabled = true;
+        api("/api/send", { channelId: ch.value, content: content.value, title: title.value, description: desc.value, color: color.value, ping: ping.checked })
+          .then(function () { toast("Message envoyé ✓", true); content.value = ""; desc.value = ""; title.value = ""; }).catch(function (e) { toast(e.message, false); }).then(function () { go.disabled = false; });
+      } });
+      f.appendChild(el("div", { class: "row" }, [go]));
+      v.appendChild(f);
+    },
+    scams: function (v) {
+      v.appendChild(el("h2", { text: "Liste des scammers" }));
+      var add = el("div", { class: "form tile" });
+      var id = el("input", { type: "text", placeholder: "ID Discord (clic droit → Copier l'identifiant)" }), reason = el("input", { type: "text", placeholder: "Raison" }), proof = el("input", { type: "text", placeholder: "Preuve (lien)" });
+      [["ID Discord", id], ["Raison", reason], ["Preuve", proof]].forEach(function (x) { add.appendChild(el("div", { class: "field" }, [el("label", { text: x[0] }), x[1]])); });
+      add.appendChild(el("div", { class: "row" }, [el("button", { class: "main", type: "button", text: "Ajouter", onclick: function () { api("/api/scam", { id: id.value, reason: reason.value, proof: proof.value }).then(function () { toast("Ajouté ✓", true); load(); }).catch(function (e) { toast(e.message, false); }); } })]));
+      v.appendChild(add);
+      var wrap = el("div", { class: "tablewrap" }); var tb = el("table", {}, [el("tr", {}, [el("th", { text: "Membre" }), el("th", { text: "Raison" }), el("th", { text: "Ajouté le" }), el("th", { text: "" })])]);
+      S.scams.forEach(function (s) {
+        tb.appendChild(el("tr", {}, [el("td", { text: (s.name ? s.name + " · " : "") + s.id }), el("td", { text: s.reason || "—" }), el("td", { text: s.at ? new Date(s.at).toLocaleDateString("fr-FR") : "—" }),
+          el("td", {}, [el("button", { class: "danger", type: "button", text: "Retirer", onclick: function () { api("/api/scam", { id: s.id, remove: true }).then(function () { toast("Retiré ✓", true); load(); }).catch(function (e) { toast(e.message, false); }); } })])]));
+      });
+      if (!S.scams.length) tb.appendChild(el("tr", {}, [el("td", { colspan: "4", class: "muted", text: "Personne dans la liste." })]));
+      wrap.appendChild(tb); v.appendChild(el("div", { style: "margin-top:16px" }, [wrap]));
+    },
+    console: function (v) {
+      v.appendChild(el("div", { class: "row" }, [el("h2", { text: "Console du bot" }), el("button", { type: "button", text: "Actualiser", onclick: load })]));
+      var box = el("div", { class: "logs" });
+      S.logs.slice().reverse().forEach(function (l) { box.appendChild(el("div", { class: l.level }, [new Date(l.at).toLocaleTimeString("fr-FR") + "  " + l.text])); });
+      if (!S.logs.length) box.textContent = "Rien pour le moment.";
+      v.appendChild(box);
+    }
+  };
+  var TABS = [["home", "🏠 Accueil"], ["settings", "⚙️ Réglages"], ["send", "✉️ Message"], ["scams", "🚨 Scammers"], ["console", "🖥️ Console"]];
+  function draw() {
+    var tabs = $("#tabs"); tabs.textContent = "";
+    TABS.forEach(function (x) { tabs.appendChild(el("button", { type: "button", class: x[0] === tab ? "on" : "", text: x[1], onclick: function () { tab = x[0]; draw(); } })); });
+    var v = $("#view"); v.textContent = ""; VIEWS[tab](v);
+  }
+  function load() {
+    return api("/api/state").then(function (s) {
+      S = s;
+      $("#bot-name").textContent = s.bot.tag || "Kazuki MM";
+      if (s.bot.avatar) $("#bot-ava").src = s.bot.avatar;
+      $("#bot-live").textContent = "● en ligne · " + (s.bot.ping == null ? "—" : s.bot.ping + " ms");
+      draw();
+    }).catch(function (e) { $("#view").textContent = "Erreur : " + e.message; });
+  }
+  $("#logout").addEventListener("click", function () { api("/api/logout", {}).then(function () { location.reload(); }); });
+  load();
+})();
+</script>
+</body>
+</html>
