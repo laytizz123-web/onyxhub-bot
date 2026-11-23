@@ -4473,6 +4473,7 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
     if (!Array.isArray(next.cfg.supporter.channels)) next.cfg.supporter.channels = [];
     if (!next.cfg.supporter.thanks || typeof next.cfg.supporter.thanks !== "object") next.cfg.supporter.thanks = {};
+    if (!next.cfg.supporter.langs || typeof next.cfg.supporter.langs !== "object") next.cfg.supporter.langs = {}; // channel id -> "fr" | "en"
     if (next.cfg.supporter.channelId && !next.cfg.supporter.channels.length) next.cfg.supporter.channels = [next.cfg.supporter.channelId]; // older version: one channel
     next.cfg.supporter.channelId = "";
     if (!next.cfg.values.overrides || typeof next.cfg.values.overrides !== "object" || Array.isArray(next.cfg.values.overrides)) next.cfg.values.overrides = {};
@@ -5111,7 +5112,7 @@ const tools = (() => {
               .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")))
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
           )
-          .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir 1 ou 2 salons pour les remerciements (vide = plus de message)", "Pick 1 or 2 thank-you channels (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le 1er salon", "The 1st channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addChannelOption((o) => o.setName("salon2").setDescription(t("Le 2e salon", "The 2nd channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir 1 ou 2 salons pour les remerciements (vide = plus de message)", "Pick 1 or 2 thank-you channels (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le 1er salon", "The 1st channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addChannelOption((o) => o.setName("salon2").setDescription(t("Le 2e salon", "The 2nd channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addStringOption((o) => o.setName("langue").setDescription(t("Langue du message dans le 1er salon (français par défaut)", "Message language in the 1st channel (French by default)")).addChoices({ name: "🇫🇷 Français", value: "fr" }, { name: "🇬🇧 English", value: "en" })).addStringOption((o) => o.setName("langue2").setDescription(t("Langue du message dans le 2e salon (français par défaut)", "Message language in the 2nd channel (French by default)")).addChoices({ name: "🇫🇷 Français", value: "fr" }, { name: "🇬🇧 English", value: "en" })))
           .addSubcommand((s) => s.setName("voir").setDescription(t("Voir les rôles supporters", "See the supporter roles")))
           .addSubcommand((s) => s.setName("couper").setDescription(t("Arrêter un des deux rôles", "Stop one of the two roles")).addStringOption((o) => o.setName("type").setDescription(t("Lequel", "Which one")).setRequired(true).addChoices({ name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: "tag" }, { name: t("💬 Statut", "💬 Status"), value: "statut" })))
       ),
@@ -9308,38 +9309,26 @@ const tools = (() => {
     cfg.thanks[key] = Date.now();
     for (const [k, at] of Object.entries(cfg.thanks)) if (Date.now() - at > 24 * 3600_000) delete cfg.thanks[k];
     save();
-    const what = kind === "tag" ? t("le **tag du serveur** à côté de son pseudo", "the **server tag** next to their name") : t(`**${cfg.statusText}** dans son statut`, `**${cfg.statusText}** in their status`);
     const roleId = kind === "tag" ? cfg.tagRole : cfg.statusRole;
-    const lines = FR
-      ? [
-          `Un énorme **MERCI** ${member} 💜🙏`,
-          `Tu viens de mettre ${what}, et ça compte vraiment énormément pour nous !`,
-          `Grâce à toi, la **Kazuki Community** grandit et de nouvelles personnes nous découvrent chaque jour. C'est grâce à des membres comme toi que le serveur est ce qu'il est. 🔥`,
-          `Pour te remercier, tu reçois le rôle <@&${roleId}>. Garde-le bien précieusement, tu le mérites ! ✨`,
-          `-# Merci encore, du fond du cœur, de la part de tout le staff 💜`,
-        ]
-      : [
-          `A huge **THANK YOU** ${member} 💜🙏`,
-          `You just put ${what}, and it really means a lot to us!`,
-          `Thanks to you, the **Kazuki Community** keeps growing and new people find us every day. Members like you make this server what it is. 🔥`,
-          `As a thank-you, you get the <@&${roleId}> role. You deserve it! ✨`,
-          `-# Thanks again, from the bottom of our hearts, from the whole staff 💜`,
-        ];
-    const e = embed(0xff4fd8)
-      .setAuthor({ name: kind === "tag" ? t("🏷️ Nouveau tag Kazuki !", "🏷️ New Kazuki tag!") : t("💬 Nouveau statut Kazuki !", "💬 New Kazuki status!"), iconURL: member.user?.displayAvatarURL?.() || undefined })
-      .setTitle(t("💜  Merci infiniment !", "💜  Thank you so much!"))
-      .setDescription(lines.join("\n\n"))
-      .setThumbnail(member.user?.displayAvatarURL?.({ size: 256 }) || null)
-      .setTimestamp();
+    const mark = kind === "tag" ? "🏷️" : "💬"; // the same in both languages: used to spot a message already posted
+    /* short message, in the language of each channel */
+    const card = (lang) => {
+      const fr = lang !== "en";
+      const what = kind === "tag" ? (fr ? "le **tag du serveur**" : "the **server tag**") : fr ? `**${cfg.statusText}** en statut` : `**${cfg.statusText}** in your status`;
+      return embed(0xff4fd8)
+        .setAuthor({ name: `${mark} ${fr ? "Merci" : "Thank you"} ${member.displayName || member.user?.username || ""}`.trim(), iconURL: member.user?.displayAvatarURL?.() || undefined })
+        .setDescription(fr ? `💜 **Merci énormément** d'avoir mis ${what} ! Ça nous aide vraiment à grandir 🙏\nTu reçois le rôle <@&${roleId}> ✨` : `💜 **Huge thanks** for putting ${what}! It really helps us grow 🙏\nYou got the <@&${roleId}> role ✨`)
+        .setThumbnail(member.user?.displayAvatarURL?.({ size: 128 }) || null);
+    };
     let sent = 0;
     for (const id of [...new Set(cfg.channels)]) {
       const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
       if (!channel?.send) continue;
       // already thanked there a moment ago (by another copy of the bot that is still running, for example): not twice
       const recent = await Promise.resolve(channel.messages?.fetch?.({ limit: 15 })).catch(() => null);
-      const twice = [...(recent?.values?.() || [])].some((m) => m.author?.id === client?.user?.id && m.content === `${member}` && Date.now() - (m.createdTimestamp || 0) < 30 * 60_000 && String(m.embeds?.[0]?.author?.name || "").includes(kind === "tag" ? "tag" : t("statut", "status")));
+      const twice = [...(recent?.values?.() || [])].some((m) => m.author?.id === client?.user?.id && m.content === `${member}` && Date.now() - (m.createdTimestamp || 0) < 30 * 60_000 && String(m.embeds?.[0]?.author?.name || "").startsWith(mark));
       if (twice) continue;
-      if ((await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => null))) sent++;
+      if ((await channel.send({ content: `${member}`, embeds: [card(cfg.langs[id] || (FR ? "fr" : "en"))], allowedMentions: { users: [member.id] } }).catch(() => null))) sent++;
     }
     return sent > 0;
   }
@@ -9400,16 +9389,19 @@ const tools = (() => {
         .setTitle(t("💜  Rôles supporters", "💜  Supporter roles"))
         .addFields(
           { name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: cfg.tagRole ? `<@&${cfg.tagRole}>` : t("*coupé*", "*off*"), inline: true },
-          { name: t("💌 Remerciements", "💌 Thank-yous"), value: cfg.channels.length ? cfg.channels.map((id) => `<#${id}>`).join("\n") : t("*aucun salon*", "*no channel*"), inline: true },
+          { name: t("💌 Remerciements", "💌 Thank-yous"), value: cfg.channels.length ? cfg.channels.map((id) => `<#${id}> ${cfg.langs[id] === "en" ? "🇬🇧" : "🇫🇷"}`).join("\n") : t("*aucun salon*", "*no channel*"), inline: true },
           { name: t("💬 Statut", "💬 Status"), value: cfg.statusRole ? `<@&${cfg.statusRole}> · \`${cfg.statusText}\`${hasPresence() ? "" : t("\n⚠️ Active l'intent **Presence** dans le Developer Portal", "\n⚠️ Turn on the **Presence** intent in the Developer Portal")}` : t("*coupé*", "*off*"), inline: true }
         );
       return i.reply({ embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
     }
     if (sub === "salon") {
-      const picked = [i.options.getChannel("salon"), i.options.getChannel("salon2")].filter(Boolean);
-      cfg.channels = [...new Set(picked.map((c) => c.id))];
+      const one = i.options.getChannel("salon"), two = i.options.getChannel("salon2");
+      cfg.channels = [...new Set([one, two].filter(Boolean).map((c) => c.id))];
+      cfg.langs = {};
+      if (one) cfg.langs[one.id] = i.options.getString("langue") || "fr";
+      if (two && two.id !== one?.id) cfg.langs[two.id] = i.options.getString("langue2") || "fr";
       save();
-      return reply(i, ok(cfg.channels.length ? t(`Les remerciements seront postés dans ${cfg.channels.map((id) => `<#${id}>`).join(" et ")}.`, `Thank-yous will be posted in ${cfg.channels.map((id) => `<#${id}>`).join(" and ")}.`) : t("Plus de message de remerciement.", "No more thank-you messages.")));
+      return reply(i, ok(cfg.channels.length ? t(`Les remerciements seront postés dans ${cfg.channels.map((id) => `<#${id}> (${cfg.langs[id] === "en" ? "🇬🇧 anglais" : "🇫🇷 français"})`).join(" et ")}.`, `Thank-yous will be posted in ${cfg.channels.map((id) => `<#${id}>`).join(" and ")}.`) : t("Plus de message de remerciement.", "No more thank-you messages.")));
     }
     if (sub === "couper") {
       const which = i.options.getString("type");
