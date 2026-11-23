@@ -4422,7 +4422,7 @@ const tools = (() => {
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
-      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "" }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
+      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [] }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -4471,6 +4471,9 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.commandsOnly.channels)) next.cfg.commandsOnly.channels = [];
     if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
     if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
+    if (!Array.isArray(next.cfg.supporter.channels)) next.cfg.supporter.channels = [];
+    if (next.cfg.supporter.channelId && !next.cfg.supporter.channels.length) next.cfg.supporter.channels = [next.cfg.supporter.channelId]; // older version: one channel
+    next.cfg.supporter.channelId = "";
     if (!next.cfg.values.overrides || typeof next.cfg.values.overrides !== "object" || Array.isArray(next.cfg.values.overrides)) next.cfg.values.overrides = {};
     for (const k of ["words", "channels", "roles"]) if (!Array.isArray(next.cfg.badwords[k])) next.cfg.badwords[k] = k === "words" ? BADWORDS_DEFAULT() : [];
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
@@ -5107,7 +5110,7 @@ const tools = (() => {
               .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")))
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
           )
-          .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir le salon des remerciements (vide = plus de message)", "Pick the thank-you channel (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir 1 ou 2 salons pour les remerciements (vide = plus de message)", "Pick 1 or 2 thank-you channels (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le 1er salon", "The 1st channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)).addChannelOption((o) => o.setName("salon2").setDescription(t("Le 2e salon", "The 2nd channel")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
           .addSubcommand((s) => s.setName("voir").setDescription(t("Voir les rôles supporters", "See the supporter roles")))
           .addSubcommand((s) => s.setName("couper").setDescription(t("Arrêter un des deux rôles", "Stop one of the two roles")).addStringOption((o) => o.setName("type").setDescription(t("Lequel", "Which one")).setRequired(true).addChoices({ name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: "tag" }, { name: t("💬 Statut", "💬 Status"), value: "statut" })))
       ),
@@ -9285,12 +9288,10 @@ const tools = (() => {
   const thanked = new Map();
   async function thankSupporter(member, kind) {
     const cfg = db.cfg.supporter;
-    if (!cfg.channelId || !member) return false;
+    if (!cfg.channels.length || !member) return false;
     const key = `${member.id}:${kind}`;
     if (Date.now() - (thanked.get(key) || 0) < 24 * 3600_000) return false;
     thanked.set(key, Date.now());
-    const channel = await Promise.resolve(client?.channels?.fetch?.(cfg.channelId)).catch(() => null);
-    if (!channel?.send) return false;
     const what = kind === "tag" ? t("le **tag du serveur** à côté de son pseudo", "the **server tag** next to their name") : t(`**${cfg.statusText}** dans son statut`, `**${cfg.statusText}** in their status`);
     const roleId = kind === "tag" ? cfg.tagRole : cfg.statusRole;
     const lines = FR
@@ -9314,8 +9315,12 @@ const tools = (() => {
       .setDescription(lines.join("\n\n"))
       .setThumbnail(member.user?.displayAvatarURL?.({ size: 256 }) || null)
       .setTimestamp();
-    await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => {});
-    return true;
+    let sent = 0;
+    for (const id of cfg.channels) {
+      const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
+      if (channel?.send && (await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => null))) sent++;
+    }
+    return sent > 0;
   }
   const syncTag = async (member, quiet = false) => {
     const want = wearsTag(member);
@@ -9370,16 +9375,16 @@ const tools = (() => {
         .setTitle(t("💜  Rôles supporters", "💜  Supporter roles"))
         .addFields(
           { name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: cfg.tagRole ? `<@&${cfg.tagRole}>` : t("*coupé*", "*off*"), inline: true },
-          { name: t("💌 Remerciements", "💌 Thank-yous"), value: cfg.channelId ? `<#${cfg.channelId}>` : t("*aucun salon*", "*no channel*"), inline: true },
+          { name: t("💌 Remerciements", "💌 Thank-yous"), value: cfg.channels.length ? cfg.channels.map((id) => `<#${id}>`).join("\n") : t("*aucun salon*", "*no channel*"), inline: true },
           { name: t("💬 Statut", "💬 Status"), value: cfg.statusRole ? `<@&${cfg.statusRole}> · \`${cfg.statusText}\`${hasPresence() ? "" : t("\n⚠️ Active l'intent **Presence** dans le Developer Portal", "\n⚠️ Turn on the **Presence** intent in the Developer Portal")}` : t("*coupé*", "*off*"), inline: true }
         );
       return i.reply({ embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
     }
     if (sub === "salon") {
-      const channel = i.options.getChannel("salon");
-      cfg.channelId = channel?.id || "";
+      const picked = [i.options.getChannel("salon"), i.options.getChannel("salon2")].filter(Boolean);
+      cfg.channels = [...new Set(picked.map((c) => c.id))];
       save();
-      return reply(i, ok(channel ? t(`Les remerciements seront postés dans ${channel}.`, `Thank-yous will be posted in ${channel}.`) : t("Plus de message de remerciement.", "No more thank-you messages.")));
+      return reply(i, ok(cfg.channels.length ? t(`Les remerciements seront postés dans ${cfg.channels.map((id) => `<#${id}>`).join(" et ")}.`, `Thank-yous will be posted in ${cfg.channels.map((id) => `<#${id}>`).join(" and ")}.`) : t("Plus de message de remerciement.", "No more thank-you messages.")));
     }
     if (sub === "couper") {
       const which = i.options.getString("type");
@@ -9410,8 +9415,9 @@ const tools = (() => {
     }
     save();
     const channel = i.options.getChannel("salon");
-    if (channel) cfg.channelId = channel.id;
-    if (cfg.channelId) extra += t(`\n💌 Un message de remerciement est posté dans <#${cfg.channelId}> à chaque nouveau supporter.`, `\n💌 A thank-you message is posted in <#${cfg.channelId}> for every new supporter.`);
+    if (channel && !cfg.channels.includes(channel.id)) cfg.channels = [...cfg.channels, channel.id].slice(-5);
+    const where = cfg.channels.map((id) => `<#${id}>`).join(t(" et ", " and "));
+    if (cfg.channels.length) extra += t(`\n💌 Un message de remerciement est posté dans ${where} à chaque nouveau supporter.`, `\n💌 A thank-you message is posted in ${where} for every new supporter.`);
     else extra += t("\n-# Astuce : ajoute l'option `salon` pour remercier chaque nouveau supporter.", "\n-# Tip: add the `salon` option to thank every new supporter.");
     save();
     const counts = await scanSupporters(true, true); // the people who already had it are not thanked again
