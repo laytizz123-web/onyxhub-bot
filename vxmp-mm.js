@@ -9614,14 +9614,20 @@ const tools = (() => {
       console.log(`🖥️ Dashboard: ${me.username} connecté`);
       return send(res, 302, "", "text/plain", { location: "/admin", "set-cookie": [`kz_session=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}`, "kz_state=; Path=/; Max-Age=0"] });
     }
-    if (req.method === "GET" && url.pathname === "/login") {
-      const token = url.searchParams.get("t") || "";
+    /* The link from /dashboard. Discord (and phones) open links by themselves to make a preview: so the GET only shows a button,
+       and the link is used up when the button is pressed (POST), which a preview never does. */
+    if (url.pathname === "/login") {
+      const token = req.method === "POST" ? new URLSearchParams(await new Promise((resolve) => { let d = ""; req.on("data", (c) => (d += c).length > 4000 && req.destroy()); req.on("end", () => resolve(d)); req.on("error", () => resolve("")); })).get("t") || "" : url.searchParams.get("t") || "";
       const entry = dashTokens.get(token);
-      dashTokens.delete(token);
       if (!entry || entry.exp < Date.now()) return send(res, 403, dashLoginPage(t("Ce lien a expiré ou a déjà servi. Refais /dashboard sur Discord.", "This link expired or was already used. Use /dashboard on Discord again.")), "text/html; charset=utf-8");
+      if (req.method !== "POST") {
+        const safe = token.replace(/[^0-9a-f]/g, "");
+        return send(res, 200, `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Kazuki MM · Dashboard</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}form{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 18px}button{width:100%;background:#8f63ff;color:#fff;border:0;font:700 16px system-ui,sans-serif;padding:14px;border-radius:12px;cursor:pointer}</style></head><body><form method="post" action="/login"><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Kazuki MM</h1><input type="hidden" name="t" value="${safe}"><button type="submit">Entrer dans le dashboard</button></form></body></html>`, "text/html; charset=utf-8");
+      }
+      dashTokens.delete(token);
       const sid = crypto.randomBytes(32).toString("hex");
       dashSessions.set(sid, { user: entry.user, exp: Date.now() + 7 * 24 * 3600_000 });
-      return send(res, 302, "", "text/plain", { location: "/admin", "set-cookie": `kz_session=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}` });
+      return send(res, 303, "", "text/plain", { location: "/admin", "set-cookie": `kz_session=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}` });
     }
     const session = sessionOf(req);
     if (req.method === "GET" && (url.pathname === "/admin" || url.pathname === "/admin/")) {
@@ -9740,7 +9746,7 @@ const tools = (() => {
     if (!base) await guessBase().catch(() => {});
     if (!dashBase()) return reply(i, no(t(`Il manque l'adresse du panneau. Dans le \`.env\`, ajoute \`DASHBOARD_URL=http://ADRESSE:${DASH_PORT}\` avec l'adresse IP de ton serveur WispByte (affichée en haut de la console), puis redémarre.`, `The dashboard address is missing. In \`.env\`, add \`DASHBOARD_URL=http://ADDRESS:${DASH_PORT}\` with your WispByte server IP (shown at the top of the console), then restart.`)));
     const site = dashBase();
-    return i.reply({ flags: ephemeral, content: t(`🔐 **Ton lien de connexion au site** (valable 10 minutes, une seule fois, ne le partage pas) :\n${site}/login?t=${token}\n-# Le site public : ${site}  ·  le panneau : ${site}/admin`, `🔐 **Your login link** (valid 10 minutes, once, do not share it):\n${site}/login?t=${token}`) });
+    return i.reply({ flags: ephemeral, content: t(`🔐 **Ton lien de connexion au site** (valable 10 minutes, une seule fois, ne le partage pas) :\n<${site}/login?t=${token}>\n-# Le site public : ${site}  ·  le panneau : ${site}/admin`, `🔐 **Your login link** (valid 10 minutes, once, do not share it):\n<${site}/login?t=${token}>`) });
   };
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
