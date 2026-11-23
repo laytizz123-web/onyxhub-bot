@@ -4472,6 +4472,7 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
     if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
     if (!Array.isArray(next.cfg.supporter.channels)) next.cfg.supporter.channels = [];
+    if (!next.cfg.supporter.thanks || typeof next.cfg.supporter.thanks !== "object") next.cfg.supporter.thanks = {};
     if (next.cfg.supporter.channelId && !next.cfg.supporter.channels.length) next.cfg.supporter.channels = [next.cfg.supporter.channelId]; // older version: one channel
     next.cfg.supporter.channelId = "";
     if (!next.cfg.values.overrides || typeof next.cfg.values.overrides !== "object" || Array.isArray(next.cfg.values.overrides)) next.cfg.values.overrides = {};
@@ -9261,6 +9262,17 @@ const tools = (() => {
   /* ---------- supporter roles: the server tag next to the name, and a text (like /kazukisab) in the custom status ---------- */
   const hasPresence = () => Boolean(client?.options?.intents?.has?.(1 << 8)); // the Presence intent (Developer Portal)
   /* true when the member shows THIS server's tag next to their name */
+  /* The tag is not always sent with every member update: the profile is read again from Discord (at most every 10 minutes per person). */
+  const userRead = new Map();
+  async function freshUser(member) {
+    const id = member?.user?.id;
+    if (!id || member.user.bot || Date.now() - (userRead.get(id) || 0) < 10 * 60_000) return false;
+    userRead.set(id, Date.now());
+    if (userRead.size > 5000) userRead.delete(userRead.keys().next().value);
+    const user = await Promise.resolve(client?.users?.fetch?.(id, { force: true })).catch(() => null);
+    if (user && user !== member.user && "primaryGuild" in user) member.user.primaryGuild = user.primaryGuild;
+    return Boolean(user);
+  }
   const wearsTag = (member) => {
     const pg = member?.user?.primaryGuild;
     return Boolean(pg && pg.identityGuildId === member.guild?.id && pg.identityEnabled !== false && pg.tag);
@@ -9285,13 +9297,17 @@ const tools = (() => {
     }
   }
   /* a big thank-you in the chosen channel when someone starts wearing the tag or the status (once a day per person and per kind) */
-  const thanked = new Map();
+  const thanked = new Map(); // in memory: two events at the same moment give one message
   async function thankSupporter(member, kind) {
     const cfg = db.cfg.supporter;
     if (!cfg.channels.length || !member) return false;
     const key = `${member.id}:${kind}`;
-    if (Date.now() - (thanked.get(key) || 0) < 24 * 3600_000) return false;
+    const last = Math.max(thanked.get(key) || 0, cfg.thanks[key] || 0); // also kept in tools.json: a restart does not thank again
+    if (Date.now() - last < 24 * 3600_000) return false;
     thanked.set(key, Date.now());
+    cfg.thanks[key] = Date.now();
+    for (const [k, at] of Object.entries(cfg.thanks)) if (Date.now() - at > 24 * 3600_000) delete cfg.thanks[k];
+    save();
     const what = kind === "tag" ? t("le **tag du serveur** à côté de son pseudo", "the **server tag** next to their name") : t(`**${cfg.statusText}** dans son statut`, `**${cfg.statusText}** in their status`);
     const roleId = kind === "tag" ? cfg.tagRole : cfg.statusRole;
     const lines = FR
@@ -9316,13 +9332,20 @@ const tools = (() => {
       .setThumbnail(member.user?.displayAvatarURL?.({ size: 256 }) || null)
       .setTimestamp();
     let sent = 0;
-    for (const id of cfg.channels) {
+    for (const id of [...new Set(cfg.channels)]) {
       const channel = await Promise.resolve(client?.channels?.fetch?.(id)).catch(() => null);
-      if (channel?.send && (await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => null))) sent++;
+      if (!channel?.send) continue;
+      // already thanked there a moment ago (by another copy of the bot that is still running, for example): not twice
+      const recent = await Promise.resolve(channel.messages?.fetch?.({ limit: 15 })).catch(() => null);
+      const twice = [...(recent?.values?.() || [])].some((m) => m.author?.id === client?.user?.id && m.content === `${member}` && Date.now() - (m.createdTimestamp || 0) < 30 * 60_000 && String(m.embeds?.[0]?.author?.name || "").includes(kind === "tag" ? "tag" : t("statut", "status")));
+      if (twice) continue;
+      if ((await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => null))) sent++;
     }
     return sent > 0;
   }
-  const syncTag = async (member, quiet = false) => {
+  const syncTag = async (member, quiet = false, fresh = true) => {
+    if (!db.cfg.supporter.tagRole || !member || member.user?.bot) return false;
+    if (fresh) await freshUser(member);
     const want = wearsTag(member);
     const changed = await setRole(member, db.cfg.supporter.tagRole, want, t("Tag du serveur", "Server tag"));
     if (changed && want && !quiet) await thankSupporter(member, "tag");
@@ -9346,12 +9369,14 @@ const tools = (() => {
     if (!cfg.tagRole && !cfg.statusRole) return { tag: 0, status: 0 };
     if (!force && Date.now() - supporterScan < 10 * 60_000) return null;
     supporterScan = Date.now();
-    let tag = 0, status = 0;
+    let tag = 0, status = 0, refreshed = 0;
     for (const guild of client?.guilds?.cache?.values?.() || []) {
       const members = await Promise.resolve(guild.members?.fetch?.()).catch(() => null) || guild.members?.cache;
       for (const member of members?.values?.() || []) {
+        const fresh = refreshed < 30 && Date.now() - (userRead.get(member.id) || 0) >= 10 * 60_000;
+        if (fresh) refreshed++;
+        await syncTag(member, quiet, fresh);
         if (cfg.tagRole && wearsTag(member)) tag++;
-        await syncTag(member, quiet);
         if (cfg.statusRole && hasPresence()) {
           const presence = guild.presences?.cache?.get?.(member.id) || member.presence;
           if (presence && presence.status && presence.status !== "offline") {
