@@ -4421,7 +4421,8 @@ const tools = (() => {
       tickets: { inactiveH: 48, closeH: 24 }, // 0 = no automatic closing
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
-      values: { overrides: {}, panels: [] }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
+      values: { overrides: {}, panels: [] },
+      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "" }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -5093,6 +5094,23 @@ const tools = (() => {
       ),
       // brainrot values
       ...valueCommands(D),
+      // supporter roles: the server tag, a text in the status
+      D(
+        P.ManageRoles,
+        cmd("supporter", t("Rôles pour ceux qui mettent le tag du serveur ou /kazukisab en statut", "Roles for people who wear the server tag or /kazukisab in their status"))
+          .addSubcommand((s) => s.setName("tag").setDescription(t("Rôle pour ceux qui affichent le tag du serveur (vide = le bot le crée)", "Role for people who show the server tag (empty = the bot makes it)")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role"))).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) =>
+            s
+              .setName("statut")
+              .setDescription(t("Rôle pour ceux qui ont un texte dans leur statut (vide = le bot le crée)", "Role for people with a text in their status (empty = the bot makes it)"))
+              .addStringOption((o) => o.setName("texte").setDescription(t("Le texte à avoir dans le statut (par défaut /kazukisab)", "The text to have in the status (default /kazukisab)")).setMaxLength(60))
+              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")))
+              .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+          )
+          .addSubcommand((s) => s.setName("salon").setDescription(t("Choisir le salon des remerciements (vide = plus de message)", "Pick the thank-you channel (empty = no message)")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) => s.setName("voir").setDescription(t("Voir les rôles supporters", "See the supporter roles")))
+          .addSubcommand((s) => s.setName("couper").setDescription(t("Arrêter un des deux rôles", "Stop one of the two roles")).addStringOption((o) => o.setName("type").setDescription(t("Lequel", "Which one")).setRequired(true).addChoices({ name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: "tag" }, { name: t("💬 Statut", "💬 Status"), value: "statut" })))
+      ),
       // animated server emojis
       D(
         P.ManageGuildExpressions,
@@ -5300,7 +5318,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6954,6 +6972,7 @@ const tools = (() => {
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
+      [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
@@ -9236,6 +9255,169 @@ const tools = (() => {
     }
   }
 
+  /* ---------- supporter roles: the server tag next to the name, and a text (like /kazukisab) in the custom status ---------- */
+  const hasPresence = () => Boolean(client?.options?.intents?.has?.(1 << 8)); // the Presence intent (Developer Portal)
+  /* true when the member shows THIS server's tag next to their name */
+  const wearsTag = (member) => {
+    const pg = member?.user?.primaryGuild;
+    return Boolean(pg && pg.identityGuildId === member.guild?.id && pg.identityEnabled !== false && pg.tag);
+  };
+  const statusText = (presence) => (presence?.activities || []).filter((a) => a.type === 4).map((a) => String(a.state || "")).join(" ");
+  const statusHas = (presence) => {
+    const want = String(db.cfg.supporter.statusText || "").toLowerCase().replace(/\s+/g, "");
+    return Boolean(want) && statusText(presence).toLowerCase().replace(/\s+/g, "").includes(want);
+  };
+  /* gives or takes a role; nothing is sent to Discord when it is already right */
+  async function setRole(member, roleId, want, reason) {
+    if (!roleId || !member?.roles?.cache || member.user?.bot) return false;
+    const has = member.roles.cache.has(roleId);
+    if (want === has) return false;
+    try {
+      if (want) await member.roles.add(roleId, reason);
+      else await member.roles.remove(roleId, reason);
+      return true;
+    } catch (error) {
+      console.error("⚠️ Supporter role:", error?.message || error);
+      return false;
+    }
+  }
+  /* a big thank-you in the chosen channel when someone starts wearing the tag or the status (once a day per person and per kind) */
+  const thanked = new Map();
+  async function thankSupporter(member, kind) {
+    const cfg = db.cfg.supporter;
+    if (!cfg.channelId || !member) return false;
+    const key = `${member.id}:${kind}`;
+    if (Date.now() - (thanked.get(key) || 0) < 24 * 3600_000) return false;
+    thanked.set(key, Date.now());
+    const channel = await Promise.resolve(client?.channels?.fetch?.(cfg.channelId)).catch(() => null);
+    if (!channel?.send) return false;
+    const what = kind === "tag" ? t("le **tag du serveur** à côté de son pseudo", "the **server tag** next to their name") : t(`**${cfg.statusText}** dans son statut`, `**${cfg.statusText}** in their status`);
+    const roleId = kind === "tag" ? cfg.tagRole : cfg.statusRole;
+    const lines = FR
+      ? [
+          `Un énorme **MERCI** ${member} 💜🙏`,
+          `Tu viens de mettre ${what}, et ça compte vraiment énormément pour nous !`,
+          `Grâce à toi, la **Kazuki Community** grandit et de nouvelles personnes nous découvrent chaque jour. C'est grâce à des membres comme toi que le serveur est ce qu'il est. 🔥`,
+          `Pour te remercier, tu reçois le rôle <@&${roleId}>. Garde-le bien précieusement, tu le mérites ! ✨`,
+          `-# Merci encore, du fond du cœur, de la part de tout le staff 💜`,
+        ]
+      : [
+          `A huge **THANK YOU** ${member} 💜🙏`,
+          `You just put ${what}, and it really means a lot to us!`,
+          `Thanks to you, the **Kazuki Community** keeps growing and new people find us every day. Members like you make this server what it is. 🔥`,
+          `As a thank-you, you get the <@&${roleId}> role. You deserve it! ✨`,
+          `-# Thanks again, from the bottom of our hearts, from the whole staff 💜`,
+        ];
+    const e = embed(0xff4fd8)
+      .setAuthor({ name: kind === "tag" ? t("🏷️ Nouveau tag Kazuki !", "🏷️ New Kazuki tag!") : t("💬 Nouveau statut Kazuki !", "💬 New Kazuki status!"), iconURL: member.user?.displayAvatarURL?.() || undefined })
+      .setTitle(t("💜  Merci infiniment !", "💜  Thank you so much!"))
+      .setDescription(lines.join("\n\n"))
+      .setThumbnail(member.user?.displayAvatarURL?.({ size: 256 }) || null)
+      .setTimestamp();
+    await channel.send({ content: `${member}`, embeds: [e], allowedMentions: { users: [member.id] } }).catch(() => {});
+    return true;
+  }
+  const syncTag = async (member, quiet = false) => {
+    const want = wearsTag(member);
+    const changed = await setRole(member, db.cfg.supporter.tagRole, want, t("Tag du serveur", "Server tag"));
+    if (changed && want && !quiet) await thankSupporter(member, "tag");
+    return changed;
+  };
+  async function syncStatus(presence) {
+    const cfg = db.cfg.supporter;
+    const member = presence?.member;
+    if (!cfg.statusRole || !member) return false;
+    // offline: Discord does not send the status any more, the role stays until they come back
+    if (!presence.status || presence.status === "offline") return false;
+    const want = statusHas(presence);
+    const changed = await setRole(member, cfg.statusRole, want, t(`Statut ${cfg.statusText}`, `Status ${cfg.statusText}`));
+    if (changed && want && !presence.quiet) await thankSupporter(member, "status");
+    return changed;
+  }
+  /* every 10 minutes (and on demand): every member is checked */
+  let supporterScan = 0;
+  async function scanSupporters(force = false, quiet = false) {
+    const cfg = db.cfg.supporter;
+    if (!cfg.tagRole && !cfg.statusRole) return { tag: 0, status: 0 };
+    if (!force && Date.now() - supporterScan < 10 * 60_000) return null;
+    supporterScan = Date.now();
+    let tag = 0, status = 0;
+    for (const guild of client?.guilds?.cache?.values?.() || []) {
+      const members = await Promise.resolve(guild.members?.fetch?.()).catch(() => null) || guild.members?.cache;
+      for (const member of members?.values?.() || []) {
+        if (cfg.tagRole && wearsTag(member)) tag++;
+        await syncTag(member, quiet);
+        if (cfg.statusRole && hasPresence()) {
+          const presence = guild.presences?.cache?.get?.(member.id) || member.presence;
+          if (presence && presence.status && presence.status !== "offline") {
+            if (statusHas(presence)) status++;
+            await syncStatus({ ...presence, activities: presence.activities, status: presence.status, member, quiet });
+          } else if (member.roles?.cache?.has?.(cfg.statusRole)) status++;
+        }
+      }
+    }
+    return { tag, status };
+  }
+  async function makeRole(guild, name, color) {
+    return guild.roles.create({ name, color, mentionable: false, hoist: false, reason: t("Rôle supporter (/supporter)", "Supporter role (/supporter)") });
+  }
+  H.supporter = async (i) => {
+    if (need_perm(i, P.ManageRoles)) return;
+    const sub = i.options.getSubcommand();
+    const cfg = db.cfg.supporter;
+    if (sub === "voir") {
+      const e = embed(0x7c4dff)
+        .setTitle(t("💜  Rôles supporters", "💜  Supporter roles"))
+        .addFields(
+          { name: t("🏷️ Tag du serveur", "🏷️ Server tag"), value: cfg.tagRole ? `<@&${cfg.tagRole}>` : t("*coupé*", "*off*"), inline: true },
+          { name: t("💌 Remerciements", "💌 Thank-yous"), value: cfg.channelId ? `<#${cfg.channelId}>` : t("*aucun salon*", "*no channel*"), inline: true },
+          { name: t("💬 Statut", "💬 Status"), value: cfg.statusRole ? `<@&${cfg.statusRole}> · \`${cfg.statusText}\`${hasPresence() ? "" : t("\n⚠️ Active l'intent **Presence** dans le Developer Portal", "\n⚠️ Turn on the **Presence** intent in the Developer Portal")}` : t("*coupé*", "*off*"), inline: true }
+        );
+      return i.reply({ embeds: [e], flags: ephemeral, allowedMentions: { parse: [] } });
+    }
+    if (sub === "salon") {
+      const channel = i.options.getChannel("salon");
+      cfg.channelId = channel?.id || "";
+      save();
+      return reply(i, ok(channel ? t(`Les remerciements seront postés dans ${channel}.`, `Thank-yous will be posted in ${channel}.`) : t("Plus de message de remerciement.", "No more thank-you messages.")));
+    }
+    if (sub === "couper") {
+      const which = i.options.getString("type");
+      if (which === "tag") cfg.tagRole = "";
+      else cfg.statusRole = "";
+      save();
+      return reply(i, ok(t("Coupé. Le rôle n'est plus donné ni retiré (ceux qui l'ont le gardent).", "Off. The role is no longer given or taken (people who have it keep it).")));
+    }
+    await i.deferReply({ flags: ephemeral });
+    let role = i.options.getRole("role");
+    try {
+      if (!role) role = sub === "tag" ? await makeRole(i.guild, "🏷️ Tag Kazuki", 0xb388ff) : await makeRole(i.guild, `💜 ${String(i.options.getString("texte") || cfg.statusText || "/kazukisab").slice(0, 40)}`, 0xff4fd8);
+    } catch {
+      return i.editReply(no(t("Je n'ai pas pu créer le rôle : il me faut la permission **Gérer les rôles**.", "I could not create the role: I need the **Manage Roles** permission.")));
+    }
+    const me = i.guild.members?.me;
+    if (role.managed || (me?.roles?.highest && me.roles.highest.comparePositionTo(role) <= 0)) return i.editReply(no(t(`Je ne peux pas donner ${role} : mets mon rôle **au-dessus** de lui dans Paramètres du serveur → Rôles.`, `I cannot give ${role}: put my role **above** it in Server settings → Roles.`)));
+    let extra = "";
+    if (sub === "tag") {
+      cfg.tagRole = role.id;
+      extra = t("\nQuand quelqu'un affiche le **tag du serveur** à côté de son pseudo, il reçoit ce rôle ; s'il l'enlève, le rôle part.", "\nWhen someone shows the **server tag** next to their name they get this role; when they remove it, the role goes.");
+    } else {
+      cfg.statusRole = role.id;
+      const text = String(i.options.getString("texte") || "").trim();
+      if (text) cfg.statusText = text.slice(0, 60);
+      extra = t(`\nQuand quelqu'un met **${cfg.statusText}** dans son statut, il reçoit ce rôle ; s'il l'enlève, le rôle part.`, `\nWhen someone puts **${cfg.statusText}** in their status they get this role; when they remove it, the role goes.`);
+      if (!hasPresence()) extra += t("\n⚠️ **Il faut activer l'intent Presence** : Developer Portal → ton bot → Bot → *Presence Intent* → ON, puis redémarre le bot.", "\n⚠️ **The Presence intent must be on**: Developer Portal → your bot → Bot → *Presence Intent* → ON, then restart the bot.");
+    }
+    save();
+    const channel = i.options.getChannel("salon");
+    if (channel) cfg.channelId = channel.id;
+    if (cfg.channelId) extra += t(`\n💌 Un message de remerciement est posté dans <#${cfg.channelId}> à chaque nouveau supporter.`, `\n💌 A thank-you message is posted in <#${cfg.channelId}> for every new supporter.`);
+    else extra += t("\n-# Astuce : ajoute l'option `salon` pour remercier chaque nouveau supporter.", "\n-# Tip: add the `salon` option to thank every new supporter.");
+    save();
+    const counts = await scanSupporters(true, true); // the people who already had it are not thanked again
+    return i.editReply({ content: ok(`${role} ${t("est branché.", "is connected.")}${extra}\n-# ${t(`Vérifié maintenant : ${sub === "tag" ? counts?.tag ?? 0 : counts?.status ?? 0} membre(s) le reçoivent. Je revérifie toutes les 10 minutes.`, `Checked now: ${sub === "tag" ? counts?.tag ?? 0 : counts?.status ?? 0} member(s) get it. I check again every 10 minutes.`)}`), allowedMentions: { parse: [] } });
+  };
+
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -9923,6 +10105,7 @@ const tools = (() => {
     load();
     client.on(Events.MessageCreate, async (message) => {
       try {
+        if (message.member && db.cfg.supporter.tagRole) syncTag(message.member).catch(() => {});
         if (await onCommandsOnly(message)) return;
         if (await onCounting(message)) return;
         if (await protect(message)) return;
@@ -9946,6 +10129,8 @@ const tools = (() => {
     client.on(Events.GuildMemberRemove, (m) => onLeave(m).catch(() => {}));
     client.on(Events.GuildMemberAdd, (m) => scamOnJoin(m).catch(() => {}));
     client.on(Events.GuildMemberAdd, (m) => trackJoin(m).catch(() => {}));
+    client.on(Events.GuildMemberUpdate, (_, m) => syncTag(m).catch(() => {}));
+    client.on(Events.PresenceUpdate, (_, p) => syncStatus(p).catch(() => {}));
     client.on(Events.GuildMemberRemove, (m) => trackLeave(m));
     client.on(Events.InviteCreate, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
     client.on(Events.InviteDelete, (inv) => inv.guild && cacheInvites(inv.guild).catch(() => {}));
@@ -9964,6 +10149,7 @@ const tools = (() => {
       refreshXpBoard().catch((e) => console.error("⚠️ xp board:", e?.message || e));
       tickCounters().catch((e) => console.error("⚠️ counters:", e?.message || e));
       refreshValues().catch(() => {});
+      scanSupporters().catch((e) => console.error("⚠️ supporters:", e?.message || e));
       // the invites of each server are read once the bot is connected (needed to know who invited a newcomer)
       for (const g of client.guilds?.cache?.values?.() || []) if (!inviteUses.has(g.id)) cacheInvites(g).catch(() => {});
     }, 30_000);
@@ -9980,7 +10166,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
@@ -10023,7 +10209,8 @@ const ephemeral = MessageFlags.Ephemeral;
 
 const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
 const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
-let client = new Client({ intents: tools.ON ? FULL_INTENTS : [GatewayIntentBits.Guilds] });
+const PRESENCE_INTENTS = [...FULL_INTENTS, GatewayIntentBits.GuildPresences]; // Presence: for the /kazukisab status role
+let client = new Client({ intents: tools.ON ? PRESENCE_INTENTS : [GatewayIntentBits.Guilds] });
 
 const isStaff = (member) =>
   Boolean(
@@ -10428,8 +10615,22 @@ async function loginWithFallback() {
   wire(tools.ON);
   try {
     await client.login(process.env.DISCORD_TOKEN);
+    return;
   } catch (error) {
     if (!tools.ON || !/disallowed intents/i.test(String(error?.message || error))) throw error;
+  }
+  // without the Presence intent: everything works except the status role
+  console.warn("ℹ️ The Presence intent is not enabled: the status role (/supporter statut) is off. Switch it on in the Discord Developer Portal (Bot tab, Privileged Gateway Intents), then restart.");
+  await client.destroy().catch(() => {});
+  client = new Client({ intents: FULL_INTENTS });
+  client.on(Events.InteractionCreate, onInteraction);
+  client.once(Events.ClientReady, onReady);
+  client.on(Events.Invalidated, onInvalidated);
+  tools.attach(client, true);
+  try {
+    await client.login(process.env.DISCORD_TOKEN);
+  } catch (error) {
+    if (!/disallowed intents/i.test(String(error?.message || error))) throw error;
     console.warn("⚠️ The Message Content / Server Members intents are not enabled: starting without them. Switch them on in the Discord Developer Portal (Bot tab, Privileged Gateway Intents), then restart.");
     await client.destroy().catch(() => {});
     client = new Client({ intents: BASIC_INTENTS });
