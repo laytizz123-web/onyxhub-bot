@@ -4422,6 +4422,7 @@ const tools = (() => {
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
+      pings: { roles: {}, made: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
       supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
@@ -4471,6 +4472,8 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.commandsOnly.channels)) next.cfg.commandsOnly.channels = [];
     if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
     if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
+    if (!next.cfg.pings.roles || typeof next.cfg.pings.roles !== "object" || Array.isArray(next.cfg.pings.roles)) next.cfg.pings.roles = {};
+    if (!Array.isArray(next.cfg.pings.made)) next.cfg.pings.made = [];
     if (!Array.isArray(next.cfg.supporter.channels)) next.cfg.supporter.channels = [];
     if (!next.cfg.supporter.thanks || typeof next.cfg.supporter.thanks !== "object") next.cfg.supporter.thanks = {};
     if (!next.cfg.supporter.langs || typeof next.cfg.supporter.langs !== "object") next.cfg.supporter.langs = {}; // channel id -> "fr" | "en"
@@ -4930,6 +4933,14 @@ const tools = (() => {
           return b;
         })()
       ),
+      // ping roles: made by the bot, with a panel
+      D(
+        P.ManageRoles,
+        cmd("pingroles", t("Rôles de notification (annonces, giveaways…) et leur panel", "Notification roles (announcements, giveaways…) and their panel"))
+          .addSubcommand((s) => s.setName("panel").setDescription(t("Créer les rôles qui manquent et poster le panel", "Make the missing roles and post the panel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
+          .addSubcommand((s) => s.setName("roles").setDescription(t("Créer seulement les rôles de ping", "Only make the ping roles")))
+          .addSubcommand((s) => s.setName("supprimer").setDescription(t("Supprimer les rôles de ping créés par le bot", "Delete the ping roles made by the bot")))
+      ),
       // fun and utilities
       (() => {
         let b = cmd("poll", t("Créer un sondage", "Create a poll")).addStringOption((o) => o.setName("question").setDescription("Question").setRequired(true).setMaxLength(200));
@@ -5326,7 +5337,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "dashboard", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "dashboard", "pingroles", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6981,6 +6992,7 @@ const tools = (() => {
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
+      [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
       [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
@@ -9787,6 +9799,98 @@ const tools = (() => {
     const site = dashBase();
     return i.reply({ flags: ephemeral, content: t(`🔐 **Ton lien de connexion au site** (valable 10 minutes, une seule fois, ne le partage pas) :\n<${site}/login?t=${token}>\n-# Le site public : ${site}  ·  le panneau : ${site}/admin`, `🔐 **Your login link** (valid 10 minutes, once, do not share it):\n<${site}/login?t=${token}>`) });
   };
+  /* ---------- ping roles: the bot makes them and posts a panel to take / drop them ---------- */
+  const PINGS = [
+    { id: "annonces", emoji: "📢", name: t("Annonces", "Announcements"), about: t("Les annonces importantes du serveur", "The server's important announcements"), color: 0xff5cd6 },
+    { id: "giveaways", emoji: "🎉", name: "Giveaways", about: t("Chaque nouveau giveaway", "Every new giveaway"), color: 0xf1c40f },
+    { id: "events", emoji: "🎮", name: "Events", about: t("Events, concours et animations", "Events, contests and activities"), color: 0x3498db },
+    { id: "trades", emoji: "🤝", name: "Trades", about: t("Les gros trades et les offres", "Big trades and offers"), color: 0x2ecc71 },
+    { id: "valeurs", emoji: "📊", name: t("Valeurs", "Values"), about: t("Quand les valeurs des brainrots changent", "When brainrot values change"), color: 0x8f63ff },
+    { id: "stock", emoji: "💎", name: t("Stock / Drops", "Stock / Drops"), about: t("Nouveaux brainrots en stock et drops", "New brainrots in stock and drops"), color: 0x5ad1ff },
+    { id: "maj", emoji: "🆕", name: t("Mises à jour", "Updates"), about: t("Les mises à jour de Steal a Brainrot", "Steal a Brainrot updates"), color: 0xe67e22 },
+    { id: "sondages", emoji: "🗳️", name: t("Sondages", "Polls"), about: t("Les sondages du serveur", "The server's polls"), color: 0x95a5a6 },
+    { id: "partenariats", emoji: "🔗", name: t("Partenariats", "Partnerships"), about: t("Les nouveaux partenaires", "New partners"), color: 0x1abc9c },
+  ];
+  const pingRoleName = (p) => `${p.emoji} Ping ${p.name}`;
+  /* makes the ping roles that are missing (an existing role with the same name is reused) */
+  async function makePingRoles(guild) {
+    const map = db.cfg.pings.roles;
+    const made = [];
+    for (const p of PINGS) {
+      if (map[p.id] && guild.roles.cache.get(map[p.id])) continue;
+      const same = [...guild.roles.cache.values()].find((r) => r.name === pingRoleName(p));
+      const role = same || (await guild.roles.create({ name: pingRoleName(p), color: p.color, mentionable: true, hoist: false, reason: "/pingroles" }));
+      map[p.id] = role.id;
+      if (!same) {
+        made.push(role);
+        db.cfg.pings.made.push(role.id);
+      }
+    }
+    save(true);
+    return made;
+  }
+  function pingPanelBody(guild) {
+    const map = db.cfg.pings.roles;
+    const list = PINGS.filter((p) => map[p.id] && guild.roles.cache.get(map[p.id]));
+    const e = embed(0x8f63ff)
+      .setTitle(t("🔔  Rôles de notification", "🔔  Notification roles"))
+      .setDescription(
+        [t("Choisis ce pour quoi tu veux être **mentionné**. Appuie une fois pour **prendre** le rôle, encore une fois pour le **retirer**.", "Pick what you want to be **pinged** for. Press once to **take** the role, again to **drop** it."), "", ...list.map((p) => `${p.emoji} <@&${map[p.id]}> · ${p.about}`)].join("\n")
+      )
+      .setFooter({ text: t("Tu peux changer quand tu veux", "You can change any time") });
+    const buttons = list.map((p) => new ButtonBuilder().setCustomId(`tl:rr:${map[p.id]}`).setLabel(p.name.slice(0, 80)).setEmoji(p.emoji).setStyle(ButtonStyle.Secondary));
+    buttons.push(new ButtonBuilder().setCustomId("tl:pgoff").setLabel(t("Tout retirer", "Remove all")).setEmoji("🔕").setStyle(ButtonStyle.Danger));
+    const rows = [];
+    for (let k = 0; k < buttons.length; k += 5) rows.push(new ActionRowBuilder().addComponents(buttons.slice(k, k + 5)));
+    return { embeds: [e], components: rows.slice(0, 5), allowedMentions: { parse: [] } };
+  }
+  async function pingsOff(i) {
+    const ids = Object.values(db.cfg.pings.roles).filter((id) => i.member.roles.cache.has(id));
+    if (!ids.length) return reply(i, ok(t("Tu n'as aucun rôle de ping.", "You have no ping role.")));
+    try {
+      await i.member.roles.remove(ids, "ping panel: remove all");
+    } catch {
+      return reply(i, no(t("Je n'ai pas pu retirer tes rôles (mon rôle est trop bas ?).", "I could not remove your roles (my role too low?).")));
+    }
+    return reply(i, ok(t(`${ids.length} rôle(s) de ping retiré(s). Tu ne seras plus mentionné.`, `${ids.length} ping role(s) removed. You will not be pinged any more.`)));
+  }
+  H.pingroles = async (i) => {
+    if (need_perm(i, P.ManageRoles)) return;
+    const sub = i.options.getSubcommand();
+    await i.deferReply({ flags: ephemeral });
+    if (sub === "supprimer") {
+      let n = 0;
+      for (const [k, id] of Object.entries(db.cfg.pings.roles)) {
+        const role = i.guild.roles.cache.get(id);
+        // only the roles the bot created; a role that was already there is left alone
+        if (role && db.cfg.pings.made.includes(id)) {
+          try {
+            await role.delete("/pingroles supprimer");
+            n++;
+          } catch {
+            /* above the bot, or already gone */
+          }
+        }
+        delete db.cfg.pings.roles[k];
+      }
+      db.cfg.pings.made = [];
+      save(true);
+      return i.editReply(ok(t(`${n} rôle(s) de ping supprimé(s).`, `${n} ping role(s) deleted.`)));
+    }
+    let made;
+    try {
+      made = await makePingRoles(i.guild);
+    } catch {
+      return i.editReply(no(t("Je n'ai pas pu créer les rôles : il me faut la permission **Gérer les rôles**.", "I could not make the roles: I need the **Manage Roles** permission.")));
+    }
+    const all = PINGS.map((p) => `${p.emoji} <@&${db.cfg.pings.roles[p.id]}>`).join("  ");
+    if (sub === "roles") return i.editReply({ content: ok(t(`Rôles de ping prêts (${made.length} créé(s)) :\n${all}`, `Ping roles ready (${made.length} made):\n${all}`)), allowedMentions: { parse: [] } });
+    const channel = i.options.getChannel("salon") || i.channel;
+    const message = await Promise.resolve(channel?.send?.(pingPanelBody(i.guild))).catch(() => null);
+    if (!message) return i.editReply(no(t("Je n'ai pas pu poster le panel dans ce salon (permissions ?).", "I could not post the panel in this channel (permissions?).")));
+    return i.editReply({ content: ok(t(`Panel posté dans ${channel}. ${made.length ? `${made.length} rôle(s) créé(s) : ` : "Rôles : "}${all}\n-# Pour mentionner : tape @ puis le nom du rôle, par exemple @📢 Ping Annonces.`, `Panel posted in ${channel}. ${made.length ? `${made.length} role(s) made: ` : "Roles: "}${all}`)), allowedMentions: { parse: [] } });
+  };
+
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -10443,6 +10547,7 @@ const tools = (() => {
       if (i.isButton?.() && typeof i.customId === "string" && i.customId.startsWith("tl:")) {
         const [, kind, arg] = i.customId.split(":");
         if (kind === "rr") await roleButton(i, arg);
+        else if (kind === "pgoff") await pingsOff(i);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
         else if (kind === "gwlist") await giveawayList(i);
@@ -10539,7 +10644,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
