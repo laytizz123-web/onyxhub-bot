@@ -4422,7 +4422,7 @@ const tools = (() => {
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
-      pings: { roles: {}, made: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
+      pings: { roles: {}, made: [], off: [], panels: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
       supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
@@ -4473,7 +4473,7 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.eco.shop)) next.cfg.eco.shop = [];
     if (!Array.isArray(next.cfg.values.panels)) next.cfg.values.panels = [];
     if (!next.cfg.pings.roles || typeof next.cfg.pings.roles !== "object" || Array.isArray(next.cfg.pings.roles)) next.cfg.pings.roles = {};
-    if (!Array.isArray(next.cfg.pings.made)) next.cfg.pings.made = [];
+    for (const k of ["made", "off", "panels"]) if (!Array.isArray(next.cfg.pings[k])) next.cfg.pings[k] = [];
     if (!Array.isArray(next.cfg.supporter.channels)) next.cfg.supporter.channels = [];
     if (!next.cfg.supporter.thanks || typeof next.cfg.supporter.thanks !== "object") next.cfg.supporter.thanks = {};
     if (!next.cfg.supporter.langs || typeof next.cfg.supporter.langs !== "object") next.cfg.supporter.langs = {}; // channel id -> "fr" | "en"
@@ -4939,6 +4939,9 @@ const tools = (() => {
         cmd("pingroles", t("Rôles de notification (annonces, giveaways…) et leur panel", "Notification roles (announcements, giveaways…) and their panel"))
           .addSubcommand((s) => s.setName("panel").setDescription(t("Créer les rôles qui manquent et poster le panel", "Make the missing roles and post the panel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
           .addSubcommand((s) => s.setName("roles").setDescription(t("Créer seulement les rôles de ping", "Only make the ping roles")))
+          .addSubcommand((s) => s.setName("retirer").setDescription(t("Enlever un ping du panel (les panels postés sont mis à jour)", "Take a ping out of the panel (posted panels are updated)")).addStringOption((o) => o.setName("ping").setDescription(t("Le ping", "The ping")).setRequired(true).addChoices(...PINGS.map((p) => ({ name: `${p.emoji} ${p.name}`, value: p.id })))))
+          .addSubcommand((s) => s.setName("remettre").setDescription(t("Remettre un ping dans le panel", "Put a ping back in the panel")).addStringOption((o) => o.setName("ping").setDescription(t("Le ping", "The ping")).setRequired(true).addChoices(...PINGS.map((p) => ({ name: `${p.emoji} ${p.name}`, value: p.id })))))
+          .addSubcommand((s) => s.setName("voir").setDescription(t("Voir les pings du panel et leurs rôles", "See the panel's pings and their roles")))
           .addSubcommand((s) => s.setName("supprimer").setDescription(t("Supprimer les rôles de ping créés par le bot", "Delete the ping roles made by the bot")))
       ),
       // fun and utilities
@@ -6992,7 +6995,7 @@ const tools = (() => {
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
-      [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
+      [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
       [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
       [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
@@ -9577,6 +9580,7 @@ const tools = (() => {
     },
   };
   SHAPES["index.cautions"] = SHAPES["index.prices"];
+  SHAPES["pings.off"] = (v) => (Array.isArray(v) ? [...new Set(v.map(String).filter((id) => PINGS.some((p) => p.id === id)))] : undefined);
   SHAPES["pings.roles"] = (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => PINGS.some((p) => p.id === k)).map(([k, r]) => [k, String(r || "").replace(/\D/g, "")]).filter(([, r]) => r)) : undefined);
   function cleanSection(section, input) {
     const base = defaults().cfg[section];
@@ -9711,6 +9715,7 @@ const tools = (() => {
       if (body.section === "vouch") refreshVouchPanel(true).catch(() => {});
       if (body.section === "index") for (const ix of INDEXES) refreshIndexPanels(ix).catch(() => {});
       if (body.section === "values") refreshValuePanels().catch(() => {});
+      if (body.section === "pings") refreshPingPanels().catch(() => {});
       return send(res, 200, { ok: true, cfg: db.cfg[body.section] });
     }
     if (url.pathname === "/api/pings") {
@@ -9727,6 +9732,7 @@ const tools = (() => {
         if (!Object.keys(db.cfg.pings.roles).length) await makePingRoles(guild).catch(() => null);
         const m = await channel.send(pingPanelBody(guild)).catch((e) => ({ error: e?.message || String(e) }));
         if (m?.error) return send(res, 400, { error: m.error });
+        rememberPingPanel(m);
         return send(res, 200, { ok: true });
       }
       return send(res, 400, { error: "action" });
@@ -9837,6 +9843,7 @@ const tools = (() => {
     const map = db.cfg.pings.roles;
     const made = [];
     for (const p of PINGS) {
+      if (db.cfg.pings.off.includes(p.id)) continue; // taken out of the panel: no role needed
       if (map[p.id] && guild.roles.cache.get(map[p.id])) continue;
       const same = [...guild.roles.cache.values()].find((r) => r.name === pingRoleName(p));
       const role = same || (await guild.roles.create({ name: pingRoleName(p), color: p.color, mentionable: true, hoist: false, reason: "/pingroles" }));
@@ -9851,7 +9858,7 @@ const tools = (() => {
   }
   function pingPanelBody(guild) {
     const map = db.cfg.pings.roles;
-    const list = PINGS.filter((p) => map[p.id] && guild.roles.cache.get(map[p.id]));
+    const list = PINGS.filter((p) => !db.cfg.pings.off.includes(p.id) && map[p.id] && guild.roles.cache.get(map[p.id]));
     const e = embed(0x8f63ff)
       .setTitle(t("🔔  Rôles de notification", "🔔  Notification roles"))
       .setDescription(
@@ -9863,6 +9870,28 @@ const tools = (() => {
     const rows = [];
     for (let k = 0; k < buttons.length; k += 5) rows.push(new ActionRowBuilder().addComponents(buttons.slice(k, k + 5)));
     return { embeds: [e], components: rows.slice(0, 5), allowedMentions: { parse: [] } };
+  }
+  const rememberPingPanel = (message) => {
+    if (!message?.id) return;
+    db.cfg.pings.panels = [...db.cfg.pings.panels.filter((p) => p.msgId !== message.id), { channelId: message.channelId || message.channel?.id, msgId: message.id }].slice(-10);
+    save();
+  };
+  /* the panels already posted are changed in place when a ping is taken out or put back */
+  async function refreshPingPanels() {
+    const guild = client?.guilds?.cache?.first?.();
+    if (!guild) return 0;
+    let n = 0;
+    for (const p of [...db.cfg.pings.panels]) {
+      const channel = await Promise.resolve(client.channels.fetch(p.channelId)).catch(() => null);
+      const message = channel ? await Promise.resolve(channel.messages?.fetch?.(p.msgId)).catch(() => null) : null;
+      if (!message) {
+        if (channel) db.cfg.pings.panels = db.cfg.pings.panels.filter((x) => x !== p);
+        continue;
+      }
+      if (await message.edit(pingPanelBody(guild)).then(() => true).catch(() => false)) n++;
+    }
+    save();
+    return n;
   }
   async function pingsOff(i) {
     const ids = Object.values(db.cfg.pings.roles).filter((id) => i.member.roles.cache.has(id));
@@ -9878,6 +9907,23 @@ const tools = (() => {
     if (need_perm(i, P.ManageRoles)) return;
     const sub = i.options.getSubcommand();
     await i.deferReply({ flags: ephemeral });
+    if (sub === "retirer" || sub === "remettre") {
+      const id = i.options.getString("ping");
+      const p = PINGS.find((x) => x.id === id);
+      if (!p) return i.editReply(no(t("Ping inconnu.", "Unknown ping.")));
+      const off = new Set(db.cfg.pings.off);
+      if (sub === "retirer") off.add(id);
+      else off.delete(id);
+      db.cfg.pings.off = [...off];
+      save(true);
+      if (sub === "remettre") await makePingRoles(i.guild).catch(() => null);
+      const updated = await refreshPingPanels();
+      return i.editReply(ok(sub === "retirer" ? t(`${p.emoji} **${p.name}** est retiré du panel (le rôle est gardé).${updated ? ` ${updated} panel(s) mis à jour.` : ""}`, `${p.emoji} **${p.name}** is taken out of the panel (the role is kept).${updated ? ` ${updated} panel(s) updated.` : ""}`) : t(`${p.emoji} **${p.name}** est de nouveau dans le panel.${updated ? ` ${updated} panel(s) mis à jour.` : ""}`, `${p.emoji} **${p.name}** is back in the panel.${updated ? ` ${updated} panel(s) updated.` : ""}`)));
+    }
+    if (sub === "voir") {
+      const lines = PINGS.map((p) => `${db.cfg.pings.off.includes(p.id) ? "❌" : "✅"} ${p.emoji} **${p.name}** ${db.cfg.pings.roles[p.id] ? `· <@&${db.cfg.pings.roles[p.id]}>` : t("· *pas de rôle*", "· *no role*")}`);
+      return i.editReply({ content: `${t("**Rôles de ping** (✅ dans le panel, ❌ retiré)", "**Ping roles** (✅ in the panel, ❌ taken out)")}\n${lines.join("\n")}`, allowedMentions: { parse: [] } });
+    }
     if (sub === "supprimer") {
       let n = 0;
       for (const [k, id] of Object.entries(db.cfg.pings.roles)) {
@@ -9908,6 +9954,7 @@ const tools = (() => {
     const channel = i.options.getChannel("salon") || i.channel;
     const message = await Promise.resolve(channel?.send?.(pingPanelBody(i.guild))).catch(() => null);
     if (!message) return i.editReply(no(t("Je n'ai pas pu poster le panel dans ce salon (permissions ?).", "I could not post the panel in this channel (permissions?).")));
+    rememberPingPanel(message);
     return i.editReply({ content: ok(t(`Panel posté dans ${channel}. ${made.length ? `${made.length} rôle(s) créé(s) : ` : "Rôles : "}${all}\n-# Pour mentionner : tape @ puis le nom du rôle, par exemple @📢 Ping Annonces.`, `Panel posted in ${channel}. ${made.length ? `${made.length} role(s) made: ` : "Roles: "}${all}`)), allowedMentions: { parse: [] } });
   };
 
@@ -10664,7 +10711,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================

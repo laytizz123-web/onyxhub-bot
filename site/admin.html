@@ -84,6 +84,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
 .top > div { min-width: 0; flex: 1 1 auto; }
 .top b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .btn, .top button { flex: none; padding: 7px 11px; font-size: 13px; }
+.rowline.off { opacity: .55; }
 </style>
 </head>
 <body>
@@ -251,8 +252,11 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     var box = el("div", { class: "rowsed" }); var list = el("div", { class: "rowslist" }); var reads = [];
     (S.pings || []).forEach(function (p) {
       var r = select(roleOpts(), (cur.roles || {})[p.id] || "", false);
-      list.appendChild(el("div", { class: "rowline" }, [el("b", { class: "rowtitle", text: p.emoji + " " + p.name }), el("div", { class: "hint", style: "flex-basis:100%;margin-top:-6px", text: p.about }), cell("Rôle", r)]));
-      reads.push(function (o) { if (r.value) o.roles[p.id] = r.value; });
+      var on = el("input", { type: "checkbox" }); on.checked = (cur.off || []).indexOf(p.id) < 0;
+      var line = el("div", { class: "rowline" + (on.checked ? "" : " off") }, [el("b", { class: "rowtitle", text: p.emoji + " " + p.name }), el("div", { class: "hint", style: "flex-basis:100%;margin-top:-6px", text: p.about }), el("label", { class: "switch", style: "flex-basis:100%" }, [on, "Dans le panel"]), cell("Rôle", r)]);
+      on.addEventListener("change", function () { line.classList.toggle("off", !on.checked); });
+      list.appendChild(line);
+      reads.push(function (o) { if (r.value) o.roles[p.id] = r.value; if (!on.checked) o.off.push(p.id); });
     });
     box.appendChild(list);
     var make = el("button", { type: "button", text: "✨ Créer les rôles qui manquent", onclick: function () {
@@ -266,7 +270,8 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     } });
     box.appendChild(el("div", { class: "row" }, [make]));
     box.appendChild(el("div", { class: "rowline" }, [cell("Salon du panel", ch), post]));
-    return [box, function () { var o = { roles: {} }; reads.forEach(function (f) { f(o); }); return o; }];
+    box.appendChild(el("div", { class: "hint", text: "Décoche « Dans le panel » pour enlever un ping, puis Enregistrer : les panels déjà postés sont mis à jour tout seuls." }));
+    return [box, function () { var o = { roles: {}, off: [] }; reads.forEach(function (f) { f(o); }); return o; }];
   }
   /* one input for one setting; returns [element, read()] */
   function field(key, base, value, where) {
