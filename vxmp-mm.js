@@ -9577,6 +9577,7 @@ const tools = (() => {
     },
   };
   SHAPES["index.cautions"] = SHAPES["index.prices"];
+  SHAPES["pings.roles"] = (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => PINGS.some((p) => p.id === k)).map(([k, r]) => [k, String(r || "").replace(/\D/g, "")]).filter(([, r]) => r)) : undefined);
   function cleanSection(section, input) {
     const base = defaults().cfg[section];
     if (!Object.prototype.hasOwnProperty.call(db.cfg, section) || !base || !input || typeof input !== "object") return null;
@@ -9601,6 +9602,7 @@ const tools = (() => {
       cfg: db.cfg,
       defaults: defaults().cfg,
       indexes: INDEXES.map((x) => ({ id: x.id, emoji: x.emoji, label: x.label })),
+      pings: PINGS.map((p) => ({ id: p.id, emoji: p.emoji, name: p.name, about: p.about })),
       valueRate: vals.rate || 20,
       scams: Object.entries(db.scams || {}).map(([id, s]) => ({ id, name: client?.users?.cache?.get?.(id)?.username || "", ...s })),
       channels,
@@ -9710,6 +9712,24 @@ const tools = (() => {
       if (body.section === "index") for (const ix of INDEXES) refreshIndexPanels(ix).catch(() => {});
       if (body.section === "values") refreshValuePanels().catch(() => {});
       return send(res, 200, { ok: true, cfg: db.cfg[body.section] });
+    }
+    if (url.pathname === "/api/pings") {
+      const guild = client?.guilds?.cache?.first?.();
+      if (!guild) return send(res, 400, { error: t("Serveur introuvable.", "Server not found.") });
+      if (body.action === "create") {
+        const made = await makePingRoles(guild).catch(() => null);
+        if (!made) return send(res, 400, { error: t("Je n'ai pas pu créer les rôles : il me faut la permission Gérer les rôles.", "I could not make the roles: I need the Manage Roles permission.") });
+        return send(res, 200, { ok: true, made: made.length, roles: db.cfg.pings.roles, state: dashState() });
+      }
+      if (body.action === "post") {
+        const channel = await Promise.resolve(client?.channels?.fetch?.(String(body.channelId || ""))).catch(() => null);
+        if (!channel?.send) return send(res, 400, { error: t("Choisis un salon.", "Pick a channel.") });
+        if (!Object.keys(db.cfg.pings.roles).length) await makePingRoles(guild).catch(() => null);
+        const m = await channel.send(pingPanelBody(guild)).catch((e) => ({ error: e?.message || String(e) }));
+        if (m?.error) return send(res, 400, { error: m.error });
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 400, { error: "action" });
     }
     if (url.pathname === "/api/send") {
       const channel = await Promise.resolve(client?.channels?.fetch?.(String(body.channelId || ""))).catch(() => null);
