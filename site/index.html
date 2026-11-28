@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* Layout: one dark "vault" page. A live escrow ticket is the hero's centrepiece, then features, the trade flow, the command list. */
+/* Layout: one dark page. A level-up message is the hero centrepiece, then features, the first steps, the command list. */
 :root {
   --ink: #0d0a1a;          /* page ground */
   --vault: #161126;        /* raised panels */
@@ -18,7 +18,7 @@
   --muted: #a79fc7;
   --violet: #8f63ff;       /* Azari purple */
   --rose: #ff5cd6;         /* second brand colour */
-  --ltc: #4fb3ff;          /* Litecoin blue */
+  --ltc: #4fb3ff;          /* blue accent */
   --ok: #3ee08f;
   --warn: #ffb84d;
   --display: "Unbounded", "Manrope", system-ui, sans-serif;
@@ -154,21 +154,26 @@ h2 { font: 700 clamp(24px, 3.4vw, 34px)/1.15 var(--display); letter-spacing: -0.
 
 footer { padding-block: 34px 48px; color: var(--muted); font-size: 13px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+
+.lvl { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.lvl .num { font: 800 28px var(--display); color: var(--rose); }
+.xpbar { height: 8px; border-radius: 8px; background: #2a2144; overflow: hidden; margin-top: 10px; }
+.xpbar i { display: block; height: 100%; width: 72%; background: linear-gradient(90deg, var(--violet), var(--rose)); }
+.rolechip { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font: 600 12px var(--mono); padding: 5px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--rose) 45%, transparent); color: var(--rose); }
 </style>
 </head>
 <body>
-
 <header class="bar">
   <div class="wrap">
     <a class="brand" href="#top"><img src="img/kz_kazuki.gif" alt="">Azari</a>
     <nav class="nav" aria-label="Sections">
       <a href="#fonctions">Fonctions</a>
-      <a href="#trade">Comment ça marche</a>
+      <a href="#demarrer">Bien démarrer</a>
       <a href="#commandes">Commandes</a>
       <a href="#emojis">Emojis</a>
     </nav>
     <a class="btn ghost small" id="dash-top" href="/admin">Dashboard</a>
-    <a class="btn main small" id="invite-top" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter le bot</a>
+    <a class="btn main small" id="invite-top" href="/invite" target="_blank" rel="noopener">Rejoindre</a>
   </div>
 </header>
 
@@ -176,40 +181,28 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
   <div class="hero">
     <div class="wrap">
       <div>
-        <div class="eyebrow">Bot Discord · Communauté</div>
-        <h1>Le middleman qui garde les <span class="ltc">LTC</span> pendant ton trade.</h1>
-        <p class="lead">Azari ouvre un ticket privé, donne une adresse Litecoin unique au payeur, attend les confirmations du réseau et ne libère l'argent que quand les deux côtés ont reçu leur part.</p>
+        <div class="eyebrow">Bot Discord · Communauté Azari</div>
+        <h1>Le bot qui fait vivre <span class="ltc">Azari</span>.</h1>
+        <p class="lead">Niveaux et récompenses, rôles de notification, giveaways, sécurité et un dashboard web : tout ce qu'il faut pour une communauté active et propre.</p>
         <div class="cta">
-          <a class="btn main" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter Azari</a>
-          <a class="btn ghost" href="/invite" target="_blank" rel="noopener">Rejoindre le serveur</a>
+          <a class="btn main" href="/invite" target="_blank" rel="noopener">Rejoindre Azari</a>
           <a class="btn ghost" href="/admin">Dashboard</a>
         </div>
-        <div class="facts"><span><b>66</b> commandes</span><span><b>FR ⇄ EN</b> dans les tickets</span><span><b>LTC + PayPal</b></span><span><b>2</b> confirmations réseau</span></div>
+        <div class="facts"><span><b>60+</b> commandes</span><span><b>FR ⇄ EN</b> dans les tickets</span><span><b>Dashboard</b> web</span><span><b>Emojis</b> animés</span></div>
       </div>
 
-      <div class="ticket" aria-label="Exemple de ticket middleman">
-        <div class="head"><img src="img/kz_ticket.gif" alt="">#ticket-vxmp <span class="hash">exemple</span></div>
+      <div class="ticket" aria-label="Exemple de message du bot">
+        <div class="head"><img src="img/kz_ticket.gif" alt="">#général <span class="hash">exemple</span></div>
         <div class="msg">
-          <div class="ava"><img src="img/kz_middleman.gif" alt=""></div>
+          <div class="ava"><img src="img/kz_kazuki.gif" alt=""></div>
           <div style="min-width:0">
             <div class="who">Azari <span class="tag">BOT</span></div>
-            <div class="embed">
-              <h4>💱 Paiement en attente</h4>
-              <dl class="rows">
-                <dt>Montant</dt><dd>0.4521 LTC</dd>
-                <dt>Adresse</dt><dd>ltc1q…exemple…7k2m</dd>
-                <dt>Vendeur</dt><dd>@Nova</dd>
-                <dt>Acheteur</dt><dd>@Vxmp</dd>
-              </dl>
-              <div class="conf" role="img" aria-label="1 confirmation sur 2"><i></i></div>
-              <div class="small-note">1 / 2 confirmations</div>
-              <div class="steps">
-                <span class="step done">Ticket</span>
-                <span class="step done">Montant</span>
-                <span class="step now">Paiement</span>
-                <span class="step">Livraison</span>
-                <span class="step">Libéré</span>
-              </div>
+            <div class="embed" style="border-left-color: var(--rose)">
+              <h4>🎉 Niveau supérieur !</h4>
+              <div class="lvl"><img src="img/kz_og.gif" alt="" width="44" height="44"><div><div class="num">Niveau 10</div><div class="small-note">@Vxmp · 2 450 XP</div></div></div>
+              <div class="xpbar" role="img" aria-label="72 % vers le niveau 11"><i></i></div>
+              <div class="small-note">72 % vers le niveau 11</div>
+              <span class="rolechip">🏅 Nouveau rôle : Trader</span>
             </div>
           </div>
         </div>
@@ -220,18 +213,13 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
   <section id="fonctions">
     <div class="wrap">
       <div class="eyebrow">Fonctions</div>
-      <h2>Tout ce qu'un serveur de trade utilise chaque jour</h2>
-      <p class="intro">Un seul bot pour les échanges sûrs, les vouches, la modération et l'activité de toute la communauté.</p>
+      <h2>Tout ce dont une communauté a besoin</h2>
+      <p class="intro">Un seul bot pour faire grandir le serveur, l'animer et le garder propre.</p>
       <div class="features">
         <article class="feat big">
-          <img src="img/kz_ltc.gif" alt="">
-          <h3>Middleman Litecoin automatique</h3>
-          <p>Une adresse par trade, le paiement vérifié sur la blockchain, la libération en un clic. Les paliers de montant envoient le ticket au bon middleman. <code>/panel</code> <code>/tiers</code></p>
-        </article>
-        <article class="feat">
-          <img src="img/kz_paypal.gif" alt="">
-          <h3>PayPal vérifié par le staff</h3>
-          <p>Le compte PayPal présent s'affiche au payeur, le staff confirme la réception. <code>/paypal</code></p>
+          <img src="img/kz_og.gif" alt="">
+          <h3>Niveaux, XP et récompenses</h3>
+          <p>De l'XP en écrivant et en vocal, des cartes de niveau, un classement en direct et des rôles débloqués automatiquement. <code>/rank</code> <code>/leaderboard</code></p>
         </article>
         <article class="feat">
           <img src="img/kz_trade.gif" alt="">
@@ -239,44 +227,49 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
           <p>Annonces, giveaways, events, nouveautés : chacun choisit ce pour quoi il est mentionné. <code>/pingroles</code></p>
         </article>
         <article class="feat">
+          <img src="img/kz_win.gif" alt="">
+          <h3>Giveaways et events</h3>
+          <p>Giveaways animés, quiz automatiques, sondages, comptage, morpion et puissance 4.</p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_scam.gif" alt="">
+          <h3>Sécurité</h3>
+          <p>Anti-spam et anti-liens réglables, filtre de gros mots, liste des arnaqueurs, règlement à accepter. <code>/antispam</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_verified.gif" alt="">
+          <h3>Accueil et règlement</h3>
+          <p>Messages de bienvenue, règlement à accepter pour voir le serveur, rôle donné automatiquement. <code>/reglement</code></p>
+        </article>
+        <article class="feat">
+          <img src="img/kz_vouch.gif" alt="">
+          <h3>Supporters</h3>
+          <p>Un rôle et un grand merci pour ceux qui affichent le tag du serveur ou le mettent en statut. <code>/supporter</code></p>
+        </article>
+        <article class="feat">
           <img src="img/kz_value.gif" alt="">
           <h3>Dashboard web</h3>
           <p>Tous les réglages du bot depuis ton téléphone, réservé au propriétaire, avec connexion Discord. <code>/dashboard</code></p>
         </article>
         <article class="feat">
-          <img src="img/kz_vouch.gif" alt="">
-          <h3>Vouches et classement</h3>
-          <p>Seuls les middlemen peuvent être vouchés. Le top se met à jour tout seul. <code>/vouch</code></p>
-        </article>
-        <article class="feat">
-          <img src="img/kz_scam.gif" alt="">
-          <h3>Sécurité</h3>
-          <p>Liste des scammers, anti-liens, anti-spam réglable, gros mots, règlement à accepter. <code>/scamcheck</code></p>
-        </article>
-        <article class="feat">
-          <img src="img/kz_verified.gif" alt="">
-          <h3>Tickets traduits</h3>
-          <p>Chaque message d'un ticket est traduit français ⇄ anglais en petit dessous. Transcription à la fermeture.</p>
-        </article>
-        <article class="feat">
-          <img src="img/kz_og.gif" alt="">
-          <h3>Niveaux, rôles, supporters</h3>
-          <p>XP, cartes de rang, rôles par niveau, rôle pour le tag du serveur et le statut, emojis animés. <code>/supporter</code></p>
+          <img src="img/kz_ticket.gif" alt="">
+          <h3>Tickets et candidatures</h3>
+          <p>Demandes d'accès VIP et récompenses avec XP, dans des tickets privés traduits en français et en anglais. <code>/ticketpanel</code></p>
         </article>
       </div>
     </div>
   </section>
 
-  <section id="trade">
+  <section id="demarrer">
     <div class="wrap">
-      <div class="eyebrow">Un trade Litecoin</div>
-      <h2>Comment se passe un échange</h2>
-      <p class="intro">Le bot garde l'argent entre le paiement et la livraison. Personne n'envoie en premier sans protection.</p>
+      <div class="eyebrow">Nouveau sur Azari ?</div>
+      <h2>Bien démarrer en 4 étapes</h2>
+      <p class="intro">Quelques secondes pour être prêt, puis tu progresses en participant.</p>
       <ol class="flow">
-        <li><h3>Ouvre un ticket</h3><p>Choisis ta langue et ajoute la personne avec qui tu échanges.</p></li>
-        <li><h3>Le payeur envoie</h3><p>Il reçoit une adresse LTC unique et le montant exact à envoyer.</p></li>
-        <li><h3>Le bot vérifie</h3><p>Le paiement est suivi sur le réseau jusqu'aux confirmations demandées.</p></li>
-        <li><h3>Livraison et libération</h3><p>L'objet est donné, puis les LTC partent au vendeur. Un vouch termine le trade.</p></li>
+        <li><h3>Accepte le règlement</h3><p>Un bouton dans le salon du règlement t'ouvre tout le serveur.</p></li>
+        <li><h3>Choisis tes pings</h3><p>Prends les rôles de notification qui t'intéressent, et seulement ceux-là.</p></li>
+        <li><h3>Participe</h3><p>Chaque message et chaque minute en vocal te rapportent de l'XP.</p></li>
+        <li><h3>Débloque des rôles</h3><p>Monte de niveau pour gagner de nouveaux rôles et des récompenses.</p></li>
       </ol>
     </div>
   </section>
@@ -287,7 +280,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
       <h2>Les commandes principales</h2>
       <p class="intro">Les membres ne voient que les commandes qu'ils peuvent utiliser. Les commandes staff sont réservées aux bonnes permissions.</p>
       <div class="cmdtools">
-        <div class="search"><input id="cmd-search" type="search" placeholder="Chercher une commande (ex : vouch, ping…)" aria-label="Chercher une commande"></div>
+        <div class="search"><input id="cmd-search" type="search" placeholder="Chercher une commande (ex : rank, ping…)" aria-label="Chercher une commande"></div>
         <div class="chips" id="cmd-chips" role="group" aria-label="Filtrer"></div>
       </div>
       <div class="cmds" id="cmd-list"></div>
@@ -299,7 +292,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
     <div class="wrap">
       <div class="eyebrow">Emojis animés</div>
       <h2>Le pack Azari, en une commande</h2>
-      <p class="intro"><code style="font-family:var(--mono);color:var(--rose)">/emoji pack</code> ajoute ces 13 emojis animés à ton serveur. <code style="font-family:var(--mono);color:var(--rose)">/emoji texte</code> en crée d'autres avec ton texte.</p>
+      <p class="intro"><code style="font-family:var(--mono);color:var(--rose)">/emoji pack</code> ajoute ces emojis animés au serveur. <code style="font-family:var(--mono);color:var(--rose)">/emoji texte</code> en crée d'autres avec ton texte.</p>
       <div class="pack" id="pack"></div>
     </div>
   </section>
@@ -308,13 +301,13 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
     <div class="wrap">
       <div class="final">
         <div>
-          <h2>Prêt à trader en sécurité ?</h2>
-          <p>Rejoins la communauté Azari ou ajoute le bot sur ton serveur.</p>
+          <h2>Rejoins Azari</h2>
+          <p>Une communauté active, des events réguliers et un serveur bien tenu.</p>
           <div class="copyline">Lien du serveur <code id="srv">/invite</code> <button class="copy" id="copy-srv" type="button">Copier</button></div>
         </div>
         <div class="cta">
           <a class="btn main" href="/invite" target="_blank" rel="noopener">Rejoindre</a>
-          <a class="btn ghost" href="https://discord.com/oauth2/authorize?client_id=1570116540349681825&amp;permissions=8&amp;scope=bot%20applications.commands" target="_blank" rel="noopener">Ajouter le bot</a>
+          <a class="btn ghost" href="/admin">Dashboard</a>
         </div>
       </div>
     </div>
@@ -323,7 +316,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
 
 <footer>
   <div class="wrap">
-    <span>Azari · Middleman, tickets et outils pour ta communauté</span>
+    <span>Azari · Le bot de la communauté</span>
     <span>Fait pour Azari.</span>
   </div>
 </footer>
@@ -331,35 +324,33 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
 <script>
 (function () {
   var CMDS = [
-    ["Trade", "/panel", "Poster le panel des tickets middleman", "staff"],
-    ["Trade", "/tiers", "Paliers de montant et middleman de chacun", "staff"],
-    ["Trade", "/paypal", "Gérer les comptes PayPal présents ou absents", "staff"],
-    ["Trade", "/ticketpanel", "Panels de candidature, d'accès VIP et de récompense", "staff"],
-    ["Trade", "/scamcheck", "Vérifier si quelqu'un est un scammer connu", ""],
-    ["Trade", "/mmstats", "Trades terminés par middleman", ""],
-    ["Vouches", "/vouch", "Laisser un vouch à un middleman", ""],
-    ["Vouches", "/vouchadmin", "Panel du top vouches et salon des vouches", "staff"],
     ["Niveaux", "/rank", "Ta carte de niveau", ""],
     ["Niveaux", "/leaderboard", "Le classement XP", ""],
+    ["Niveaux", "/quiz", "Un quiz qui rapporte de l'XP", ""],
     ["Niveaux", "/levels", "Réglages des niveaux et classement auto", "staff"],
     ["Serveur", "/pingroles", "Rôles de notification et leur panel", "staff"],
-    ["Serveur", "/salons", "Sauvegarder, enlever et remettre salons et rôles", "staff"],
-    ["Serveur", "/dashboard", "Lien de connexion au dashboard web", "staff"],
     ["Serveur", "/supporter", "Rôles pour le tag du serveur et le statut", "staff"],
-    ["Serveur", "/emoji", "Pack d'emojis animés et emojis texte", "staff"],
     ["Serveur", "/reglement", "Règlement à accepter pour voir le serveur", "staff"],
     ["Serveur", "/welcome", "Messages de bienvenue et d'au revoir", "staff"],
+    ["Serveur", "/emoji", "Pack d'emojis animés et emojis texte", "staff"],
+    ["Serveur", "/ticketpanel", "Panels d'accès VIP et de récompense", "staff"],
+    ["Serveur", "/salons", "Sauvegarder, enlever et remettre salons et rôles", "staff"],
+    ["Serveur", "/dashboard", "Lien de connexion au dashboard web", "staff"],
     ["Serveur", "/invites", "Qui a invité qui, et le classement", ""],
-    ["Serveur", "/compteurs", "Salons qui comptent membres, trades, vouches", "staff"],
+    ["Serveur", "/compteurs", "Salons qui comptent les membres", "staff"],
     ["Sécurité", "/antispam", "Limite de messages, mentions, majuscules, mots", "staff"],
     ["Sécurité", "/antilink", "Bloquer les liens, avec exceptions", "staff"],
-    ["Sécurité", "/scam", "Liste noire des scammers", "staff"],
+    ["Sécurité", "/antibadwords", "Filtre de gros mots", "staff"],
+    ["Sécurité", "/scamcheck", "Vérifier si quelqu'un est un arnaqueur connu", ""],
+    ["Sécurité", "/scam", "Liste noire des arnaqueurs", "staff"],
     ["Sécurité", "/ban", "Bannir un membre", "staff"],
+    ["Fun", "/giveaway", "Lancer un giveaway", "staff"],
+    ["Fun", "/poll", "Créer un sondage", ""],
     ["Fun", "/morpion", "Morpion contre un membre", ""],
     ["Fun", "/puissance4", "Puissance 4 contre un membre", ""],
     ["Fun", "/coins", "Solde, daily, boutique de rôles", ""],
-    ["Fun", "/giveaway", "Lancer un giveaway", "staff"],
-    ["Fun", "/poll", "Créer un sondage", ""],
+    ["Fun", "/8ball", "Boule magique", ""],
+    ["Fun", "/comptage", "Salon de comptage 1, 2, 3…", "staff"],
     ["Serveur", "/help", "Les commandes que tu peux utiliser", ""]
   ];
   var groups = ["Tout"].concat(CMDS.map(function (c) { return c[0]; }).filter(function (g, i, a) { return a.indexOf(g) === i; }));
@@ -393,7 +384,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
   search.addEventListener("input", draw);
   draw();
 
-  var PACK = [["logo", "kz_kazuki"], ["middleman", "kz_middleman"], ["vouch", "kz_vouch"], ["ltc", "kz_ltc"], ["paypal", "kz_paypal"], ["trade", "kz_trade"], ["verified", "kz_verified"], ["scam", "kz_scam"], ["vip", "kz_og"], ["ticket", "kz_ticket"], ["premium", "kz_value"], ["win", "kz_win"], ["lose", "kz_lose"]];
+  var PACK = [["logo", "kz_kazuki"], ["star", "kz_vouch"], ["trade", "kz_trade"], ["verified", "kz_verified"], ["scam", "kz_scam"], ["vip", "kz_og"], ["ticket", "kz_ticket"], ["premium", "kz_value"], ["win", "kz_win"], ["lose", "kz_lose"]];
   var pack = document.getElementById("pack");
   PACK.forEach(function (p) {
     var f = document.createElement("figure");

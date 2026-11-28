@@ -4265,10 +4265,7 @@ const gfx = (() => {
   };
   const EMOJI_PACK = [
     { id: "kazuki", name: "logo", label: "Logo AZ", style: "shine" },
-    { id: "middleman", name: "middleman", label: "Middleman", style: "shine" },
-    { id: "vouch", name: "vouch", label: "Vouch", style: "spin" },
-    { id: "ltc", name: "ltc", label: "Litecoin", style: "spin" },
-    { id: "paypal", name: "paypal", label: "PayPal", style: "bounce" },
+    { id: "vouch", name: "star", label: "Étoile", style: "spin" },
     { id: "trade", name: "trade", label: "Trade", style: "pulse" },
     { id: "verified", name: "verified", label: "Vérifié", style: "shine" },
     { id: "scam", name: "scam", label: "Scam", style: "shake" },
@@ -4332,7 +4329,7 @@ const gfx = (() => {
         c.shape((x, y) => tk(x, y) - 4, 0, 0, S, S, "#14092e");
         c.shape(tk, 0, 0, S, S, lin(0, S * 0.22, 0, S * 0.78, [[0, "#ff8ae8"], [0.5, "#b04dff"], [1, "#5a1fd0"]]));
         for (let y = S * 0.3; y < S * 0.72; y += 9) c.segment(S * 0.66, y, S * 0.66, y + 4, 3, "#ffffff", 0.6);
-        big("MM", m + 1, S * 0.24, [[0, "#ffffff"], [1, "#ffd1ff"]]);
+        big("AZ", m + 1, S * 0.24, [[0, "#ffffff"], [1, "#ffd1ff"]]);
       } else if (id === "value") {
         const gem = [[S * 0.28, S * 0.14], [S * 0.72, S * 0.14], [S * 0.94, S * 0.38], [m, S * 0.92], [S * 0.06, S * 0.38]];
         glossy(c, [gem], [[0, "#d9fbff"], [0.5, "#38d6ff"], [1, "#1a5fd6"]], { shine: 0 });
@@ -4377,6 +4374,9 @@ const tools = (() => {
   } = require("discord.js");
 
   const ON = !/^(off|no|false|0)$/i.test(String(process.env.TOOLS || "on").trim());
+  // the middleman (tickets LTC / PayPal, vouches, stats): off unless MIDDLEMAN=on in the .env
+  const MM_ON = /^(on|yes|true|1)$/i.test(String(process.env.MIDDLEMAN || "off").trim());
+  const MM_ONLY = new Set(["vouch", "vouchadmin", "mmstats"]);
   const FR = String(process.env.TOOLS_LANG || "fr").trim().toLowerCase() !== "en";
   const t = (fr, en) => (FR ? fr : en);
   const ephemeral = MessageFlags.Ephemeral;
@@ -5124,7 +5124,7 @@ const tools = (() => {
           .addSubcommand((s) =>
             s
               .setName("pack")
-              .setDescription(t("Ajouter le pack d'emojis du serveur (middleman, vouch, LTC, VIP…)", "Add the server's emoji pack (middleman, vouch, LTC, VIP…)"))
+              .setDescription(t("Ajouter le pack d'emojis du serveur (logo, VIP, étoile, W / L…)", "Add the server's emoji pack (logo, VIP, star, W / L…)"))
               .addStringOption((o) => o.setName("emoji").setDescription(t("Un seul emoji du pack (vide = tout le pack)", "Only one emoji of the pack (empty = the whole pack)")).addChoices(...gfx.EMOJI_PACK.map((p) => ({ name: p.label, value: p.id }))))
           )
           .addSubcommand((s) =>
@@ -5293,7 +5293,15 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("antiraid").setDescription(t("Anti-raid (5 arrivées en 10 s)", "Anti-raid (5 joins in 10 s)")).addBooleanOption((o) => o.setName("actif").setDescription("on/off").setRequired(true)))
       ),
     ];
-    return list.map((b) => b.toJSON());
+    const out = list.map((b) => b.toJSON());
+    if (MM_ON) return out;
+    // without the middleman: no vouches, no middleman stats, no middleman application
+    for (const c of out) {
+      if (c.name === "ticketpanel") c.options[0].choices = c.options[0].choices.filter((x) => x.value !== "middleman");
+      if (c.name === "apps") c.options = c.options.filter((o) => o.name !== "mmrole");
+      if (c.name === "ticketpanel") c.description = t("Poster un panneau de tickets (accès VIP, récompense)", "Post a ticket panel (VIP access, reward)");
+    }
+    return out.filter((c) => !MM_ONLY.has(c.name));
   }
   const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
 
@@ -6884,9 +6892,13 @@ const tools = (() => {
     const sections = [
       [t("📈 Niveaux", "📈 Levels"), "`/rank` `/leaderboard` `/quiz`"],
       [t("📈 Niveaux (staff)", "📈 Levels (staff)"), "`/levels` `/xp` `/autoquiz`", P.ManageGuild],
-      [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
-      [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
-      [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+      [t("🛡️ Sécurité", "🛡️ Safety"), MM_ON ? "`/scamcheck` `/mmstats`" : "`/scamcheck`"],
+      ...(MM_ON
+        ? [
+            [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
+            [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
+          ]
+        : []),
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
       [t("💾 Changer de serveur", "💾 Moving server"), "`/salons sauvegarder` `/salons enlever` `/salons enlever-roles` `/salons remettre` `/salons voir`", P.Administrator],
       [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
@@ -6905,7 +6917,7 @@ const tools = (() => {
       [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/traduction`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
       [t("🛡️ Modération+", "🛡️ Moderation+"), "`/scam` `/antibadwords` `/commandsonly` `/tickets` `/ecoadmin` `/comptage` `/compteurs`", P.ManageGuild],
-      [t("👑 Admin", "👑 Admin"), "`/setup` `/reglement` `/panel` `/access` `/tiers`", P.Administrator],
+      [t("👑 Admin", "👑 Admin"), MM_ON ? "`/setup` `/reglement` `/panel` `/access` `/tiers`" : "`/setup` `/reglement`", P.Administrator],
     ];
     return i.reply({
       flags: ephemeral,
@@ -10232,6 +10244,7 @@ const tools = (() => {
   async function handleInteraction(i) {
     if (!ON) return false;
     try {
+      if (i.isChatInputCommand?.() && !MM_ON && MM_ONLY.has(i.commandName)) return (await reply(i, no(t("Cette commande n'existe plus sur ce serveur.", "This command no longer exists on this server."))), true);
       if (i.isChatInputCommand?.() && NAMES.has(i.commandName)) {
         if (!i.guild) return (await reply(i, no(t("Utilise cette commande sur le serveur.", "Use this command in the server."))), true);
         await H[i.commandName](i);
@@ -10420,7 +10433,9 @@ if (process.argv[2] === "new-seed") {
   process.exit(0);
 }
 
-const missing = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID", "MM_SEED"].filter((key) => !process.env[key]);
+// the middleman (Litecoin / PayPal tickets) is off unless MIDDLEMAN=on; only then MM_SEED is needed
+const MIDDLEMAN_ON = /^(on|yes|true|1)$/i.test(String(process.env.MIDDLEMAN || "off").trim());
+const missing = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID", ...(MIDDLEMAN_ON ? ["MM_SEED"] : [])].filter((key) => !process.env[key]);
 if (missing.length) {
   console.error(`❌ Missing in .env: ${missing.join(", ")} (see .env.example)`);
   process.exit(1);
@@ -10812,6 +10827,7 @@ const onInteraction = async (interaction) => {
 
 const onReady = () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  if (!MIDDLEMAN_ON) return console.log("ℹ️ Middleman off (MIDDLEMAN=on in the .env to turn it on).");
   middleman.init(client, { staffRoleId: STAFF_ROLE_ID, ownerRoleId: "", logChannelId: LOG_CHANNEL_ID, ticketLogChannel: () => tools.logChannelId() });
   refreshPanels().catch(() => {});
   setInterval(() => refreshPanels().catch(() => {}), 5 * 60_000).unref?.();
@@ -10871,6 +10887,9 @@ async function loginWithFallback() {
     const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), {
       body: [
+        // the middleman commands only when it is on
+        ...(MIDDLEMAN_ON
+          ? [
         new SlashCommandBuilder()
           .setName("panel")
           .setDescription("Post a middleman ticket panel here.")
@@ -10885,6 +10904,8 @@ async function loginWithFallback() {
         new SlashCommandBuilder().setName("paypal").setDescription("Manage the PayPal accounts: add, change, remove, set present or absent").setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages).toJSON(),
         new SlashCommandBuilder().setName("access").setDescription("Choose which roles can see the private Litecoin tickets").setDefaultMemberPermissions(PermissionFlagsBits.Administrator).toJSON(),
         new SlashCommandBuilder().setName("tiers").setDescription("Manage the amount ranges and the staff role of each one").setDefaultMemberPermissions(PermissionFlagsBits.Administrator).toJSON(),
+            ]
+          : []),
         ...tools.commands(),
       ],
     });

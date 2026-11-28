@@ -98,11 +98,10 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   /* the pages of the dashboard and the modules on each one */
   var PAGES = [
     ["home", "🏠 Accueil"],
-    ["trades", "💱 Trades", ["vouch", "tickets", "translate"]],
+    ["tickets", "🎫 Tickets", ["apps", "tickets", "translate"]],
     ["community", "👥 Communauté", ["pings", "welcome", "rules", "supporter", "suggest", "counting", "counters"]],
     ["levels", "📈 Niveaux", ["levels", "eco", "autoquiz"]],
     ["moderation", "🛡️ Modération", ["security", "badwords", "commandsOnly", "scam", "logs"]],
-    ["apps", "📝 Candidatures", ["apps"]],
     ["send", "✉️ Message"],
     ["scams", "🚨 Scammers"],
     ["console", "🖥️ Console"]
@@ -126,7 +125,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     counters: ["📊 Compteurs", "Salons vocaux qui affichent les chiffres"],
     eco: ["💰 Économie", "Pièces par message, daily, boutique de rôles"],
     autoquiz: ["❓ Quiz automatique", "Un quiz régulier dans un salon"],
-    apps: ["📝 Candidatures", "Rôles et catégorie des candidatures"],
+    apps: ["📝 Accès VIP et récompenses", "Rôles, salons et catégorie de ces tickets"],
     cross: ["🔁 Cross-trade", "Catégories de trade et middlemen de chacune"],
     index: ["📖 Index", "Rôle, prix et caution de chaque index"],
     values: ["📊 Valeurs du serveur", "Valeurs que tu fixes toi-même (elles passent avant le site)"]
@@ -324,7 +323,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   function groupFields(container, base, cur, where) {
     var readers = {};
     Object.keys(base).forEach(function (k) {
-      if (HIDDEN.indexOf(k) >= 0 || where + "." + k === "supporter.channelId") return;
+      if (HIDDEN.indexOf(k) >= 0 || ["supporter.channelId", "apps.mmRoleId"].indexOf(where + "." + k) >= 0) return;
       var b = base[k];
       if (b && typeof b === "object" && !Array.isArray(b) && Object.keys(b).length && !SPECIAL[where + "." + k]) {
         var sub = el("div", { class: "sub" }, [el("b", { text: PATH_LABELS[where + "." + k] || label(k) })]);
@@ -368,7 +367,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
       var fmtUp = function (s) { var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + " j " : "") + h + " h " + m + " min"; };
       v.appendChild(el("h2", { text: S.guild ? S.guild.name : "Serveur" }));
       var g = el("div", { class: "grid" });
-      [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Vouches", S.stats.vouches], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Membres avec des pièces", S.stats.coins]]
+      [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Membres avec des pièces", S.stats.coins]]
         .forEach(function (x) { g.appendChild(el("div", { class: "tile" }, [el("small", { text: x[0] }), el("b", { text: String(x[1]) })])); });
       v.appendChild(g);
       var links = el("div", { class: "grid", style: "margin-top:18px" });
