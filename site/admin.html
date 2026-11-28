@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Kazuki MM · Admin</title>
+<title>Azari · Admin</title>
 <style>
 :root {
   --ink: #0d0a1a; --vault: #161126; --vault2: #1d1631; --seam: #2a2144;
@@ -88,7 +88,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
 </style>
 </head>
 <body>
-<div class="top"><img id="bot-ava" alt=""><div><b id="bot-name">Kazuki MM</b><div class="live" id="bot-live">…</div></div><a class="btn" href="/" target="_blank" rel="noopener" style="margin-left:auto;text-decoration:none">Voir le site</a><button id="logout" type="button" style="margin-left:0">Déconnexion</button></div>
+<div class="top"><img id="bot-ava" alt=""><div><b id="bot-name">Azari</b><div class="live" id="bot-live">…</div></div><a class="btn" href="/" target="_blank" rel="noopener" style="margin-left:auto;text-decoration:none">Voir le site</a><button id="logout" type="button" style="margin-left:0">Déconnexion</button></div>
 <nav class="tabs" id="tabs"></nav>
 <main id="view"></main>
 <div class="toast" id="toast" hidden></div>
@@ -98,7 +98,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   /* the pages of the dashboard and the modules on each one */
   var PAGES = [
     ["home", "🏠 Accueil"],
-    ["trades", "💱 Trades", ["cross", "vouch", "tickets", "translate"]],
+    ["trades", "💱 Trades", ["vouch", "tickets", "translate"]],
     ["community", "👥 Communauté", ["pings", "welcome", "rules", "supporter", "suggest", "counting", "counters"]],
     ["levels", "📈 Niveaux", ["levels", "eco", "autoquiz"]],
     ["moderation", "🛡️ Modération", ["security", "badwords", "commandsOnly", "scam", "logs"]],
@@ -436,7 +436,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   function load() {
     return api("/api/state").then(function (s) {
       S = s;
-      $("#bot-name").textContent = s.bot.tag || "Kazuki MM";
+      $("#bot-name").textContent = s.bot.tag || "Azari";
       if (s.bot.avatar) $("#bot-ava").src = s.bot.avatar;
       $("#bot-live").textContent = "● en ligne · " + (s.bot.ping == null ? "—" : s.bot.ping + " ms");
       draw();

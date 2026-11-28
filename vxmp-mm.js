@@ -1,7 +1,7 @@
 "use strict";
 
 /*
-  KAZUKI MM: single-file Discord bot, Litecoin middleman (escrow) inside tickets.
+  AZARI: single-file Discord bot, Litecoin middleman (escrow) inside tickets.
 
   SETUP (Windows, in a new empty folder that contains only this file):
     npm init -y
@@ -725,8 +725,8 @@ const middleman = (() => {
     panels[panels.length - 1]
       .setFooter({
         text: isPaypal(deal)
-          ? T("Kazuki MM  ·  every PayPal payment is checked and sent by staff", "Kazuki MM  ·  chaque paiement PayPal est vérifié et envoyé par le staff")
-          : T("Kazuki MM  ·  funds are held by the bot until release", "Kazuki MM  ·  les fonds sont gardés par le bot jusqu'à la libération"),
+          ? T("Azari  ·  every PayPal payment is checked and sent by staff", "Azari  ·  chaque paiement PayPal est vérifié et envoyé par le staff")
+          : T("Azari  ·  funds are held by the bot until release", "Azari  ·  les fonds sont gardés par le bot jusqu'à la libération"),
       })
       .setTimestamp();
     return panels;
@@ -4264,7 +4264,7 @@ const gfx = (() => {
     c.ellipse(cx, cy - r * 0.42, r * 0.58, r * 0.3, "#ffffff", 0.18);
   };
   const EMOJI_PACK = [
-    { id: "kazuki", name: "kazuki", label: "Logo KZ", style: "shine" },
+    { id: "kazuki", name: "logo", label: "Logo AZ", style: "shine" },
     { id: "middleman", name: "middleman", label: "Middleman", style: "shine" },
     { id: "vouch", name: "vouch", label: "Vouch", style: "spin" },
     { id: "ltc", name: "ltc", label: "Litecoin", style: "spin" },
@@ -4284,7 +4284,7 @@ const gfx = (() => {
       const big = (str, y, fs, stops) => c.text(str, m, y, fs, { align: "center", paint: (top, base) => lin(0, top, 0, base, stops), shadow: { blur: 3, dy: 3, color: "#000000", alpha: 0.8 }, glow: { blur: 4, color: "#14092e", alpha: 1 } });
       if (id === "kazuki") {
         disc(c, m, m, S * 0.44, [[0, "#5b2bd6"], [1, "#1d0b4f"]], [[0, "#ff7be5"], [0.5, "#b388ff"], [1, "#3ad1ff"]]);
-        big("KZ", m + 2, fitSize(c, "KZ", S * 0.62, S * 0.42), [[0, "#ffffff"], [0.55, "#e2d4ff"], [1, "#b388ff"]]);
+        big("AZ", m + 2, fitSize(c, "AZ", S * 0.62, S * 0.42), [[0, "#ffffff"], [0.55, "#e2d4ff"], [1, "#b388ff"]]);
       } else if (id === "middleman" || id === "verified") {
         if (id === "middleman") {
           const shield = [[m, S * 0.06], [S * 0.88, S * 0.2], [S * 0.84, S * 0.56], [m, S * 0.95], [S * 0.16, S * 0.56], [S * 0.12, S * 0.2]];
@@ -4425,7 +4425,7 @@ const tools = (() => {
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
       pings: { roles: {}, made: [], off: [], panels: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
-      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // shop: [{ roleId, price }]
+      supporter: { tagRole: "", statusRole: "", statusText: "/azari", channelId: "", channels: [], langs: {}, thanks: {} }, // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -5027,8 +5027,8 @@ const tools = (() => {
       // application tickets
       D(
         P.ManageGuild,
-        cmd("ticketpanel", t("Poster un panneau de tickets (middleman, accès VIP, récompense, cross-trade)", "Post a ticket panel (middleman, VIP access, reward, cross-trade)")).addStringOption((o) =>
-          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons VIP (VIP / Shop VIP)", "VIP channel access (VIP / VIP Shop)"), value: "access" }, { name: t("Réclamer une récompense avec son XP", "Claim a reward with XP"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" })
+        cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, accès VIP, récompense)", "Post a ticket panel (middleman application, VIP access, reward)")).addStringOption((o) =>
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons VIP (VIP / Shop VIP)", "VIP channel access (VIP / VIP Shop)"), value: "access" }, { name: t("Réclamer une récompense avec son XP", "Claim a reward with XP"), value: "claim" })
         )
       ),
       D(
@@ -5097,43 +5097,18 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
       ),
-      // cross-trade categories: each one has its own middleman role
-      D(
-        P.ManageGuild,
-        cmd("crosstrade", t("Valeurs de cross-trade et leurs rôles middleman", "Cross-trade values and their middleman roles"))
-          .addSubcommand((s) => s.setName("list").setDescription(t("Voir les valeurs et leurs middlemen", "See the values and their middlemen")))
-          .addSubcommand((s) =>
-            s
-              .setName("role")
-              .setDescription(t("Ajouter / retirer un rôle middleman à une valeur", "Add / remove a middleman role for a value"))
-              .addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur (voir /crosstrade list)", "Number of the value (see /crosstrade list)")).setMinValue(1).setMaxValue(25).setRequired(true))
-              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle middleman", "The middleman role")).setRequired(true))
-          )
-          .addSubcommand((s) => s.setName("add").setDescription(t("Ajouter une valeur à la fin de la liste", "Add a value at the end of the list")).addStringOption((o) => o.setName("nom").setDescription(t("Nom affiché", "Name shown")).setRequired(true).setMaxLength(90)))
-          .addSubcommand((s) =>
-            s
-              .setName("rename")
-              .setDescription(t("Renommer une valeur", "Rename a value"))
-              .addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur", "Number of the value")).setMinValue(1).setMaxValue(25).setRequired(true))
-              .addStringOption((o) => o.setName("nom").setDescription(t("Nouveau nom", "New name")).setRequired(true).setMaxLength(90))
-          )
-          .addSubcommand((s) => s.setName("remove").setDescription(t("Retirer une valeur", "Remove a value")).addIntegerOption((o) => o.setName("numero").setDescription(t("Numéro de la valeur", "Number of the value")).setMinValue(1).setMaxValue(25).setRequired(true)))
-          .addSubcommand((s) => s.setName("reset").setDescription(t("Remettre les 5 valeurs de départ (rôles effacés)", "Back to the 5 starting values (roles cleared)")))
-          .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle middleman pour chaque valeur et le brancher", "Create a middleman role for each value and connect it")))
-          .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /crosstrade autorole", "Delete the roles made by /crosstrade autorole")))
-      ),
       // the web dashboard (only the owner gets a login link)
       D(P.Administrator, cmd("dashboard", t("Lien de connexion au panneau d'administration (propriétaire seulement)", "Login link to the admin dashboard (owner only)"))),
       // supporter roles: the server tag, a text in the status
       D(
         P.ManageRoles,
-        cmd("supporter", t("Rôles pour ceux qui mettent le tag du serveur ou /kazukisab en statut", "Roles for people who wear the server tag or /kazukisab in their status"))
+        cmd("supporter", t("Rôles pour ceux qui mettent le tag du serveur ou /azari en statut", "Roles for people who wear the server tag or /azari in their status"))
           .addSubcommand((s) => s.setName("tag").setDescription(t("Rôle pour ceux qui affichent le tag du serveur (vide = le bot le crée)", "Role for people who show the server tag (empty = the bot makes it)")).addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role"))).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
           .addSubcommand((s) =>
             s
               .setName("statut")
               .setDescription(t("Rôle pour ceux qui ont un texte dans leur statut (vide = le bot le crée)", "Role for people with a text in their status (empty = the bot makes it)"))
-              .addStringOption((o) => o.setName("texte").setDescription(t("Le texte à avoir dans le statut (par défaut /kazukisab)", "The text to have in the status (default /kazukisab)")).setMaxLength(60))
+              .addStringOption((o) => o.setName("texte").setDescription(t("Le texte à avoir dans le statut (par défaut /azari)", "The text to have in the status (default /azari)")).setMaxLength(60))
               .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")))
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon où remercier les nouveaux supporters", "The channel where new supporters are thanked")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
           )
@@ -5160,7 +5135,7 @@ const tools = (() => {
               .addStringOption((o) => o.setName("animation").setDescription(t("L'animation (reflet par défaut)", "The animation (shine by default)")).addChoices(...Object.entries(EMOJI_STYLE_LABELS).map(([value, name]) => ({ name, value }))))
               .addStringOption((o) => o.setName("couleur").setDescription(t("La couleur (violet par défaut)", "The colour (purple by default)")).addChoices(...Object.entries(EMOJI_COLOR_LABELS).map(([value, name]) => ({ name, value }))))
               .addStringOption((o) => o.setName("fond").setDescription(t("Le fond (rond par défaut)", "The background (round by default)")).addChoices({ name: t("⭕ Rond", "⭕ Round"), value: "rond" }, { name: t("⬛ Carré arrondi", "⬛ Rounded square"), value: "carre" }, { name: t("✖️ Aucun (juste le texte)", "✖️ None (just the text)"), value: "none" }))
-              .addStringOption((o) => o.setName("nom").setDescription(t("Le nom de l'emoji (vide = kz_texte)", "The emoji name (empty = kz_text)")).setMaxLength(32))
+              .addStringOption((o) => o.setName("nom").setDescription(t("Le nom de l'emoji (vide = az_texte)", "The emoji name (empty = az_text)")).setMaxLength(32))
           )
       ),
       // rules: nobody sees the server before accepting them
@@ -5320,7 +5295,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6224,7 +6199,7 @@ const tools = (() => {
       .setDescription(`<@${i.user.id}> ➜ <@${target.id}>\n\n**${stars(note)}**  ${note}/5\n\n> ${text.replace(/\n/g, "\n> ")}`)
       .setThumbnail(target.displayAvatarURL?.() || null)
       .addFields({ name: t("📦 Objet / service", "📦 Item / service"), value: `**${item}**`, inline: true }, { name: t("📊 Total", "📊 Total"), inline: true, value: t(`**${count}** vouch(es) · moyenne **${avg.toFixed(1)}/5**`, `**${count}** vouch(es) · average **${avg.toFixed(1)}/5**`) })
-      .setFooter({ text: t("Kazuki MM · /vouch pour laisser le tien", "Kazuki MM · /vouch to leave yours") });
+      .setFooter({ text: t("Azari · /vouch pour laisser le tien", "Azari · /vouch to leave yours") });
     let message;
     try {
       message = await channel.send({ content: `<@${target.id}>`, embeds: [e], allowedMentions: { users: [target.id] } });
@@ -6257,7 +6232,7 @@ const tools = (() => {
     if (rows.length) {
       const cards = await Promise.all(rows.map(async (r, k) => ({ name: members[k]?.displayName || members[k]?.user?.username || t("Ancien membre", "Former member"), level: r.count, into: Math.round(r.avg * 100), need: 500, xp: 0, sub: `${r.avg.toFixed(1)}/5`, avatar: members[k] ? await loadAvatar(members[k], 64).catch(() => null) : null })));
       file = new AttachmentBuilder(gfx.leaderboard(cards, { title: "TOP VOUCHES", level: "VOUCHES" }), { name: "vouches.png" });
-    } else file = new AttachmentBuilder(gfx.banner("KAZUKI MM", "TOP VOUCHES", "#5a3a05", "#f1c40f"), { name: "vouches.png" });
+    } else file = new AttachmentBuilder(gfx.banner("AZARI", "TOP VOUCHES", "#5a3a05", "#f1c40f"), { name: "vouches.png" });
     const list = rows.length ? rows.map((r, k) => `${medal[k] || `**${k + 1}.**`} <@${r.id}> · **${r.count}** vouch(es) · ${r.avg.toFixed(1)}/5`).join("\n") : t("*Personne pour le moment : sois le premier à recevoir un vouch !*", "*Nobody yet: be the first to get a vouch!*");
     const e = embed(0xf1c40f)
       .setTitle(t("🏆  Top vouches", "🏆  Top vouches"))
@@ -6927,7 +6902,7 @@ const tools = (() => {
       [t("🧹 Messages", "🧹 Messages"), "`/clear`", P.ManageMessages],
       [t("🔒 Salons", "🔒 Channels"), "`/lock` `/unlock` `/vocadmin create` `/vocadmin hub`", P.ManageChannels],
       [t("🎭 Rôles", "🎭 Roles"), "`/rolepanel`", P.ManageRoles],
-      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/crosstrade` `/traduction`", P.ManageGuild],
+      [t("⚙️ Réglages", "⚙️ Settings"), "`/welcome` `/giveaway` `/suggestions` `/logs` `/security` `/antilink` `/antispam` `/ticketpanel` `/apps` `/traduction`", P.ManageGuild],
       [t("💳 PayPal (staff)", "💳 PayPal (staff)"), "`/paypal`", P.ManageMessages],
       [t("🛡️ Modération+", "🛡️ Moderation+"), "`/scam` `/antibadwords` `/commandsonly` `/tickets` `/ecoadmin` `/comptage` `/compteurs`", P.ManageGuild],
       [t("👑 Admin", "👑 Admin"), "`/setup` `/reglement` `/panel` `/access` `/tiers`", P.Administrator],
@@ -7271,9 +7246,9 @@ const tools = (() => {
     ["Sanctions", "Tout non-respect du règlement peut entraîner un avertissement, un mute, un kick ou un bannissement."],
   ];
   const RULES_DEFAULT = () => ({
-    title: "📜・RÈGLEMENT — KAZUKI COMMUNITY",
+    title: "📜・RÈGLEMENT — AZARI",
     body: RULES.map(([title, text], k) => `**${k + 1}.・${title}**\n${text}`).join("\n\n"),
-    end: "💜 En rejoignant **Kazuki Community**, vous acceptez automatiquement ce règlement.\n\nBon séjour parmi nous !",
+    end: "💜 En rejoignant **Azari**, vous acceptez automatiquement ce règlement.\n\nBon séjour parmi nous !",
     button: "J'accepte le règlement",
     color: "#9b59b6",
   });
@@ -7335,7 +7310,7 @@ const tools = (() => {
       console.error("⚠️ Rules role:", error?.message || error);
       return reply(i, no(t("Je n'ai pas pu te donner l'accès. Préviens le staff (mon rôle doit être au-dessus du rôle vérifié).", "I could not give you access. Tell the staff (my role must be above the verified role).")));
     }
-    return reply(i, ok(t("Merci ! Tu as accepté le règlement : bienvenue sur **Kazuki Community** 💜", "Thanks! You accepted the rules: welcome to **Kazuki Community** 💜")));
+    return reply(i, ok(t("Merci ! Tu as accepté le règlement : bienvenue sur **Azari** 💜", "Thanks! You accepted the rules: welcome to **Azari** 💜")));
   }
   H.reglement = async (i) => {
     if (need_perm(i, P.Administrator)) return;
@@ -7889,7 +7864,7 @@ const tools = (() => {
         return { name: m?.displayName || m?.user?.username || t("Ancien membre", "Former member"), level: l.level, into: l.into, need: l.need, xp, avatar: m ? await loadAvatar(m, 64).catch(() => null) : null };
       })
     );
-    const file = new AttachmentBuilder(rows.length ? gfx.leaderboard(rows, cardLabel()) : gfx.banner("KAZUKI MM", "TOP XP", "#2a1a5e", "#7c4dff"), { name: "xpboard.png" });
+    const file = new AttachmentBuilder(rows.length ? gfx.leaderboard(rows, cardLabel()) : gfx.banner("AZARI", "TOP XP", "#2a1a5e", "#7c4dff"), { name: "xpboard.png" });
     const medal = ["🥇", "🥈", "🥉"];
     const e = embed(0x7c4dff)
       .setTitle(t("🏆  Classement XP", "🏆  XP leaderboard"))
@@ -8296,7 +8271,7 @@ const tools = (() => {
       .setDescription(t(`Il te manque l'index **${index.label}** ? Ouvre un ticket : le staff s'en occupe avec toi.`, `Missing the **${index.label}** index? Open a ticket: staff handles it with you.`))
       .addFields({ name: t("💰  Prix", "💰  Price"), value: db.cfg.index.prices[index.id] ? `**${db.cfg.index.prices[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🔒  Caution", "🔒  Deposit"), value: db.cfg.index.cautions[index.id] ? `**${db.cfg.index.cautions[index.id]}**` : t("*à demander dans le ticket*", "*ask in the ticket*"), inline: false }, { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Ne donne **rien** en dehors de ton ticket.", "Give **nothing** outside your ticket.") })
       .setImage(`attachment://index-${index.id}.png`);
-    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", `INDEX ${index.label.toUpperCase()}`, index.c[0], index.c[1]), { name: `index-${index.id}.png` });
+    const file = new AttachmentBuilder(gfx.banner("AZARI", `INDEX ${index.label.toUpperCase()}`, index.c[0], index.c[1]), { name: `index-${index.id}.png` });
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ix:open:${index.id}`).setLabel(t("Ouvrir un ticket", "Open a ticket")).setEmoji(index.emoji).setStyle(ButtonStyle.Success));
     return { embeds: [e], components: [row], files: [file] };
   }
@@ -8384,7 +8359,7 @@ const tools = (() => {
           .setImage("attachment://apps-access.png"),
     };
     const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["VIP ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"], index: ["INDEX", "#5a3a05", "#f1c40f", "apps-index.png"] }[type];
-    const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2], type === "crosstrade" ? "swap" : undefined), { name: banners[3] });
+    const file = new AttachmentBuilder(gfx.banner("AZARI", banners[0], banners[1], banners[2], type === "crosstrade" ? "swap" : undefined), { name: banners[3] });
     const row =
       type === "middleman"
         ? appRow(appButton("ap:open:mm", t("Postuler comme middleman", "Apply as a middleman"), ButtonStyle.Success, "📝"))
@@ -8672,7 +8647,7 @@ const tools = (() => {
 
   /* ---------- /emoji: animated server emojis (the server's pack, or a text in the same style) ---------- */
   const EMOJI_STYLE_LABELS = { rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow"), shine: t("✨ Reflet", "✨ Shine"), pulse: t("💓 Pulsation", "💓 Pulse"), bounce: t("🦘 Rebond", "🦘 Bounce"), spin: t("🪙 Pièce qui tourne", "🪙 Coin spin"), rotate: t("🌀 Rotation", "🌀 Rotate"), shake: t("😡 Tremblement", "😡 Shake"), glitch: t("⚡ Glitch", "⚡ Glitch"), fire: t("🔥 Feu", "🔥 Fire") };
-  const EMOJI_COLOR_LABELS = { violet: t("💜 Violet (Kazuki)", "💜 Purple (Kazuki)"), or: t("🟡 Or", "🟡 Gold"), feu: t("🔥 Feu", "🔥 Fire"), glace: t("🧊 Glace", "🧊 Ice"), vert: t("🟢 Vert", "🟢 Green"), rose: t("🌸 Rose", "🌸 Pink"), blanc: t("⚪ Blanc", "⚪ White"), rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow") };
+  const EMOJI_COLOR_LABELS = { violet: t("💜 Violet (Azari)", "💜 Purple (Azari)"), or: t("🟡 Or", "🟡 Gold"), feu: t("🔥 Feu", "🔥 Fire"), glace: t("🧊 Glace", "🧊 Ice"), vert: t("🟢 Vert", "🟢 Green"), rose: t("🌸 Rose", "🌸 Pink"), blanc: t("⚪ Blanc", "⚪ White"), rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow") };
   const emojiPending = new Map(); // id -> { buf, name, opts, user, at }
   const emojiName = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 32);
   /* the 24 frames, drawn a few at a time so the bot keeps answering meanwhile */
@@ -8726,7 +8701,7 @@ const tools = (() => {
       const existing = new Set([...(i.guild.emojis?.cache?.values?.() || [])].map((e) => e.name));
       const added = [], skipped = [], failed = [];
       for (const p of list) {
-        const name = `kz_${p.name}`;
+        const name = `az_${p.name}`;
         if (existing.has(name)) { skipped.push(`:${name}:`); continue; }
         try {
           const buf = await renderEmoji(gfx.emojiIconSprite(p.id), p.style);
@@ -8748,7 +8723,7 @@ const tools = (() => {
       const text = String(i.options.getString("texte") || "").trim().slice(0, 6);
       if (!text) return reply(i, no(t("Écris un texte court (1 à 6 caractères).", "Write a short text (1 to 6 characters).")));
       const opts = { text, color: i.options.getString("couleur") || "violet", bg: i.options.getString("fond") || "rond", style: i.options.getString("animation") || "shine" };
-      const name = emojiName(i.options.getString("nom") || `kz_${text}`);
+      const name = emojiName(i.options.getString("nom") || `az_${text}`);
       if (name.length < 2) return reply(i, no(t("Le nom doit faire au moins 2 lettres ou chiffres.", "The name needs at least 2 letters or digits.")));
       await i.deferReply({ flags: ephemeral });
       const buf = await renderEmoji(gfx.emojiTextSprite(opts), opts.style);
@@ -8784,7 +8759,7 @@ const tools = (() => {
     }
   }
 
-  /* ---------- supporter roles: the server tag next to the name, and a text (like /kazukisab) in the custom status ---------- */
+  /* ---------- supporter roles: the server tag next to the name, and a text (like /azari) in the custom status ---------- */
   const hasPresence = () => Boolean(client?.options?.intents?.has?.(1 << 8)); // the Presence intent (Developer Portal)
   /* true when the member shows THIS server's tag next to their name */
   /* The tag is not always sent with every member update: the profile is read again from Discord (at most every 10 minutes per person). */
@@ -8958,7 +8933,7 @@ const tools = (() => {
     await i.deferReply({ flags: ephemeral });
     let role = i.options.getRole("role");
     try {
-      if (!role) role = sub === "tag" ? await makeRole(i.guild, "🏷️ Tag Kazuki", 0xb388ff) : await makeRole(i.guild, `💜 ${String(i.options.getString("texte") || cfg.statusText || "/kazukisab").slice(0, 40)}`, 0xff4fd8);
+      if (!role) role = sub === "tag" ? await makeRole(i.guild, "🏷️ Tag Azari", 0xb388ff) : await makeRole(i.guild, `💜 ${String(i.options.getString("texte") || cfg.statusText || "/azari").slice(0, 40)}`, 0xff4fd8);
     } catch {
       return i.editReply(no(t("Je n'ai pas pu créer le rôle : il me faut la permission **Gérer les rôles**.", "I could not create the role: I need the **Manage Roles** permission.")));
     }
@@ -9165,7 +9140,7 @@ const tools = (() => {
       if (!entry || entry.exp < Date.now()) return send(res, 403, dashLoginPage(t("Ce lien a expiré ou a déjà servi. Refais /dashboard sur Discord.", "This link expired or was already used. Use /dashboard on Discord again.")), "text/html; charset=utf-8");
       if (req.method !== "POST") {
         const safe = token.replace(/[^0-9a-f]/g, "");
-        return send(res, 200, `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Kazuki MM · Dashboard</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}form{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 18px}button{width:100%;background:#8f63ff;color:#fff;border:0;font:700 16px system-ui,sans-serif;padding:14px;border-radius:12px;cursor:pointer}</style></head><body><form method="post" action="/login"><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Kazuki MM</h1><input type="hidden" name="t" value="${safe}"><button type="submit">Entrer dans le dashboard</button></form></body></html>`, "text/html; charset=utf-8");
+        return send(res, 200, `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Azari · Dashboard</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}form{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 18px}button{width:100%;background:#8f63ff;color:#fff;border:0;font:700 16px system-ui,sans-serif;padding:14px;border-radius:12px;cursor:pointer}</style></head><body><form method="post" action="/login"><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Azari</h1><input type="hidden" name="t" value="${safe}"><button type="submit">Entrer dans le dashboard</button></form></body></html>`, "text/html; charset=utf-8");
       }
       dashTokens.delete(token);
       const sid = crypto.randomBytes(32).toString("hex");
@@ -9177,6 +9152,10 @@ const tools = (() => {
       if (!session) return send(res, 401, dashLoginPage(""), "text/html; charset=utf-8");
       const page = siteFile("admin.html");
       return page ? send(res, 200, page.body.toString("utf8"), page.type) : send(res, 404, dashLoginPage(t("Le fichier site/admin.html est introuvable : envoie le dossier site sur l'hébergeur.", "site/admin.html is missing: upload the site folder to the host.")), "text/html; charset=utf-8");
+    }
+    if (req.method === "GET" && url.pathname === "/invite") {
+      const link = await serverInvite().catch(() => "");
+      return link ? send(res, 302, "", "text/plain", { location: link }) : send(res, 404, t("Pas d'invitation disponible pour le moment.", "No invite available right now."), "text/plain; charset=utf-8");
     }
     if (!url.pathname.startsWith("/api/")) {
       // the public website: the presentation page and its pictures
@@ -9252,7 +9231,7 @@ const tools = (() => {
   }
   const oauthOn = () => Boolean(process.env.DISCORD_CLIENT_SECRET && process.env.CLIENT_ID);
   const redirectUri = () => `${dashBase()}/auth/callback`;
-  const dashLoginPage = (msg) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Kazuki MM · Dashboard</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}*{box-sizing:border-box}div{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 6px}code{background:#0d0a1a;padding:2px 6px;border-radius:6px;color:#ff5cd6;white-space:nowrap}p{color:#a79fc7;margin:10px 0 0;font-size:15px}.e{color:#ff5c7a}a.d{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:18px;background:#5865f2;color:#fff;text-decoration:none;font-weight:700;padding:13px 18px;border-radius:12px}a.d:hover{background:#4752c4}a.b{color:#a79fc7;font-size:14px}</style></head><body><div><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Kazuki MM</h1>${msg ? `<p class="e">${msg}</p>` : ""}${oauthOn() ? `<a class="d" href="/auth/discord"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7zM8.3 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm7.4 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>Se connecter avec Discord</a><p>Réservé au propriétaire du serveur. Tu peux aussi taper <code>/dashboard</code> sur Discord.</p>` : `<p>Réservé au propriétaire du serveur. Tape <code>/dashboard</code> sur Discord et ouvre le lien que le bot t'envoie.</p>`}<p><a class="b" href="/">← Retour au site</a></p></div></body></html>`;
+  const dashLoginPage = (msg) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Azari · Dashboard</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0a1a;color:#eeeaff;font:16px/1.6 system-ui,sans-serif;padding:16px}*{box-sizing:border-box}div{max-width:430px;width:100%;background:#161126;border:1px solid #2a2144;border-radius:18px;padding:28px;text-align:center}img{width:64px;height:64px}h1{font-size:22px;margin:10px 0 6px}code{background:#0d0a1a;padding:2px 6px;border-radius:6px;color:#ff5cd6;white-space:nowrap}p{color:#a79fc7;margin:10px 0 0;font-size:15px}.e{color:#ff5c7a}a.d{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:18px;background:#5865f2;color:#fff;text-decoration:none;font-weight:700;padding:13px 18px;border-radius:12px}a.d:hover{background:#4752c4}a.b{color:#a79fc7;font-size:14px}</style></head><body><div><img src="/img/kz_kazuki.gif" alt=""><h1>Dashboard Azari</h1>${msg ? `<p class="e">${msg}</p>` : ""}${oauthOn() ? `<a class="d" href="/auth/discord"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7zM8.3 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm7.4 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>Se connecter avec Discord</a><p>Réservé au propriétaire du serveur. Tu peux aussi taper <code>/dashboard</code> sur Discord.</p>` : `<p>Réservé au propriétaire du serveur. Tape <code>/dashboard</code> sur Discord et ouvre le lien que le bot t'envoie.</p>`}<p><a class="b" href="/">← Retour au site</a></p></div></body></html>`;
   /* the website lives in the "site" folder next to this file: index.html (presentation), admin.html (dashboard), img/ */
   const SITE_DIR = path.join(__dirname, "site");
   const SITE_TYPES = { ".html": "text/html; charset=utf-8", ".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".ico": "image/x-icon", ".json": "application/json" };
@@ -9285,6 +9264,20 @@ const tools = (() => {
     } catch {
       return null;
     }
+  }
+  /* the "Join the server" button of the website: an invite that never expires, made once by the bot and reused */
+  let inviteCode = "";
+  async function serverInvite() {
+    const guild = client?.guilds?.cache?.first?.();
+    if (!guild) return "";
+    if (inviteCode) return `https://discord.gg/${inviteCode}`;
+    if (guild.vanityURLCode) return `https://discord.gg/${(inviteCode = guild.vanityURLCode)}`;
+    const mine = await Promise.resolve(guild.invites?.fetch?.()).catch(() => null);
+    const keep = [...(mine?.values?.() || [])].find((v) => v.inviterId === client.user?.id && !v.maxAge && !v.maxUses);
+    if (keep) return `https://discord.gg/${(inviteCode = keep.code)}`;
+    const channel = (db.cfg.rules.channelId && guild.channels.cache.get(db.cfg.rules.channelId)) || guild.systemChannel || [...guild.channels.cache.values()].find((c) => c.type === 0);
+    const made = channel ? await Promise.resolve(channel.createInvite?.({ maxAge: 0, maxUses: 0, unique: false, reason: "site" })).catch(() => null) : null;
+    return made?.code ? `https://discord.gg/${(inviteCode = made.code)}` : "";
   }
   function startDashboard() {
     if (dashServer || !DASH_PORT) return;
@@ -9979,7 +9972,7 @@ const tools = (() => {
         { name: t("🛡️  Middleman", "🛡️  Middleman"), value: c.mm ? `<@${c.mm}>\n${t("✅ **annoncé et légitime**", "✅ **announced and legitimate**")}` : t("⏳ pas encore pris en charge", "⏳ not taken yet"), inline: false },
         { name: t("🚨  Anti-arnaque", "🚨  Anti-scam"), value: t("Seul le middleman **annoncé ici** est légitime. Ne donne **rien** à quelqu'un d'autre ni en dehors de ce ticket.", "Only the middleman **announced here** is legitimate. Give **nothing** to anyone else or outside this ticket."), inline: false }
       )
-      .setFooter({ text: `Kazuki MM  ·  Cross-trade #${c.n}` });
+      .setFooter({ text: `Azari  ·  Cross-trade #${c.n}` });
     const rows = [];
     if (!ctFinal(c)) {
       const locked = ["waiting_mm", "deposit", "delivery"].includes(phase);
@@ -10440,7 +10433,7 @@ const ephemeral = MessageFlags.Ephemeral;
 
 const FULL_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
 const BASIC_INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
-const PRESENCE_INTENTS = [...FULL_INTENTS, GatewayIntentBits.GuildPresences]; // Presence: for the /kazukisab status role
+const PRESENCE_INTENTS = [...FULL_INTENTS, GatewayIntentBits.GuildPresences]; // Presence: for the /azari status role
 let client = new Client({ intents: tools.ON ? PRESENCE_INTENTS : [GatewayIntentBits.Guilds] });
 
 const isStaff = (member) =>
@@ -10483,15 +10476,15 @@ const panelRegistry = (() => {
 })();
 
 const PANEL_LOOK = {
-  ltc: { color: 0x5865f2, banner: ["#2b3a8f", "#7b4dd6"], subtitle: "LITECOIN MIDDLEMAN", title: "💱  KAZUKI MM  ·  Litecoin Middleman", button: "Open a Litecoin ticket", buttonFr: "Ouvrir un ticket Litecoin", emoji: "💱", style: ButtonStyle.Primary },
-  paypal: { color: 0x0070ba, banner: ["#0a3d91", "#1a8cff"], subtitle: "PAYPAL MIDDLEMAN", title: "💙  KAZUKI MM  ·  PayPal Middleman", button: "Open a PayPal ticket", buttonFr: "Ouvrir un ticket PayPal", emoji: "💙", style: ButtonStyle.Success },
+  ltc: { color: 0x5865f2, banner: ["#2b3a8f", "#7b4dd6"], subtitle: "LITECOIN MIDDLEMAN", title: "💱  AZARI  ·  Litecoin Middleman", button: "Open a Litecoin ticket", buttonFr: "Ouvrir un ticket Litecoin", emoji: "💱", style: ButtonStyle.Primary },
+  paypal: { color: 0x0070ba, banner: ["#0a3d91", "#1a8cff"], subtitle: "PAYPAL MIDDLEMAN", title: "💙  AZARI  ·  PayPal Middleman", button: "Open a PayPal ticket", buttonFr: "Ouvrir un ticket PayPal", emoji: "💙", style: ButtonStyle.Success },
 };
 
 /* The panel as it is posted and refreshed: banner, steps, live numbers and the buttons. */
 function buildPanel(type) {
   const look = PANEL_LOOK[type];
   const stats = middleman.panelStats(type);
-  const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", look.subtitle, look.banner[0], look.banner[1], type), { name: `kazuki-${type}.png` });
+  const file = new AttachmentBuilder(gfx.banner("AZARI", look.subtitle, look.banner[0], look.banner[1], type), { name: `azari-${type}.png` });
   const steps =
     type === "paypal"
       ? pt("**①** Ticket  **②** Accord  **③** PayPal du staff  **④** Vérification  **⑤** Livraison  **⑥** Versement", "**①** Ticket  **②** Agree  **③** Staff PayPal  **④** Check  **⑤** Delivery  **⑥** Payout")
@@ -10508,7 +10501,7 @@ function buildPanel(type) {
     .setColor(look.color)
     .setTitle(look.title)
     .setDescription(`${intro}\n${steps}\n${numbers}`)
-    .setImage(`attachment://kazuki-${type}.png`)
+    .setImage(`attachment://azari-${type}.png`)
     .setFooter({ text: type === "paypal" ? pt("Écris toujours la référence dans la note PayPal  ·  🇫🇷 / 🇬🇧", "Always write the reference in the PayPal note  ·  🇫🇷 / 🇬🇧") : pt("Montants en LTC, $ ou €  ·  petits frais réseau  ·  🇫🇷 / 🇬🇧", "Amounts in LTC, $ or €  ·  small network fee  ·  🇫🇷 / 🇬🇧") })
     .setTimestamp();
 
