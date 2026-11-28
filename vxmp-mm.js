@@ -3216,7 +3216,7 @@ const gfx = (() => {
       if (o.shadow) stamp(blurMask(m.mask, m.w, m.h, o.shadow.blur ?? 4), o.shadow.color || "#000000", o.shadow.alpha ?? 0.5, Math.round(o.shadow.dx || 0), Math.round(o.shadow.dy ?? 3));
       const top = base - CAP * size;
       const paint = o.paint ? o.paint(top, base) : o.gradient ? lin(0, top, 0, base, o.gradient) : null;
-      const fixed = paint ? null : hex(o.color || "#ffffff");
+      const fixed = paint ? null : hex(o.color || THEME.text || "#ffffff");
       const opacity = o.alpha ?? 1;
       for (let j = 0; j < m.h; j++) for (let i = 0; i < m.w; i++) {
         const v = m.mask[j * m.w + i];
@@ -3238,7 +3238,7 @@ const gfx = (() => {
       if (str) this.text(str, x + w / 2, y + h / 2, size, { align: "center", spacing: o.spacing || 0, color: o.color || "#ffffff", shadow: { dx: 0, dy: 1, blur: 2, alpha: 0.35 } });
     }
     /* A progress bar with a glow. */
-    bar(x, y, w, h, fraction, stops = [[0, "#2effa8"], [1, "#19c7ff"]]) {
+    bar(x, y, w, h, fraction, stops = ACC([[0, "#2effa8"], [1, "#19c7ff"]])) {
       this.round(x, y, w, h, h / 2, "#000000", 0.38);
       const fw = Math.max(h, w * clamp01(fraction));
       if (fraction > 0) {
@@ -3463,6 +3463,21 @@ const gfx = (() => {
   ];
   const pickPalette = (seed) => PALETTES[Math.floor(rngOf(seed + "pal")() * PALETTES.length)];
   const GOLD = [[0, "#fff3b0"], [0.5, "#ffc93c"], [1, "#ff8a1f"]];
+  /* the server's colour theme (/theme): every card takes these colours instead of the purple, pink and gold */
+  let THEME = {};
+  const setTheme = (th) => {
+    const ok = (v) => (/^#[0-9a-f]{6}$/i.test(v || "") ? v.toLowerCase() : "");
+    THEME = { a: ok(th?.color), b: ok(th?.color2) || ok(th?.color), title: ok(th?.titleColor), text: ok(th?.textColor), confetti: th?.confetti !== false, sparkles: th?.sparkles !== false };
+  };
+  const shade = (c, k) => "#" + hex(c).map((v) => Math.max(0, Math.min(255, Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k))).toString(16).padStart(2, "0")).join("");
+  const ACC = (stops) => (THEME.a ? [[0, THEME.a], [1, THEME.b]] : stops);
+  const ACC1 = (c) => THEME.a || c;
+  const GLD = () => (THEME.title ? [[0, shade(THEME.title, 0.55)], [1, THEME.title]] : THEME.a ? [[0, "#ffffff"], [1, shade(THEME.a, 0.5)]] : GOLD);
+  const GLW = (c) => THEME.title || THEME.a || c;
+  const TTL = (stops) => (THEME.title || THEME.a ? GLD() : stops);
+  const CONF = (arr) => (THEME.a ? [THEME.a, THEME.b, "#ffffff", shade(THEME.a, 0.45), THEME.b, THEME.a] : arr);
+  const CONFN = (n) => (THEME.confetti === false ? 0 : n);
+  const PAL = (pal) => (THEME.a ? [shade(THEME.a, -0.82), shade(THEME.b, -0.62), THEME.a, THEME.a, THEME.b] : pal);
 
   /* A colourful background: a gradient, soft glows, sparkles. */
   /* the server's own background pictures (by kind of card); "all" is used for every kind without its own */
@@ -3479,6 +3494,7 @@ const gfx = (() => {
     for (let i = 0; i < c.px.length; i++) c.px[i] = cover.px[i] * 0.6;
   }
   function aurora(c, seed, pal, sparkles = 14) {
+    if (THEME.sparkles === false) sparkles = 0;
     const r = rngOf(seed);
     const paint = lin(0, 0, c.w * 0.4, c.h, [[0, pal[0]], [1, pal[1]]]);
     for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
@@ -3513,7 +3529,7 @@ const gfx = (() => {
     if (img) {
       c.avatar(img, cx, cy, d);
     } else {
-      c.circle(cx, cy, d / 2, lin(cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2, [[0, "#7c8cff"], [1, "#d96bff"]]));
+      c.circle(cx, cy, d / 2, lin(cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2, ACC([[0, "#7c8cff"], [1, "#d96bff"]])));
       c.text(initial(name), cx, cy, d * 0.5, { align: "center", shadow: { dy: 3, blur: 5, alpha: 0.4 } });
     }
   }
@@ -3521,15 +3537,15 @@ const gfx = (() => {
   /* ---------- cards ---------- */
   function rank({ name, level, into, need, rank: place, xp, label, avatar }) {
     const c = new Canvas(860, 280);
-    const pal = pickPalette(name);
+    const pal = PAL(pickPalette(name));
     ground(c, "rank", () => aurora(c, name, pal));
     c.glass(24, 24, 812, 232, 34);
     portrait(c, 126, 140, 148, name, avatar, [[0, pal[3]], [1, pal[4]]], pal[2]);
     c.text(cutText(c, name, 410, 46), 224, 70, 46, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
-    c.pill(224, 102, 158, 40, lin(224, 0, 382, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), `${label.rank} #${place}`, 22, { spacing: 2, glow: "#7c4dff" });
+    c.pill(224, 102, 158, 40, lin(224, 0, 382, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])), `${label.rank} #${place}`, 22, { spacing: 2, glow: ACC1("#7c4dff") });
     c.text(`${xp} XP`, 398, 122, 24, { font: "regular", color: "#ffffff", alpha: 0.8 });
     c.text(label.level, 812, 56, 22, { align: "right", spacing: 6, font: "regular", color: "#ffffff", alpha: 0.75 });
-    c.text(String(level), 812, 112, fitSize(c, String(level), 150, 92), { align: "right", gradient: GOLD, glow: { blur: 14, color: "#ffb02e", alpha: 0.5 }, shadow: { dy: 4, blur: 6, alpha: 0.45 } });
+    c.text(String(level), 812, 112, fitSize(c, String(level), 150, 92), { align: "right", gradient: GLD(), glow: { blur: 14, color: GLW("#ffb02e"), alpha: 0.5 }, shadow: { dy: 4, blur: 6, alpha: 0.45 } });
     c.bar(224, 168, 588, 34, into / need);
     c.text(`${xp} / ${xp - into + need} XP`, 224, 228, 22, { font: "regular", alpha: 0.9 });
     c.text(`${Math.round((into / need) * 100)}%`, 812, 228, 22, { align: "right", font: "regular", alpha: 0.9 });
@@ -3539,16 +3555,16 @@ const gfx = (() => {
   /* The card of an XP step (every 100 XP by default): the colours change as the XP grows. */
   function xpStep({ name, xp, total = xp, gained, level, into, need, rank: place, next, avatar, label }) {
     const c = new Canvas(860, 300);
-    const pal = PALETTES[Math.floor(xp / 500) % PALETTES.length];
+    const pal = PAL(PALETTES[Math.floor(xp / 500) % PALETTES.length]);
     ground(c, "xp", () => aurora(c, `${name}${xp}`, pal, 18));
     const r = rngOf(`${name}${xp}stars`);
-    const colors = [pal[2], pal[3], pal[4], "#ffffff", "#ffd34d"];
-    for (let k = 0; k < 34; k++) c.confetti(r() * 860, r() * 300, 7 + r() * 9, 3 + r() * 4, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.45 + r() * 0.4);
+    const colors = CONF([pal[2], pal[3], pal[4], "#ffffff", "#ffd34d"]);
+    for (let k = 0; k < CONFN(34); k++) c.confetti(r() * 860, r() * 300, 7 + r() * 9, 3 + r() * 4, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.45 + r() * 0.4);
     c.glass(22, 22, 816, 256, 34, 0.12);
     portrait(c, 132, 150, 160, name, avatar, [[0, pal[3]], [1, pal[4]]], pal[2]);
     c.pill(236, 44, 214, 38, lin(236, 0, 450, 0, [[0, pal[2]], [1, pal[3]]]), label.step, 19, { spacing: 3, glow: pal[2] });
     const big = `${xp} XP`;
-    c.text(big, 236, 130, fitSize(c, big, 380, 78), { gradient: GOLD, glow: { blur: 18, color: "#ffb02e", alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
+    c.text(big, 236, 130, fitSize(c, big, 380, 78), { gradient: GLD(), glow: { blur: 18, color: GLW("#ffb02e"), alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
     if (gained) c.text(`+${gained} XP`, 812, 66, 26, { align: "right", color: "#7cffb0", glow: { blur: 10, color: "#2effa8", alpha: 0.6 } });
     c.text(cutText(c, name, 300, 30), 812, 118, 30, { align: "right", shadow: { dy: 2, blur: 5, alpha: 0.5 } });
     c.text(`${label.level} ${level}${place ? `  ·  ${label.rank} #${place}` : ""}`, 236, 178, 22, { font: "regular", alpha: 0.9, spacing: 2 });
@@ -3562,9 +3578,9 @@ const gfx = (() => {
     const rowH = 90;
     const h = 150 + rows.length * rowH + 24;
     const c = new Canvas(900, h);
-    ground(c, "leaderboard", () => aurora(c, "leaderboard", PALETTES[0], 20));
-    c.text(label.title, 450, 64, fitSize(c, label.title, 700, 66), { align: "center", spacing: 4, gradient: [[0, "#ffffff"], [1, "#ffd9a0"]], glow: { blur: 16, color: "#ffb02e", alpha: 0.5 }, shadow: { dy: 4, blur: 8, alpha: 0.5 } });
-    c.round(380, 104, 140, 4, lin(380, 0, 520, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]));
+    ground(c, "leaderboard", () => aurora(c, "leaderboard", PAL(PALETTES[0]), 20));
+    c.text(label.title, 450, 64, fitSize(c, label.title, 700, 66), { align: "center", spacing: 4, gradient: TTL([[0, "#ffffff"], [1, "#ffd9a0"]]), glow: { blur: 16, color: GLW("#ffb02e"), alpha: 0.5 }, shadow: { dy: 4, blur: 8, alpha: 0.5 } });
+    c.round(380, 104, 140, 4, lin(380, 0, 520, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])));
     const medal = [[[0, "#fff3b0"], [1, "#e69b1a"]], [[0, "#f4f6fb"], [1, "#9aa5bd"]], [[0, "#ffd0a0"], [1, "#b8651b"]]];
     rows.forEach((r, n) => {
       const y = 130 + n * rowH;
@@ -3574,16 +3590,16 @@ const gfx = (() => {
       c.circle(82, cy, 27, lin(55, cy - 27, 109, cy + 27, n < 3 ? medal[n] : [[0, "#6b7390"], [1, "#464c68"]]));
       c.text(String(n + 1), 82, cy, 28, { align: "center", color: n < 3 ? "#3a2a05" : "#ffffff" });
       if (r.avatar) {
-        c.ring(158, cy, 30, 4, lin(128, cy - 30, 188, cy + 30, n < 3 ? medal[n] : [[0, "#7c8cff"], [1, "#d96bff"]]));
+        c.ring(158, cy, 30, 4, lin(128, cy - 30, 188, cy + 30, n < 3 ? medal[n] : ACC([[0, "#7c8cff"], [1, "#d96bff"]])));
         c.avatar(r.avatar, 158, cy, 52);
       } else {
-        c.circle(158, cy, 28, lin(130, cy - 28, 186, cy + 28, [[0, "#7c8cff"], [1, "#d96bff"]]));
+        c.circle(158, cy, 28, lin(130, cy - 28, 186, cy + 28, ACC([[0, "#7c8cff"], [1, "#d96bff"]])));
         c.text(initial(r.name), 158, cy, 28, { align: "center" });
       }
       c.text(cutText(c, r.name, 330, 30), 206, cy - 12, 30, { shadow: { dy: 2, blur: 4, alpha: 0.4 } });
       c.bar(206, cy + 12, 330, 12, r.into / r.need);
       c.text(label.level, 836, cy - 18, 18, { align: "right", spacing: 4, font: "regular", alpha: 0.75 });
-      c.text(String(r.level), 836, cy + 11, fitSize(c, String(r.level), 110, 42), { align: "right", gradient: GOLD, glow: { blur: 8, color: "#ffb02e", alpha: 0.4 } });
+      c.text(String(r.level), 836, cy + 11, fitSize(c, String(r.level), 110, 42), { align: "right", gradient: GLD(), glow: { blur: 8, color: GLW("#ffb02e"), alpha: 0.4 } });
       c.text(r.sub ?? `${r.xp} XP`, 700, cy + 4, 22, { align: "right", font: "regular", alpha: 0.85 });
     });
     return c.png();
@@ -3591,21 +3607,21 @@ const gfx = (() => {
 
   function levelUp({ name, level, from, label, avatar }) {
     const c = new Canvas(760, 300);
-    const pal = ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"];
+    const pal = PAL(["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"]);
     ground(c, "levelup", () => aurora(c, `${name}${level}`, pal, 10));
     const r = rngOf(`${name}${level}confetti`);
-    const colors = ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"];
-    for (let k = 0; k < 46; k++) c.confetti(r() * 760, r() * 300, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.55 + r() * 0.4);
+    const colors = CONF(["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"]);
+    for (let k = 0; k < CONFN(46); k++) c.confetti(r() * 760, r() * 300, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.55 + r() * 0.4);
     c.glass(20, 20, 720, 260, 34, 0.1);
-    portrait(c, 140, 150, 156, name, avatar, GOLD, "#ffb02e");
-    c.text(label.up, 236, 78, fitSize(c, label.up, 480, 66), { gradient: GOLD, glow: { blur: 16, color: "#ffb02e", alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
+    portrait(c, 140, 150, 156, name, avatar, GLD(), GLW("#ffb02e"));
+    c.text(label.up, 236, 78, fitSize(c, label.up, 480, 66), { gradient: GLD(), glow: { blur: 16, color: GLW("#ffb02e"), alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
     c.text(cutText(c, name, 470, 34), 236, 140, 34, { shadow: { dy: 2, blur: 5, alpha: 0.5 } });
     if (typeof from === "number") {
       c.text(String(from), 236, 214, 52, { font: "regular", alpha: 0.55 });
       const fx = 236 + c.measure(String(from), 52, "regular") + 16;
-      c.text("→", fx, 214, 44, { color: "#ffd34d" });
-      c.text(`${label.level} ${level}`, fx + 56, 214, 66, { gradient: GOLD, glow: { blur: 12, color: "#ffb02e", alpha: 0.55 }, shadow: { dy: 4, blur: 6, alpha: 0.5 } });
-    } else c.text(`${label.level} ${level}`, 236, 214, 66, { gradient: GOLD, glow: { blur: 12, color: "#ffb02e", alpha: 0.55 } });
+      c.text("→", fx, 214, 44, { color: GLW("#ffd34d") });
+      c.text(`${label.level} ${level}`, fx + 56, 214, 66, { gradient: GLD(), glow: { blur: 12, color: GLW("#ffb02e"), alpha: 0.55 }, shadow: { dy: 4, blur: 6, alpha: 0.5 } });
+    } else c.text(`${label.level} ${level}`, 236, 214, 66, { gradient: GLD(), glow: { blur: 12, color: GLW("#ffb02e"), alpha: 0.55 } });
     return c.png();
   }
 
@@ -3624,7 +3640,7 @@ const gfx = (() => {
     c.sparkle(262, 66, 11, "#ffffff", 0.9);
     c.sparkle(54, 214, 8, "#ffe9a0", 0.9);
     c.sparkle(274, 226, 6, "#ffffff", 0.7);
-    if (caption) c.pill(110, 296, 100, 34, lin(110, 0, 210, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), caption, 20, { spacing: 3, glow: "#7c4dff" });
+    if (caption) c.pill(110, 296, 100, 34, lin(110, 0, 210, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])), caption, 20, { spacing: 3, glow: ACC1("#7c4dff") });
     return c.png();
   }
 
@@ -3648,7 +3664,7 @@ const gfx = (() => {
     } else {
       c.text(String(value), 160, 156, fitSize(c, String(value), 150, 118), { align: "center", gradient: [[0, "#4a4f8f"], [1, "#12132e"]], shadow: { dy: 3, blur: 3, alpha: 0.25 } });
     }
-    c.pill(116, 298, 88, 34, lin(116, 0, 204, 0, [[0, "#19c7ff"], [1, "#7c4dff"]]), `d${faces}`, 22, { spacing: 2, glow: "#19c7ff" });
+    c.pill(116, 298, 88, 34, lin(116, 0, 204, 0, ACC([[0, "#19c7ff"], [1, "#7c4dff"]])), `d${faces}`, 22, { spacing: 2, glow: ACC1("#19c7ff") });
     return c.png();
   }
 
@@ -3668,10 +3684,10 @@ const gfx = (() => {
 
   function quizCard(lines, label, opts = {}) {
     const c = new Canvas(720, 320);
-    ground(c, "quiz", () => aurora(c, lines.join("|"), PALETTES[0], 16));
+    ground(c, "quiz", () => aurora(c, lines.join("|"), PAL(PALETTES[0]), 16));
     c.glass(20, 20, 680, 280, 36, 0.09);
-    c.pill(44, 40, 118, 42, lin(44, 0, 162, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), label, 24, { spacing: 4, glow: "#7c4dff" });
-    c.pill(584, 40, 92, 42, lin(584, 0, 676, 0, [[0, "#19c7ff"], [1, "#7c4dff"]]), opts.timer || "30 s", 22, { spacing: 1, glow: "#19c7ff" });
+    c.pill(44, 40, 118, 42, lin(44, 0, 162, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])), label, 24, { spacing: 4, glow: ACC1("#7c4dff") });
+    c.pill(584, 40, 92, 42, lin(584, 0, 676, 0, ACC([[0, "#19c7ff"], [1, "#7c4dff"]])), opts.timer || "30 s", 22, { spacing: 1, glow: ACC1("#19c7ff") });
     const spacing = opts.spacing || 0;
     const size = Math.min(...lines.map((l) => fitSize(c, l, 600, 104, "bold", spacing)));
     const total = lines.length * CAP * size + (lines.length - 1) * 30;
@@ -3680,7 +3696,7 @@ const gfx = (() => {
       c.text(l, 360, y, size, { align: "center", spacing, gradient: [[0, "#ffffff"], [1, "#d9d2ff"]], glow: { blur: 14, color: "#9b7bff", alpha: 0.6 }, shadow: { dy: 4, blur: 8, alpha: 0.5 } });
       y += CAP * size + 30;
     }
-    c.round(300, 276, 120, 4, lin(300, 0, 420, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]));
+    c.round(300, 276, 120, 4, lin(300, 0, 420, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])));
     return c.png();
   }
 
@@ -3704,7 +3720,7 @@ const gfx = (() => {
 
   function banner(title, subtitle, colorA, colorB, mark) {
     const c = new Canvas(900, 176);
-    ground(c, "banner", () => aurora(c, `${title}${subtitle}`, [colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"], 12));
+    ground(c, "banner", () => aurora(c, `${title}${subtitle}`, PAL([colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"]), 12));
     c.glass(18, 18, 864, 140, 32, 0.08);
     const picture = mark ? logo(mark) : null;
     if (picture) {
@@ -3770,7 +3786,7 @@ const gfx = (() => {
     const gradB = c1 ? c2 : "#ff4fd8";
     const textCol = isHex(textColor) ? textColor : "#ffffff";
     const titleBase = isHex(titleColor) ? titleColor : "";
-    const titleStops = titleBase ? [[0, rgbHex(mixc(hex(titleBase), [255, 255, 255], 0.55))], [1, titleBase]] : c1 ? [[0, "#ffffff"], [1, rgbHex(mixc(hex(c1), [255, 255, 255], 0.55))]] : [[0, "#ffffff"], [1, "#ffd9a0"]];
+    const titleStops = titleBase ? [[0, rgbHex(mixc(hex(titleBase), [255, 255, 255], 0.55))], [1, titleBase]] : c1 ? [[0, "#ffffff"], [1, rgbHex(mixc(hex(c1), [255, 255, 255], 0.55))]] : TTL([[0, "#ffffff"], [1, "#ffd9a0"]]);
     const titleGlow = titleBase || c1 || "#ffb02e";
     let bg;
     if (bgImg) {
@@ -3788,7 +3804,7 @@ const gfx = (() => {
       c.circle(120, 128, 76, "#000000", 0.3);
       if (avatar) c.avatar(avatar, 118, 120, 140);
       else {
-        c.circle(118, 120, 70, lin(48, 50, 188, 190, c1 ? [[0, c1], [1, c2]] : [[0, "#7c8cff"], [1, "#d96bff"]]));
+        c.circle(118, 120, 70, lin(48, 50, 188, 190, c1 ? [[0, c1], [1, c2]] : ACC([[0, "#7c8cff"], [1, "#d96bff"]])));
         c.text(initial(name), 118, 120, 70, { align: "center", shadow: { dy: 3, blur: 5, alpha: 0.4 } });
       }
       c.text(cutText(c, name, 460, 38), 222, 112, 38, { color: textCol, shadow: { dy: 3, blur: 6, alpha: 0.5 } });
@@ -3809,7 +3825,7 @@ const gfx = (() => {
       for (let k = 0; k < 3; k++) overlay.rgb[i * 3 + k] = alpha > 0.003 ? Math.min(255, onBlack.px[i * 3 + k] / alpha) : 0;
     }
     const rnd = rngOf(`confetti${name}`);
-    const confetti = Array.from({ length: 36 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: (c1 ? [c1, c2, "#ffffff", c1, c2, rgbHex(mixc(hex(c1), [255, 255, 255], 0.5))] : ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"])[Math.floor(rnd() * 6)], sway: rnd() * 6 }));
+    const confetti = Array.from({ length: 36 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: (c1 ? [c1, c2, "#ffffff", c1, c2, rgbHex(mixc(hex(c1), [255, 255, 255], 0.5))] : CONF(["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"]))[Math.floor(rnd() * 6)], sway: rnd() * 6 }));
     const twinkle = Array.from({ length: 9 }, () => ({ x: 230 + rnd() * 470, y: 26 + rnd() * 190, r: 3 + rnd() * 5, phase: rnd() }));
 
     /* The picture at time t in [0, 1): everything moves in a loop. */
@@ -3891,9 +3907,9 @@ const gfx = (() => {
     const y0 = cy - phase * S * 0.16;
     c.ellipseSoft(cx, cy + S * 0.62, S * 0.46 * (1 - phase * 0.3), S * 0.06, 10, "#000000", 0.38);
     c.glow(cx, y0 + S * 0.2, S * 0.95, "#ffb02e", 0.25 + 0.15 * phase);
-    c.round(cx - 0.43 * S, y0 - 0.02 * S, 0.86 * S, 0.54 * S, 0.07 * S, lin(cx - S / 2, y0, cx + S / 2, y0 + 0.5 * S, [[0, "#ff6b95"], [1, "#d02060"]]));
+    c.round(cx - 0.43 * S, y0 - 0.02 * S, 0.86 * S, 0.54 * S, 0.07 * S, lin(cx - S / 2, y0, cx + S / 2, y0 + 0.5 * S, [[0, (THEME.a || "#ff6b95")], [1, (THEME.b ? shade(THEME.b, -0.3) : "#d02060")]]));
     c.round(cx - 0.4 * S, y0, 0.18 * S, 0.5 * S, 0.05 * S, "#ffffff", 0.16);
-    c.round(cx - 0.49 * S, y0 - 0.2 * S, 0.98 * S, 0.24 * S, 0.06 * S, lin(cx, y0 - 0.2 * S, cx, y0 + 0.04 * S, [[0, "#ff9ab6"], [1, "#e63a73"]]));
+    c.round(cx - 0.49 * S, y0 - 0.2 * S, 0.98 * S, 0.24 * S, 0.06 * S, lin(cx, y0 - 0.2 * S, cx, y0 + 0.04 * S, [[0, (THEME.a ? shade(THEME.a, 0.4) : "#ff9ab6")], [1, (THEME.b || "#e63a73")]]));
     c.round(cx - 0.07 * S, y0 - 0.2 * S, 0.14 * S, 0.74 * S, 2, lin(cx - 0.07 * S, 0, cx + 0.07 * S, 0, [[0, "#fff3b0"], [1, "#ffb02e"]]));
     for (const dir of [-1, 1]) {
       c.ellipse(cx + dir * 0.16 * S, y0 - 0.27 * S, 0.15 * S, 0.095 * S, lin(cx, y0 - 0.4 * S, cx, y0 - 0.15 * S, [[0, "#fff3b0"], [1, "#ffb02e"]]));
@@ -3905,37 +3921,37 @@ const gfx = (() => {
   function giveawayScene({ prize, winners, host, label }) {
     const W = 720;
     const H = 240;
-    const pal = ["#2a1250", "#6a2a8a", "#ffb02e", "#ff5ccf", "#7a6bff"];
+    const pal = PAL(["#2a1250", "#6a2a8a", "#ffb02e", "#ff5ccf", "#7a6bff"]);
     const bg = new Canvas(W, H);
     ground(bg, "giveaway", () => aurora(bg, `giveaway${prize}`, pal, 8));
     const overlay = overlayOf(W, H, (c) => {
       c.glass(18, 18, W - 36, H - 36, 34, 0.1);
       c.text(cutText(c, prize, 450, 46), 232, 128, fitSize(c, cutText(c, prize, 450, 46), 450, 46), { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
       const pill = `${winners} ${winners > 1 ? label.winnersMany : label.winnersOne}`;
-      c.pill(232, 164, c.measure(pill, 20, "bold", 2) + 40, 36, lin(232, 0, 470, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pill, 20, { spacing: 2, glow: "#7c4dff" });
+      c.pill(232, 164, c.measure(pill, 20, "bold", 2) + 40, 36, lin(232, 0, 470, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])), pill, 20, { spacing: 2, glow: ACC1("#7c4dff") });
       if (host) c.text(cutText(c, `${label.by} ${host}`, 300, 20, "regular"), 700 - 22, 182, 20, { align: "right", font: "regular", alpha: 0.8 });
     });
     const rnd = rngOf(`gwconfetti${prize}`);
-    const confetti = Array.from({ length: 34 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(rnd() * 6)], sway: rnd() * 6 }));
+    const confetti = Array.from({ length: 34 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: CONF(["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"])[Math.floor(rnd() * 6)], sway: rnd() * 6 }));
     const twinkle = Array.from({ length: 8 }, () => ({ x: 230 + rnd() * 470, y: 26 + rnd() * 190, r: 3 + rnd() * 5, phase: rnd() }));
     const render = (t) => {
       const c = bg.clone();
-      for (const k of confetti) c.confetti(k.x + Math.sin(2 * Math.PI * t * k.speed + k.sway) * 10, ((k.y + t * H * k.speed) % (H + 40)) - 20, k.w, k.h, k.a + 2 * Math.PI * t * k.spin, k.color, 0.9);
+      for (const k of CONFN(1) ? confetti : []) c.confetti(k.x + Math.sin(2 * Math.PI * t * k.speed + k.sway) * 10, ((k.y + t * H * k.speed) % (H + 40)) - 20, k.w, k.h, k.a + 2 * Math.PI * t * k.spin, k.color, 0.9);
       layOver(c, overlay);
       giftBox(c, 118, 112, 112, t);
       const bandX = 224 + (t * 1.6 - 0.3) * 470;
       c.text(label.title, 232, 70, fitSize(c, label.title, 450, 54, "bold", 4), {
         spacing: 4,
         paint: (top, base) => {
-          const g = lin(0, top, 0, base, [[0, "#fff3b0"], [1, "#ffb02e"]]);
+          const g = lin(0, top, 0, base, TTL([[0, "#fff3b0"], [1, "#ffb02e"]]));
           return (x, y) => mixc(g(x, y), [255, 255, 255], Math.max(0, 1 - Math.abs(x - bandX - (y - top) * 0.7) / 55) * 0.9);
         },
-        glow: { blur: 14, color: "#ffb02e", alpha: 0.5 },
+        glow: { blur: 14, color: GLW("#ffb02e"), alpha: 0.5 },
         shadow: { dy: 4, blur: 8, alpha: 0.5 },
       });
       const orbit = 2 * Math.PI * t;
-      c.sparkle(118 + Math.cos(orbit) * 84, 112 + Math.sin(orbit) * 70, 8, "#ffffff", 0.9);
-      for (const k of twinkle) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
+      if (THEME.sparkles !== false) c.sparkle(118 + Math.cos(orbit) * 84, 112 + Math.sin(orbit) * 70, 8, "#ffffff", 0.9);
+      for (const k of THEME.sparkles !== false ? twinkle : []) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
       return c;
     };
     return { render };
@@ -3947,26 +3963,26 @@ const gfx = (() => {
   /* The card of the end: a crown over the first winner, the names, how many entered. */
   function giveawayEnd({ prize, winners, count, label }) {
     const c = new Canvas(720, 240);
-    ground(c, "giveaway", () => aurora(c, `gwend${prize}`, ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"], 12));
+    ground(c, "giveaway", () => aurora(c, `gwend${prize}`, PAL(["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"]), 12));
     const r = rngOf(`gwendconfetti${prize}`);
-    for (let k = 0; k < 40; k++) c.confetti(r() * 720, r() * 240, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(r() * 6)], 0.55 + r() * 0.4);
+    for (let k = 0; k < CONFN(40); k++) c.confetti(r() * 720, r() * 240, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, CONF(["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"])[Math.floor(r() * 6)], 0.55 + r() * 0.4);
     c.glass(18, 18, 684, 204, 34, 0.1);
     const first = winners[0];
     if (first) {
-      portrait(c, 124, 132, 112, first.name, first.avatar, GOLD, "#ffb02e");
+      portrait(c, 124, 132, 112, first.name, first.avatar, GLD(), GLW("#ffb02e"));
       const crown = [[-36, 24], [-36, -6], [-18, 12], [0, -20], [18, 12], [36, -6], [36, 24]].map(([x, y]) => [124 + x, 56 + y]);
       c.polygons([crown.map(([x, y]) => [x + 2, y + 5])], "#000000", 0.3);
       c.polygons([crown], lin(88, 36, 160, 80, [[0, "#fff3b0"], [0.5, "#ffc93c"], [1, "#e08a1a"]]));
       for (const [x, y] of [[-36, -6], [0, -20], [36, -6]]) c.circle(124 + x, 56 + y, 4.5, "#ffffff", 0.95);
     }
     const title = winners.length > 1 ? label.winnersMany : winners.length === 1 ? label.winnersOne : label.noWinner;
-    c.text(title, 226, 56, fitSize(c, title, 450, 48, "bold", 4), { spacing: 4, gradient: GOLD, glow: { blur: 14, color: "#ffb02e", alpha: 0.55 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
+    c.text(title, 226, 56, fitSize(c, title, 450, 48, "bold", 4), { spacing: 4, gradient: GLD(), glow: { blur: 14, color: GLW("#ffb02e"), alpha: 0.55 }, shadow: { dy: 4, blur: 8, alpha: 0.55 } });
     const shownNames = winners.length > 3 ? winners.slice(0, 2) : winners.slice(0, 3);
     shownNames.forEach((w, n) => c.text(cutText(c, w.name, 440, 28), 226, 98 + n * 32, 28, { shadow: { dy: 2, blur: 4, alpha: 0.5 } }));
     if (winners.length > 3) c.text(`+ ${winners.length - 2}`, 226, 98 + 2 * 32, 24, { font: "regular", alpha: 0.85 });
     if (!winners.length) c.text(cutText(c, prize, 440, 30), 226, 110, 30, { font: "regular", alpha: 0.9 });
     const pillText = `${count} ${label.entries}`;
-    c.pill(226, 192, c.measure(pillText, 18, "bold", 2) + 36, 30, lin(226, 0, 440, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pillText, 18, { spacing: 2, glow: "#7c4dff" });
+    c.pill(226, 192, c.measure(pillText, 18, "bold", 2) + 36, 30, lin(226, 0, 440, 0, ACC([[0, "#7c4dff"], [1, "#ff4fd8"]])), pillText, 18, { spacing: 2, glow: ACC1("#7c4dff") });
     if (winners.length) c.text(cutText(c, prize, 250, 20, "regular"), 700 - 22, 207, 20, { align: "right", font: "regular", alpha: 0.85 });
     return c.png();
   }
@@ -4399,7 +4415,7 @@ const gfx = (() => {
     });
   }
 
-  return { setBackdrop, coverPng, emojiIconSprite, EMOJI_PACK, emojiTextSprite, spriteFromImage, emojiFrame, encodeGifAlpha, EMOJI_STYLES, Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+  return { setTheme, setBackdrop, coverPng, emojiIconSprite, EMOJI_PACK, emojiTextSprite, spriteFromImage, emojiFrame, encodeGifAlpha, EMOJI_STYLES, Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
@@ -4481,6 +4497,7 @@ const tools = (() => {
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
       pings: { roles: {}, made: [], off: [], panels: [] },
+      theme: { color: "", color2: "", titleColor: "", textColor: "", confetti: true, sparkles: true }, // the colours of every picture (/theme)
       backgrounds: { all: "", xp: "", levelup: "", rank: "", leaderboard: "", quiz: "", giveaway: "", banner: "", fun: "" }, // file names next to tools.json // ping id -> role id ; made: the roles the bot created (only those are deleted)
       supporter: { tagRole: "", statusRole: "", statusText: "/azari", channelId: "", channels: [], langs: {}, thanks: {} }, // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
@@ -4752,12 +4769,12 @@ const tools = (() => {
       avatar: await loadAvatar(member),
       label: cardLabel(),
       bg: cardBackground(leave ? w.leaveBg || w.bg : w.bg),
-      accent: w.color || "",
-      accent2: w.color2 || "",
-      titleColor: w.titleColor || "",
-      textColor: w.textColor || "",
-      confettiOn: w.confetti !== false,
-      sparklesOn: w.sparkles !== false,
+      accent: w.color || db.cfg.theme.color || "",
+      accent2: w.color ? w.color2 || "" : db.cfg.theme.color2 || "",
+      titleColor: w.titleColor || db.cfg.theme.titleColor || "",
+      textColor: w.textColor || db.cfg.theme.textColor || "",
+      confettiOn: w.confetti !== false && db.cfg.theme.confetti !== false,
+      sparklesOn: w.sparkles !== false && db.cfg.theme.sparkles !== false,
       title: (leave ? w.leaveTitle || t("AU REVOIR", "GOODBYE") : w.title || "").slice(0, 24),
       sub: leave ? `${t("a quitté", "left")} ${member.guild?.name || ""}` : "",
       pill: leave ? t(`${count} membres`, `${count} members`) : "",
@@ -5075,6 +5092,18 @@ const tools = (() => {
           for (let n = 2; n <= 5; n++) b = b.addRoleOption((o) => o.setName(`role${n}`).setDescription(`Rôle ${n}`));
           return b;
         })()
+      ),
+      // the colours of every picture
+      D(
+        P.ManageGuild,
+        cmd("theme", t("Les couleurs de toutes les images du bot (XP, niveau, quiz, giveaway…)", "The colours of every picture of the bot (XP, level, quiz, giveaway…)"))
+          .addStringOption((o) => o.setName("couleur").setDescription(t("Couleur principale, ex : #8f63ff (« défaut » = couleurs d'origine)", "Main colour, e.g. #8f63ff (\"défaut\" = original colours)")).setMaxLength(7))
+          .addStringOption((o) => o.setName("couleur2").setDescription(t("2e couleur des dégradés (vide = la même)", "2nd gradient colour (empty = the same)")).setMaxLength(7))
+          .addStringOption((o) => o.setName("couleur_titre").setDescription(t("Couleur des titres et des chiffres (au lieu du doré)", "Titles and numbers colour (instead of gold)")).setMaxLength(7))
+          .addStringOption((o) => o.setName("couleur_texte").setDescription(t("Couleur des textes, ex : #ffffff", "Text colour, e.g. #ffffff")).setMaxLength(7))
+          .addBooleanOption((o) => o.setName("confettis").setDescription(t("Afficher les confettis", "Show the confetti")))
+          .addBooleanOption((o) => o.setName("etoiles").setDescription(t("Afficher les petites étoiles", "Show the little sparkles")))
+          .addBooleanOption((o) => o.setName("reset").setDescription(t("Tout remettre comme à l'origine", "Back to the original look")))
       ),
       // the backgrounds of the pictures
       D(
@@ -5459,7 +5488,7 @@ const tools = (() => {
     }
     return out.filter((c) => !MM_ONLY.has(c.name));
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "fonds", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "fonds", "theme", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -7200,6 +7229,7 @@ const tools = (() => {
           ]
         : []),
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
+      [t("🎨 Couleurs des images", "🎨 Picture colours"), "`/theme`", P.ManageGuild],
       [t("🎨 Fonds des images", "🎨 Picture backgrounds"), "`/fonds mettre` `/fonds retirer` `/fonds apercu` `/fonds voir` · `/welcome style` `/welcome fond`", P.ManageGuild],
       [t("💾 Changer de serveur", "💾 Moving server"), "`/salons sauvegarder` `/salons enlever` `/salons enlever-roles` `/salons remettre` `/salons voir`", P.Administrator],
       [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
@@ -9496,6 +9526,7 @@ const tools = (() => {
       if (body.section === "vouch") refreshVouchPanel(true).catch(() => {});
       if (body.section === "index") for (const ix of INDEXES) refreshIndexPanels(ix).catch(() => {});
       if (body.section === "pings") refreshPingPanels().catch(() => {});
+      if (body.section === "theme") gfx.setTheme(db.cfg.theme);
       return send(res, 200, { ok: true, cfg: db.cfg[body.section] });
     }
     if (url.pathname === "/api/pings") {
@@ -10073,6 +10104,39 @@ const tools = (() => {
     if (kind === "fun") return gfx.coin("A", t("F", "H"), t("FACE", "HEADS"));
     return gfx.rank({ name, level: 7, into: 60, need: 200, rank: 3, xp: 1500, label, avatar });
   }
+  /* a colour typed in a command: "#abc123", "abc123", or "défaut" to go back; null when it is not a colour */
+  const colourOf = (v) => {
+    const c = String(v ?? "").trim().toLowerCase();
+    if (["", "défaut", "defaut", "aucune", "aucun", "none", "default", "-"].includes(c)) return "";
+    return /^#?[0-9a-f]{6}$/i.test(c) ? `#${c.replace("#", "")}` : null;
+  };
+  H.theme = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const th = db.cfg.theme;
+    for (const [opt, key] of [["couleur", "color"], ["couleur2", "color2"], ["couleur_titre", "titleColor"], ["couleur_texte", "textColor"]]) {
+      const v = i.options.getString(opt);
+      if (v === null) continue;
+      const c = colourOf(v);
+      if (c === null) return reply(i, no(t(`Couleur invalide pour \`${opt}\` : mets un code comme \`#8f63ff\`, ou \`défaut\`.`, `Invalid colour for \`${opt}\`: use a code like \`#8f63ff\`, or \`défaut\`.`)));
+      th[key] = c;
+    }
+    for (const [opt, key] of [["confettis", "confetti"], ["etoiles", "sparkles"]]) {
+      const v = i.options.getBoolean(opt);
+      if (v !== null) th[key] = v;
+    }
+    if (i.options.getBoolean("reset")) Object.assign(th, { ...defaults().cfg.theme });
+    save(true);
+    gfx.setTheme(th);
+    await i.deferReply({ flags: ephemeral });
+    const yes = (v) => (v !== false ? t("oui", "yes") : t("non", "no"));
+    const summary = t(`Thème enregistré pour **toutes les images** : couleurs **${th.color || "d'origine"}**${th.color ? ` / **${th.color2 || th.color}**` : ""} · titres **${th.titleColor || "auto"}** · texte **${th.textColor || "blanc"}** · confettis **${yes(th.confetti)}** · étoiles **${yes(th.sparkles)}**\n-# La carte de bienvenue garde ses propres couleurs si tu en as mis avec \`/welcome style\`.`, `Theme saved for **every picture**: colours **${th.color || "original"}** · titles **${th.titleColor || "auto"}** · text **${th.textColor || "white"}** · confetti **${yes(th.confetti)}** · sparkles **${yes(th.sparkles)}**`);
+    const files = [];
+    for (const k of ["levelup", "rank"]) {
+      const png = await backdropPreview(k, i.member).catch(() => null);
+      if (png) files.push(new AttachmentBuilder(png, { name: `${k}.png` }));
+    }
+    return i.editReply({ content: ok(summary), files });
+  };
   H.fonds = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -10782,6 +10846,7 @@ const tools = (() => {
     if (!ON) return;
     load();
     loadBackdrops();
+    gfx.setTheme(db.cfg.theme);
     startDashboard();
     client.on(Events.MessageCreate, async (message) => {
       try {
