@@ -4933,6 +4933,15 @@ const tools = (() => {
           return b;
         })()
       ),
+      // moving server: save, delete and put back every channel
+      D(
+        P.Administrator,
+        cmd("salons", t("Sauvegarder, supprimer ou remettre tous les salons (changement de serveur)", "Save, delete or put back every channel (moving server)"))
+          .addSubcommand((s) => s.setName("enlever").setDescription(t("Sauvegarder puis supprimer TOUS les salons (avec confirmation)", "Save then delete EVERY channel (with confirmation)")))
+          .addSubcommand((s) => s.setName("remettre").setDescription(t("Recréer tous les salons et rôles de la sauvegarde (ici ou sur un nouveau serveur)", "Make every channel and role of the backup again (here or on a new server)")))
+          .addSubcommand((s) => s.setName("sauvegarder").setDescription(t("Sauvegarder les salons et rôles sans rien supprimer", "Save the channels and roles without deleting anything")))
+          .addSubcommand((s) => s.setName("voir").setDescription(t("Voir ce qu'il y a dans la sauvegarde", "See what is in the backup")))
+      ),
       // ping roles: made by the bot, with a panel
       D(
         P.ManageRoles,
@@ -5340,7 +5349,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "dashboard", "pingroles", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6995,6 +7004,7 @@ const tools = (() => {
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
       [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
+      [t("💾 Changer de serveur", "💾 Moving server"), "`/salons sauvegarder` `/salons enlever` `/salons remettre` `/salons voir`", P.Administrator],
       [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
       [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
@@ -9958,6 +9968,155 @@ const tools = (() => {
     return i.editReply({ content: ok(t(`Panel posté dans ${channel}. ${made.length ? `${made.length} rôle(s) créé(s) : ` : "Rôles : "}${all}\n-# Pour mentionner : tape @ puis le nom du rôle, par exemple @📢 Ping Annonces.`, `Panel posted in ${channel}. ${made.length ? `${made.length} role(s) made: ` : "Roles: "}${all}`)), allowedMentions: { parse: [] } });
   };
 
+  /* ---------- /salons: save the whole server layout, delete every channel, and put everything back (here or on a new server) ---------- */
+  const BACKUP_FILE = path.join(process.env.DATA_DIR || __dirname, "backup.json");
+  const readBackup = () => {
+    try {
+      return JSON.parse(fs.readFileSync(BACKUP_FILE, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  /* roles, categories and channels with their permissions (the tickets are left out) */
+  function snapshotGuild(guild) {
+    const roles = [...guild.roles.cache.values()]
+      .filter((r) => !r.managed)
+      .sort((a, b) => a.position - b.position)
+      .map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: r.hoist, mentionable: r.mentionable, permissions: String(r.permissions?.bitfield ?? "0"), everyone: r.id === guild.id }));
+    const over = (c) => [...(c.permissionOverwrites?.cache?.values?.() || [])].map((o) => ({ id: o.id, type: o.type, allow: String(o.allow?.bitfield ?? "0"), deny: String(o.deny?.bitfield ?? "0") }));
+    const channels = [...guild.channels.cache.values()]
+      .filter((c) => [0, 2, 4, 5, 13, 15].includes(c.type) && !isTicket(c))
+      .sort((a, b) => (a.type === 4 ? 0 : 1) - (b.type === 4 ? 0 : 1) || (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0))
+      .map((c) => ({ id: c.id, name: c.name, type: c.type, parent: c.parentId || "", position: c.rawPosition ?? c.position ?? 0, topic: c.topic || "", nsfw: Boolean(c.nsfw), slowmode: c.rateLimitPerUser || 0, bitrate: c.bitrate || undefined, userLimit: c.userLimit || undefined, overwrites: over(c) }));
+    return { guildId: guild.id, guildName: guild.name, savedAt: Date.now(), roles, channels };
+  }
+  function saveBackup(guild) {
+    const snap = snapshotGuild(guild);
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(snap, null, 1));
+    return snap;
+  }
+  async function wipeChannels(guild, keepId = "") {
+    let done = 0, failed = 0;
+    // channels first, categories last
+    const list = [...guild.channels.cache.values()].filter((c) => c.id !== keepId && c.deletable !== false).sort((a, b) => (a.type === 4 ? 1 : 0) - (b.type === 4 ? 1 : 0));
+    for (const c of list) {
+      try {
+        await c.delete("/salons enlever");
+        done++;
+      } catch {
+        failed++; // community channels (rules, updates) cannot be deleted
+      }
+    }
+    return { done, failed };
+  }
+  /* puts everything back. On another server the roles are found by name or made, and every id in the bot's settings is changed to the new one */
+  async function restoreGuild(guild, snap) {
+    const idMap = new Map([[snap.guildId, guild.id]]);
+    let rolesMade = 0, made = 0, failed = 0;
+    for (const r of snap.roles) {
+      if (r.everyone) continue;
+      const same = guild.roles.cache.get(r.id) || [...guild.roles.cache.values()].find((x) => x.name === r.name && !x.managed);
+      if (same) {
+        idMap.set(r.id, same.id);
+        continue;
+      }
+      const role = await guild.roles.create({ name: r.name, color: r.color, hoist: r.hoist, mentionable: r.mentionable, permissions: BigInt(r.permissions || "0"), reason: "/salons remettre" }).catch(() => null);
+      if (role) {
+        idMap.set(r.id, role.id);
+        rolesMade++;
+      }
+    }
+    // the same name in the same place counts as already there (an announcement channel may have come back as a text channel)
+    const kindOf = (type) => (type === 4 ? "cat" : [2, 13].includes(type) ? "voice" : "text");
+    const existing = new Map([...guild.channels.cache.values()].map((c) => [`${kindOf(c.type)}:${c.name}:${c.parentId || ""}`, c]));
+    const overwrites = (list) =>
+      (list || [])
+        .map((o) => ({ id: idMap.get(o.id) || (o.type === 1 ? o.id : null), type: o.type, allow: BigInt(o.allow || "0"), deny: BigInt(o.deny || "0") }))
+        .filter((o) => o.id && (o.type !== 1 || guild.members.cache.has(o.id)));
+    for (const c of snap.channels) {
+      const parent = c.parent ? idMap.get(c.parent) || "" : "";
+      const already = existing.get(`${kindOf(c.type)}:${c.name}:${parent}`);
+      if (already) {
+        idMap.set(c.id, already.id);
+        continue;
+      }
+      const base = { name: c.name, parent: parent || undefined, permissionOverwrites: overwrites(c.overwrites), reason: "/salons remettre" };
+      const extra = c.type === 2 || c.type === 13 ? { bitrate: Math.min(c.bitrate || 64000, 96000), userLimit: c.userLimit || 0 } : c.type === 4 ? {} : { topic: c.topic || undefined, nsfw: c.nsfw, rateLimitPerUser: c.slowmode || 0 };
+      let channel = await guild.channels.create({ ...base, ...extra, type: c.type }).catch(() => null);
+      // announcement, forum and stage channels need a community server: they come back as text / voice channels
+      if (!channel && [5, 15].includes(c.type)) channel = await guild.channels.create({ ...base, topic: c.topic || undefined, type: 0 }).catch(() => null);
+      if (!channel && c.type === 13) channel = await guild.channels.create({ ...base, type: 2 }).catch(() => null);
+      if (channel) {
+        idMap.set(c.id, channel.id);
+        made++;
+      } else failed++;
+    }
+    // the bot's own settings point to the new channels and roles
+    let changed = 0;
+    const swap = (v) => {
+      if (typeof v === "string" && idMap.has(v) && idMap.get(v) !== v) {
+        changed++;
+        return idMap.get(v);
+      }
+      if (Array.isArray(v)) return v.map(swap);
+      if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [idMap.has(k) && idMap.get(k) !== k ? idMap.get(k) : k, swap(x)]));
+      return v;
+    };
+    db.cfg = swap(db.cfg);
+    save(true);
+    return { rolesMade, made, failed, changed };
+  }
+  const salonsConfirm = new Map(); // user -> { action, exp }
+  H.salons = async (i) => {
+    if (!dashOwnerOk(i.user, i.guild) && i.guild.ownerId !== i.user.id) return reply(i, no(t("Réservé au propriétaire du serveur.", "Only for the server owner.")));
+    const sub = i.options.getSubcommand();
+    if (sub === "sauvegarder") {
+      const snap = saveBackup(i.guild);
+      return reply(i, ok(t(`Sauvegarde faite : **${snap.channels.length}** salons et catégories, **${snap.roles.length}** rôles. Elle est dans \`backup.json\`.`, `Backup done: **${snap.channels.length}** channels and categories, **${snap.roles.length}** roles. It is in \`backup.json\`.`)));
+    }
+    if (sub === "voir") {
+      const snap = readBackup();
+      if (!snap) return reply(i, no(t("Aucune sauvegarde. Fais `/salons sauvegarder`.", "No backup. Use `/salons sauvegarder`.")));
+      const cats = snap.channels.filter((c) => c.type === 4);
+      const lines = cats.slice(0, 20).map((cat) => `📁 **${cat.name}** · ${snap.channels.filter((c) => c.parent === cat.id).map((c) => `${c.type === 2 ? "🔊" : "#"}${c.name}`).join(", ").slice(0, 300) || "—"}`);
+      return i.reply({ flags: ephemeral, embeds: [embed(0x7c4dff).setTitle(t(`💾  Sauvegarde de ${snap.guildName}`, `💾  Backup of ${snap.guildName}`)).setDescription(`${t("Faite", "Made")} <t:${Math.floor(snap.savedAt / 1000)}:R> · ${snap.channels.length} ${t("salons", "channels")} · ${snap.roles.length} ${t("rôles", "roles")}\n\n${lines.join("\n")}`.slice(0, 4000))] });
+    }
+    // enlever / remettre: a confirmation button first
+    const snap = sub === "remettre" ? readBackup() : null;
+    if (sub === "remettre" && !snap) return reply(i, no(t("Aucune sauvegarde à remettre. Sur l'ancien serveur, fais d'abord `/salons sauvegarder` (ou `/salons enlever`, qui sauvegarde avant).", "No backup to restore. On the old server, first use `/salons sauvegarder` (or `/salons enlever`, which saves first).")));
+    salonsConfirm.set(i.user.id, { action: sub, exp: Date.now() + 60_000 });
+    const text =
+      sub === "enlever"
+        ? t(`⚠️ **Tous les salons et catégories de ${i.guild.name} vont être supprimés** (${i.guild.channels.cache.size}). Une sauvegarde est faite juste avant, pour pouvoir tout remettre avec \`/salons remettre\`.\nLes messages des salons, eux, ne peuvent pas être sauvegardés : ils seront perdus.`, `⚠️ **Every channel and category of ${i.guild.name} will be deleted** (${i.guild.channels.cache.size}). A backup is made just before, to put everything back with \`/salons remettre\`.\nThe messages cannot be saved: they will be lost.`)
+        : t(`♻️ **${snap.channels.length} salons et catégories** et les rôles qui manquent de la sauvegarde de **${snap.guildName}** vont être créés ici. Les salons qui existent déjà avec le même nom sont gardés.`, `♻️ **${snap.channels.length} channels and categories** and the missing roles from the backup of **${snap.guildName}** will be made here. Channels that already exist with the same name are kept.`);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`tl:salons:${sub}`).setLabel(sub === "enlever" ? t("Oui, tout supprimer", "Yes, delete everything") : t("Oui, tout remettre", "Yes, put everything back")).setStyle(sub === "enlever" ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("tl:salons:non").setLabel(t("Annuler", "Cancel")).setStyle(ButtonStyle.Secondary)
+    );
+    return i.reply({ flags: ephemeral, content: text, components: [row] });
+  };
+  async function salonsButton(i, action) {
+    const pending = salonsConfirm.get(i.user.id);
+    salonsConfirm.delete(i.user.id);
+    if (action === "non") return i.update({ content: t("Annulé, rien n'a changé.", "Cancelled, nothing changed."), components: [] });
+    if (!pending || pending.action !== action || pending.exp < Date.now()) return i.update({ content: no(t("Cette confirmation a expiré. Refais la commande.", "This confirmation expired. Use the command again.")), components: [] });
+    if (action === "enlever") {
+      const snap = saveBackup(i.guild);
+      await i.update({ content: t(`💾 Sauvegarde faite (${snap.channels.length} salons, ${snap.roles.length} rôles). 🗑️ Suppression en cours… Le résultat t'est envoyé en message privé.`, `💾 Backup done (${snap.channels.length} channels, ${snap.roles.length} roles). 🗑️ Deleting… The result is sent to you in a private message.`), components: [] });
+      const r = await wipeChannels(i.guild);
+      await i.user.send(t(`✅ **${i.guild.name}** : ${r.done} salon(s) supprimé(s)${r.failed ? `, ${r.failed} impossible(s) à supprimer (salons obligatoires de la communauté)` : ""}.\nPour tout remettre : \`/salons remettre\` (crée d'abord un salon pour taper la commande).`, `✅ **${i.guild.name}**: ${r.done} channel(s) deleted${r.failed ? `, ${r.failed} could not be deleted (community channels)` : ""}.\nTo put everything back: \`/salons remettre\` (make a channel first to type the command).`)).catch(() => {});
+      console.log(`🗑️ /salons enlever: ${r.done} deleted, ${r.failed} failed`);
+      return;
+    }
+    const snap = readBackup();
+    if (!snap) return i.update({ content: no(t("La sauvegarde a disparu.", "The backup is gone.")), components: [] });
+    await i.update({ content: t("♻️ Remise en place en cours… ça peut prendre une minute.", "♻️ Putting everything back… this can take a minute."), components: [] });
+    const r = await restoreGuild(i.guild, snap);
+    console.log(`♻️ /salons remettre: ${r.made} channels, ${r.rolesMade} roles, ${r.failed} failed, ${r.changed} settings updated`);
+    const msg = t(`✅ Remis en place : **${r.made}** salon(s) et catégorie(s), **${r.rolesMade}** rôle(s) créé(s)${r.failed ? `, ${r.failed} impossible(s)` : ""}. ${r.changed} réglage(s) du bot mis à jour vers les nouveaux salons et rôles.\n-# Pense à remettre les rôles aux membres et à reposter les panels (/panel, /pingroles panel, /valueadmin panel…).`, `✅ Put back: **${r.made}** channel(s) and categor(ies), **${r.rolesMade}** role(s) made${r.failed ? `, ${r.failed} failed` : ""}. ${r.changed} bot setting(s) moved to the new channels and roles.`);
+    await i.editReply({ content: msg }).catch(() => i.user.send(msg).catch(() => {}));
+  }
+
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
     const sub = i.options.getSubcommand();
@@ -10615,6 +10774,7 @@ const tools = (() => {
         const [, kind, arg] = i.customId.split(":");
         if (kind === "rr") await roleButton(i, arg);
         else if (kind === "pgoff") await pingsOff(i);
+        else if (kind === "salons") await salonsButton(i, arg);
         else if (kind === "poll") await pollVote(i, Number(arg));
         else if (kind === "gw") await giveawayJoin(i);
         else if (kind === "gwlist") await giveawayList(i);
@@ -10711,7 +10871,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { snapshotGuild, restoreGuild, wipeChannels, refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================
