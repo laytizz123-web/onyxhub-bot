@@ -5085,7 +5085,7 @@ const tools = (() => {
             s
               .setName("create")
               .setDescription(t("Créer les salons (catégories, règles, général, logs...)", "Create the channels (categories, rules, general, logs...)"))
-              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Azari : serveur communautaire complet (texte + vocaux, tout branché)", "Azari: full community server (text + voice, all wired)"), value: "azari" }, { name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("delete").setDescription(t("Supprimer les salons créés par le bot", "Delete the channels the bot created")))
           .addSubcommand((s) =>
@@ -6630,6 +6630,42 @@ const tools = (() => {
   /* ---------- /setup: channels made (and removed) by the bot ---------- */
   // kind: text | readonly | private | privatetext. Every name is created once, remembered, and only those are ever deleted.
   const TEMPLATES = {
+    azari: [
+      { category: t("📌 INFORMATIONS", "📌 INFORMATION"), channels: [
+        { key: "rules", name: t("📜│règlement", "📜│rules"), kind: "readonly" },
+        { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly" },
+        { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
+        { key: "goodbye", name: t("🚪│au-revoir", "🚪│goodbye"), kind: "readonly" },
+        { key: "pings", name: t("🔔│rôles", "🔔│roles"), kind: "readonly", topic: t("Choisis pour quoi tu veux être mentionné.", "Pick what you want to be pinged for.") },
+        { key: "boosts", name: t("🚀│boosts", "🚀│boosts"), kind: "readonly", topic: t("Merci à tous ceux qui boostent Azari !", "Thanks to everyone boosting Azari!") },
+        { key: "partners", name: t("🤝│partenariats", "🤝│partners"), kind: "readonly" },
+      ] },
+      { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
+        { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
+        { key: "media", name: t("🖼️│médias", "🖼️│media"), kind: "text", slow: 10 },
+        { key: "memes", name: t("😂│memes", "😂│memes"), kind: "text", slow: 10 },
+        { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text", topic: t("Les commandes du bot, ici : /rank, /coins, /help…", "Bot commands here: /rank, /coins, /help…") },
+        { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly", topic: t("Propose une idée avec /suggest.", "Suggest an idea with /suggest.") },
+        { key: "counting", name: t("🔢│comptage", "🔢│counting"), kind: "text", topic: t("On compte 1, 2, 3… sans se tromper, et pas deux fois de suite.", "Count 1, 2, 3… without mistakes, never twice in a row.") },
+        { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "readonly" },
+        { key: "xp", name: t("⭐│xp", "⭐│xp"), kind: "readonly", topic: t("Un message à chaque palier d'XP.", "A message at every XP step.") },
+      ] },
+      { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
+        { key: "giveaways", name: t("🎁│giveaways", "🎁│giveaways"), kind: "readonly" },
+        { key: "events", name: t("🎮│events", "🎮│events"), kind: "readonly" },
+        { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
+        { key: "quiz", name: t("❓│quiz", "❓│quiz"), kind: "text", topic: t("Un quiz toutes les 30 minutes : le premier qui répond gagne de l'XP.", "A quiz every 30 minutes: the first right answer wins XP.") },
+      ] },
+      { category: t("🎫 SUPPORT", "🎫 SUPPORT"), channels: [
+        { key: "tickets", name: t("🎫│tickets", "🎫│tickets"), kind: "readonly", topic: t("Accès VIP et récompenses : ouvre un ticket ici.", "VIP access and rewards: open a ticket here.") },
+        { key: "help", name: t("🆘│aide", "🆘│help"), kind: "text" },
+      ] },
+      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [
+        { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
+        { key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" },
+        { key: "scamalerts", name: t("🚨│alertes", "🚨│alerts"), kind: "privatetext" },
+      ] },
+    ],
     full: [
       { category: t("📌 INFORMATIONS", "📌 INFORMATION"), channels: [
         { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly" },
@@ -6701,6 +6737,25 @@ const tools = (() => {
     ],
   };
 
+  /* the voice channels of a template; returns how many were made and the "create your voice" hub */
+  async function makeVoices(guild, key) {
+    let channelsMade = 0;
+    let hubId = "";
+    for (const group of VOICE_TEMPLATES[key]) {
+      const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
+      db.setup.voiceItems.push({ id: category.id, kind: "category" });
+      for (const c of group.channels) {
+        const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildVoice, parent: category.id, ...(c.limit ? { userLimit: c.limit } : {}), permissionOverwrites: overwritesFor(guild, group.private ? "private" : "voice", group.private), reason: "setup" });
+        db.setup.voiceItems.push({ id: channel.id, kind: "voice", key: c.key });
+        channelsMade++;
+        if (c.key === "hub") {
+          hubId = channel.id;
+          db.voc.hubs.push(channel.id);
+        }
+      }
+    }
+    return { channelsMade, hubId };
+  }
   async function setupVocCreate(i) {
     if (db.setup.voiceItems.length) return reply(i, no(t("Les vocaux ont déjà été créés. Utilise `/setup voc-delete` d'abord.", "The voice channels were already created. Use `/setup voc-delete` first.")));
     await i.deferReply({ flags: ephemeral });
@@ -6762,7 +6817,7 @@ const tools = (() => {
   async function setupCreate(i) {
     if (db.setup.items.length) return reply(i, no(t("Les salons ont déjà été créés. Utilise `/setup delete` d'abord, ou `/setup status`.", "The channels were already created. Use `/setup delete` first, or `/setup status`.")));
     await i.deferReply({ flags: ephemeral });
-    const modelKey = TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "full";
+    const modelKey = TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "azari";
     const model = TEMPLATES[modelKey];
     const guild = i.guild;
     const made = {};
@@ -6771,7 +6826,7 @@ const tools = (() => {
         const category = await guild.channels.create({ name: group.category, type: ChannelType.GuildCategory, permissionOverwrites: overwritesFor(guild, group.private ? "private" : "text", group.private), reason: "setup" });
         db.setup.items.push({ id: category.id, kind: "category" });
         for (const c of group.channels) {
-          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
+          const channel = await guild.channels.create({ name: c.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: overwritesFor(guild, c.kind, group.private), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), ...(c.topic ? { topic: c.topic } : {}), ...(c.slow ? { rateLimitPerUser: c.slow } : {}), reason: "setup" });
           db.setup.items.push({ id: channel.id, kind: "text", key: c.key });
           made[c.key] = channel;
         }
@@ -6802,6 +6857,33 @@ const tools = (() => {
     if (made.quiz) {
       Object.assign(db.cfg.autoquiz, { on: true, channelId: made.quiz.id, minutes: db.cfg.autoquiz.minutes || 30, nextAt: Date.now() + 60_000 });
     }
+    if (made.counting) Object.assign(db.cfg.counting, { channelId: made.counting.id, n: 0, last: "" });
+    if (made.scamalerts) db.cfg.scam.channelId = made.scamalerts.id;
+    let extraNote = "";
+    let pingsPosted = false;
+    if (made.pings) {
+      // the ping roles and their panel
+      try {
+        await makePingRoles(guild);
+        const panel = await made.pings.send(pingPanelBody(guild));
+        rememberPingPanel(panel);
+        pingsPosted = true;
+      } catch {
+        extraNote += t("\n⚠️ Panel des rôles de ping non posté (permission « Gérer les rôles » ?) : `/pingroles panel` dans le salon des rôles.", "\n⚠️ Ping role panel not posted (Manage Roles permission?): `/pingroles panel` in the roles channel.");
+      }
+    }
+    if (made.boosts) {
+      // Discord's own boost messages go there
+      await Promise.resolve(guild.setSystemChannel?.(made.boosts.id, "setup")).catch(() => {});
+    }
+    if (modelKey === "azari" && !db.setup.voiceItems.length) {
+      try {
+        const v = await makeVoices(guild, "full");
+        extraNote += t(`\n🔊 ${v.channelsMade} salons vocaux créés${v.hubId ? ` : en rejoignant <#${v.hubId}>, chacun a son propre vocal` : ""}.`, `\n🔊 ${v.channelsMade} voice channels made${v.hubId ? `: joining <#${v.hubId}> gives everyone their own voice channel` : ""}.`);
+      } catch {
+        extraNote += t("\n⚠️ Vocaux non créés : `/setup voc-create`.", "\n⚠️ Voice channels not made: `/setup voc-create`.");
+      }
+    }
     if (made.rules) {
       await made.rules.send({ embeds: [embed().setTitle(t("📜 Règlement", "📜 Rules")).setDescription(t("1. Respecte tout le monde.\n2. Pas de spam ni de pub.\n3. Pas de contenu choquant.\n4. Écoute le staff.\n\n*Modifie ce message comme tu veux.*", "1. Respect everyone.\n2. No spam or ads.\n3. No shocking content.\n4. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
     }
@@ -6818,7 +6900,7 @@ const tools = (() => {
     }
     save(true);
     const list = db.setup.items.filter((x) => x.kind === "text").map((x) => `<#${x.id}>`).join(" ");
-    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs, les niveaux et les suggestions sont déjà branchés.${made.middleman ? ` Va dans <#${made.middleman.id}> et tape \`/panel\` pour poster le middleman.` : ""} Pour tout enlever : \`/setup delete\`.${levelRolesNote}`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.${levelRolesNote}`)));
+    return i.editReply(ok(t(`Salons créés : ${list}\nLa bienvenue, les logs, les niveaux et les suggestions sont déjà branchés${made.counting ? ", ainsi que le comptage" : ""}${made.quiz ? " et le quiz automatique" : ""}.${pingsPosted ? ` Le panel des rôles de ping est dans <#${made.pings.id}>.` : ""}${made.middleman ? ` Va dans <#${made.middleman.id}> et tape \`/panel\` pour poster le middleman.` : ""} Pour tout enlever : \`/setup delete\`${modelKey === "azari" ? " et \`/setup voc-delete\`" : ""}.${levelRolesNote}${extraNote}`, `Channels created: ${list}\nWelcome, logs and suggestions are already connected. To remove everything: \`/setup delete\`.${levelRolesNote}`)));
   }
 
   H.setup = async (i) => {
