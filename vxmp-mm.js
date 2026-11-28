@@ -3465,6 +3465,19 @@ const gfx = (() => {
   const GOLD = [[0, "#fff3b0"], [0.5, "#ffc93c"], [1, "#ff8a1f"]];
 
   /* A colourful background: a gradient, soft glows, sparkles. */
+  /* the server's own background pictures (by kind of card); "all" is used for every kind without its own */
+  const BACKDROPS = {};
+  const setBackdrop = (kind, img) => {
+    if (img) BACKDROPS[kind] = img;
+    else delete BACKDROPS[kind];
+  };
+  /* a card's ground: the server's picture (a bit darker so the text stays readable), or the colour gradient */
+  function ground(c, kind, gradient) {
+    const img = BACKDROPS[kind] || BACKDROPS.all;
+    if (!img) return gradient();
+    const cover = coverCanvas(img, c.w, c.h);
+    for (let i = 0; i < c.px.length; i++) c.px[i] = cover.px[i] * 0.6;
+  }
   function aurora(c, seed, pal, sparkles = 14) {
     const r = rngOf(seed);
     const paint = lin(0, 0, c.w * 0.4, c.h, [[0, pal[0]], [1, pal[1]]]);
@@ -3509,7 +3522,7 @@ const gfx = (() => {
   function rank({ name, level, into, need, rank: place, xp, label, avatar }) {
     const c = new Canvas(860, 280);
     const pal = pickPalette(name);
-    aurora(c, name, pal);
+    ground(c, "rank", () => aurora(c, name, pal));
     c.glass(24, 24, 812, 232, 34);
     portrait(c, 126, 140, 148, name, avatar, [[0, pal[3]], [1, pal[4]]], pal[2]);
     c.text(cutText(c, name, 410, 46), 224, 70, 46, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
@@ -3527,7 +3540,7 @@ const gfx = (() => {
   function xpStep({ name, xp, total = xp, gained, level, into, need, rank: place, next, avatar, label }) {
     const c = new Canvas(860, 300);
     const pal = PALETTES[Math.floor(xp / 500) % PALETTES.length];
-    aurora(c, `${name}${xp}`, pal, 18);
+    ground(c, "xp", () => aurora(c, `${name}${xp}`, pal, 18));
     const r = rngOf(`${name}${xp}stars`);
     const colors = [pal[2], pal[3], pal[4], "#ffffff", "#ffd34d"];
     for (let k = 0; k < 34; k++) c.confetti(r() * 860, r() * 300, 7 + r() * 9, 3 + r() * 4, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.45 + r() * 0.4);
@@ -3549,7 +3562,7 @@ const gfx = (() => {
     const rowH = 90;
     const h = 150 + rows.length * rowH + 24;
     const c = new Canvas(900, h);
-    aurora(c, "leaderboard", PALETTES[0], 20);
+    ground(c, "leaderboard", () => aurora(c, "leaderboard", PALETTES[0], 20));
     c.text(label.title, 450, 64, fitSize(c, label.title, 700, 66), { align: "center", spacing: 4, gradient: [[0, "#ffffff"], [1, "#ffd9a0"]], glow: { blur: 16, color: "#ffb02e", alpha: 0.5 }, shadow: { dy: 4, blur: 8, alpha: 0.5 } });
     c.round(380, 104, 140, 4, lin(380, 0, 520, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]));
     const medal = [[[0, "#fff3b0"], [1, "#e69b1a"]], [[0, "#f4f6fb"], [1, "#9aa5bd"]], [[0, "#ffd0a0"], [1, "#b8651b"]]];
@@ -3579,7 +3592,7 @@ const gfx = (() => {
   function levelUp({ name, level, from, label, avatar }) {
     const c = new Canvas(760, 300);
     const pal = ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"];
-    aurora(c, `${name}${level}`, pal, 10);
+    ground(c, "levelup", () => aurora(c, `${name}${level}`, pal, 10));
     const r = rngOf(`${name}${level}confetti`);
     const colors = ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"];
     for (let k = 0; k < 46; k++) c.confetti(r() * 760, r() * 300, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, colors[Math.floor(r() * colors.length)], 0.55 + r() * 0.4);
@@ -3598,7 +3611,7 @@ const gfx = (() => {
 
   function coin(face, letter, caption) {
     const c = new Canvas(320, 340);
-    aurora(c, "coin", PALETTES[0], 10);
+    ground(c, "fun", () => aurora(c, "coin", PALETTES[0], 10));
     c.ellipseSoft(160, 288, 96, 14, 14, "#000000", 0.5);
     c.glow(160, 150, 160, "#ffb02e", 0.35);
     c.circle(160, 150, 122, lin(60, 40, 260, 260, [[0, "#fff3b0"], [0.45, "#f0b429"], [1, "#9a5d08"]]));
@@ -3617,7 +3630,7 @@ const gfx = (() => {
 
   function dice(faces, value) {
     const c = new Canvas(320, 340);
-    aurora(c, `dice${value}`, PALETTES[1], 10);
+    ground(c, "fun", () => aurora(c, `dice${value}`, PALETTES[1], 10));
     c.ellipseSoft(160, 290, 98, 14, 14, "#000000", 0.5);
     c.roundShadow(52, 48, 216, 216, 48, 24, "#000000", 0.35, 14);
     c.round(52, 48, 216, 216, 48, lin(52, 48, 268, 264, [[0, "#ffffff"], [1, "#cfd6ee"]]));
@@ -3641,7 +3654,7 @@ const gfx = (() => {
 
   function eightBall() {
     const c = new Canvas(320, 320);
-    aurora(c, "8ball", PALETTES[0], 12);
+    ground(c, "fun", () => aurora(c, "8ball", PALETTES[0], 12));
     c.ellipseSoft(160, 286, 96, 13, 14, "#000000", 0.5);
     c.glow(160, 150, 170, "#7c4dff", 0.45);
     c.circle(160, 148, 124, radial(120, 96, 200, [[0, "#5b5f99"], [0.35, "#15172e"], [1, "#04040c"]]));
@@ -3655,7 +3668,7 @@ const gfx = (() => {
 
   function quizCard(lines, label, opts = {}) {
     const c = new Canvas(720, 320);
-    aurora(c, lines.join("|"), PALETTES[0], 16);
+    ground(c, "quiz", () => aurora(c, lines.join("|"), PALETTES[0], 16));
     c.glass(20, 20, 680, 280, 36, 0.09);
     c.pill(44, 40, 118, 42, lin(44, 0, 162, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), label, 24, { spacing: 4, glow: "#7c4dff" });
     c.pill(584, 40, 92, 42, lin(584, 0, 676, 0, [[0, "#19c7ff"], [1, "#7c4dff"]]), opts.timer || "30 s", 22, { spacing: 1, glow: "#19c7ff" });
@@ -3691,7 +3704,7 @@ const gfx = (() => {
 
   function banner(title, subtitle, colorA, colorB, mark) {
     const c = new Canvas(900, 176);
-    aurora(c, `${title}${subtitle}`, [colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"], 12);
+    ground(c, "banner", () => aurora(c, `${title}${subtitle}`, [colorA, colorB, "#7c4dff", "#19c7ff", "#ff4fd8"], 12));
     c.glass(18, 18, 864, 140, 32, 0.08);
     const picture = mark ? logo(mark) : null;
     if (picture) {
@@ -3721,12 +3734,39 @@ const gfx = (() => {
   }
 
   /* The welcome picture: a background, a foreground (glass, avatar, texts) and the moving parts. */
-  function welcomeScene({ name, server, count, avatar, label }) {
+  /* a picture cut to fill W x H (like a "cover" background), averaged when it is shrunk */
+  function coverCanvas(img, W, H) {
+    const c = new Canvas(W, H, "#000000");
+    const scale = Math.max(W / img.w, H / img.h);
+    const ox = (img.w * scale - W) / 2, oy = (img.h * scale - H) / 2;
+    const step = Math.max(1, Math.floor(1 / scale));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const sx = Math.min(img.w - 1, Math.floor((x + ox) / scale)), sy = Math.min(img.h - 1, Math.floor((y + oy) / scale));
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = 0; dy < step && sy + dy < img.h; dy++) for (let dx = 0; dx < step && sx + dx < img.w; dx++) {
+        const o = ((sy + dy) * img.w + sx + dx) * 4, a = img.data[o + 3] / 255;
+        r += img.data[o] * a; g += img.data[o + 1] * a; b += img.data[o + 2] * a; n++;
+      }
+      const i = (y * W + x) * 3;
+      c.px[i] = r / n; c.px[i + 1] = g / n; c.px[i + 2] = b / n;
+    }
+    return c;
+  }
+  const coverPng = (img, W = 720, H = 240) => coverCanvas(img, W, H).png();
+  function welcomeScene({ name, server, count, avatar, label, bg: bgImg = null, accent = "", title = "", sub = "", pill = "" }) {
     const W = 720;
     const H = 240;
-    const pal = pickPalette(name);
-    const bg = new Canvas(W, H);
-    aurora(bg, `welcome${name}`, pal, 8);
+    const pal = [...pickPalette(name)];
+    if (/^#[0-9a-f]{6}$/i.test(accent)) pal[2] = pal[3] = accent;
+    let bg;
+    if (bgImg) {
+      // the server's own picture, a bit darker so the text stays readable
+      bg = coverCanvas(bgImg, W, H);
+      for (let i = 0; i < bg.px.length; i++) bg.px[i] *= 0.62;
+    } else {
+      bg = new Canvas(W, H);
+      aurora(bg, `welcome${name}`, pal, 8);
+    }
 
     // The foreground is drawn on black and on white, which gives its exact transparency: it can then be laid over every frame.
     const drawForeground = (c) => {
@@ -3738,9 +3778,10 @@ const gfx = (() => {
         c.text(initial(name), 118, 120, 70, { align: "center", shadow: { dy: 3, blur: 5, alpha: 0.4 } });
       }
       c.text(cutText(c, name, 460, 38), 222, 112, 38, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
-      c.text(cutText(c, `${label.to} ${server}`, 460, 24, "regular"), 222, 148, 24, { font: "regular", alpha: 0.85 });
-      const pillText = `${label.member} #${count}`;
-      c.pill(222, 172, c.measure(pillText, 20, "bold", 2) + 40, 36, lin(222, 0, 460, 0, [[0, "#7c4dff"], [1, "#ff4fd8"]]), pillText, 20, { spacing: 2, glow: "#7c4dff" });
+      c.text(cutText(c, sub || `${label.to} ${server}`, 460, 24, "regular"), 222, 148, 24, { font: "regular", alpha: 0.85 });
+      const pillText = pill || `${label.member} #${count}`;
+      const pillFrom = /^#[0-9a-f]{6}$/i.test(accent) ? accent : "#7c4dff";
+      c.pill(222, 172, c.measure(pillText, 20, "bold", 2) + 40, 36, lin(222, 0, 460, 0, [[0, pillFrom], [1, "#ff4fd8"]]), pillText, 20, { spacing: 2, glow: pillFrom });
     };
     const onBlack = new Canvas(W, H, "#000000");
     const onWhite = new Canvas(W, H, "#ffffff");
@@ -3780,7 +3821,8 @@ const gfx = (() => {
       c.ring(118, 120, 77 + 2 * pulse, 7 + 3 * pulse, lin(40, 40, 200, 200, [[0, pal[3]], [1, pal[4]]])); // over the avatar's shadow: it shines
       // moving shine across the title
       const bandX = 214 + (t * 1.6 - 0.3) * 470;
-      c.text(label.welcome, 222, 64, fitSize(c, label.welcome, 460, 60), {
+      const head = title || label.welcome;
+      c.text(head, 222, 64, fitSize(c, head, 460, 60), {
         spacing: 3,
         paint: (top, base) => {
           const g = lin(0, top, 0, base, [[0, "#ffffff"], [1, "#ffd9a0"]]);
@@ -3852,7 +3894,7 @@ const gfx = (() => {
     const H = 240;
     const pal = ["#2a1250", "#6a2a8a", "#ffb02e", "#ff5ccf", "#7a6bff"];
     const bg = new Canvas(W, H);
-    aurora(bg, `giveaway${prize}`, pal, 8);
+    ground(bg, "giveaway", () => aurora(bg, `giveaway${prize}`, pal, 8));
     const overlay = overlayOf(W, H, (c) => {
       c.glass(18, 18, W - 36, H - 36, 34, 0.1);
       c.text(cutText(c, prize, 450, 46), 232, 128, fitSize(c, cutText(c, prize, 450, 46), 450, 46), { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
@@ -3892,7 +3934,7 @@ const gfx = (() => {
   /* The card of the end: a crown over the first winner, the names, how many entered. */
   function giveawayEnd({ prize, winners, count, label }) {
     const c = new Canvas(720, 240);
-    aurora(c, `gwend${prize}`, ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"], 12);
+    ground(c, "giveaway", () => aurora(c, `gwend${prize}`, ["#2b1604", "#7a3a0c", "#ffd34d", "#ff8a3d", "#fff0a0"], 12));
     const r = rngOf(`gwendconfetti${prize}`);
     for (let k = 0; k < 40; k++) c.confetti(r() * 720, r() * 240, 8 + r() * 10, 4 + r() * 5, r() * Math.PI, ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(r() * 6)], 0.55 + r() * 0.4);
     c.glass(18, 18, 684, 204, 34, 0.1);
@@ -4344,7 +4386,7 @@ const gfx = (() => {
     });
   }
 
-  return { emojiIconSprite, EMOJI_PACK, emojiTextSprite, spriteFromImage, emojiFrame, encodeGifAlpha, EMOJI_STYLES, Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
+  return { setBackdrop, coverPng, emojiIconSprite, EMOJI_PACK, emojiTextSprite, spriteFromImage, emojiFrame, encodeGifAlpha, EMOJI_STYLES, Canvas, decodePng, encodeGif, logo, giveawayAnimated, giveawayEnd, banner, rank, xpStep, leaderboard, levelUp, coin, dice, eightBall, quizCard, welcome, welcomeAnimated, shield, measure: (s, size, font) => new Canvas(1, 1).measure(s, size, font), ascii: (s) => String(s ?? "") };
 })();
 
 /* =====================================================
@@ -4416,7 +4458,8 @@ const tools = (() => {
     setup: { items: [], voiceItems: [], levelRoles: [], autoWelcome: false },
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, boardChannelId: "", boardMsgId: "", voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
-      welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" },
+      // card / leaveCard: the picture under the message; title, leaveTitle, color: its look; bg, leaveBg: its background (a file next to tools.json)
+      welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "", card: true, leaveCard: true, title: "", leaveTitle: "", color: "", bg: "", leaveBg: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
@@ -4424,7 +4467,8 @@ const tools = (() => {
       commandsOnly: { channels: [] },
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
-      pings: { roles: {}, made: [], off: [], panels: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
+      pings: { roles: {}, made: [], off: [], panels: [] },
+      backgrounds: { all: "", xp: "", levelup: "", rank: "", leaderboard: "", quiz: "", giveaway: "", banner: "", fun: "" }, // file names next to tools.json // ping id -> role id ; made: the roles the bot created (only those are deleted)
       supporter: { tagRole: "", statusRole: "", statusText: "/azari", channelId: "", channels: [], langs: {}, thanks: {} }, // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
@@ -4645,18 +4689,72 @@ const tools = (() => {
   const cardLabel = () => ({ level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), title: t("CLASSEMENT", "LEADERBOARD"), up: t("NIVEAU SUPÉRIEUR !", "LEVEL UP!"), welcome: t("BIENVENUE", "WELCOME"), to: t("sur", "to"), member: t("MEMBRE", "MEMBER") });
 
   /* The welcome picture of a member: a still PNG (fast). The animated GIF took seconds to draw on a small host. */
-  async function welcomeCard(member, animated = false) {
-    const opts = { name: member.displayName || member.user?.username || "?", server: member.guild?.name || "", count: member.guild?.memberCount ?? 0, avatar: await loadAvatar(member), label: cardLabel() };
+  /* the background pictures of the welcome and goodbye cards: saved once at the card size, read again only when they change */
+  const bgCache = new Map();
+  function cardBackground(file) {
+    if (!file) return null;
+    const full = path.join(process.env.DATA_DIR || __dirname, path.basename(file));
+    try {
+      const stamp = fs.statSync(full).mtimeMs;
+      const hit = bgCache.get(full);
+      if (hit && hit.stamp === stamp) return hit.img;
+      const img = gfx.decodePng(fs.readFileSync(full));
+      bgCache.set(full, { stamp, img });
+      return img;
+    } catch {
+      return null;
+    }
+  }
+  /* a picture (PNG bytes) becomes the background: cut to the card size and saved */
+  function saveCardBackground(which, png) {
+    const img = gfx.decodePng(png);
+    if (!img || !img.w || img.w * img.h > 25_000_000) throw new Error("bad picture");
+    const name = which === "leave" ? "leave-bg.png" : "welcome-bg.png";
+    fs.writeFileSync(path.join(process.env.DATA_DIR || __dirname, name), gfx.coverPng(img, 720, 240));
+    db.cfg.welcome[which === "leave" ? "leaveBg" : "bg"] = name;
+    save(true);
+    return name;
+  }
+  /* any picture link: a PNG as it is; otherwise Discord's media server turns it into a PNG */
+  async function fetchPng(url) {
+    const get = async (u) => {
+      const res = await fetch(u, { signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      return buf.length < 12_000_000 && buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a" ? buf : null;
+    };
+    const direct = await get(url).catch(() => null);
+    if (direct) return direct;
+    const proxied = String(url).replace("https://cdn.discordapp.com/", "https://media.discordapp.net/");
+    return get(`${proxied}${proxied.includes("?") ? "&" : "?"}format=png`).catch(() => null);
+  }
+  async function welcomeCard(member, animated = false, mode = "join") {
+    const w = db.cfg.welcome;
+    const leave = mode === "leave";
+    const count = member.guild?.memberCount ?? 0;
+    const opts = {
+      name: member.displayName || member.user?.username || "?",
+      server: member.guild?.name || "",
+      count,
+      avatar: await loadAvatar(member),
+      label: cardLabel(),
+      bg: cardBackground(leave ? w.leaveBg || w.bg : w.bg),
+      accent: w.color || "",
+      title: (leave ? w.leaveTitle || t("AU REVOIR", "GOODBYE") : w.title || "").slice(0, 24),
+      sub: leave ? `${t("a quitté", "left")} ${member.guild?.name || ""}` : "",
+      pill: leave ? t(`${count} membres`, `${count} members`) : "",
+    };
     if (animated) {
       try {
         await new Promise((resolve) => setImmediate(resolve)); // let other events through first: the animation takes about a second
-        return picture("welcome.gif", gfx.welcomeAnimated(opts));
+        return picture(leave ? "goodbye.gif" : "welcome.gif", gfx.welcomeAnimated(opts));
       } catch (error) {
         console.error("⚠️ Animated welcome failed, using a still picture:", error?.message || error);
       }
     }
-    return picture("welcome.png", gfx.welcome(opts));
+    return picture(leave ? "goodbye.png" : "welcome.png", gfx.welcome(opts));
   }
+  const accentNum = () => (/^#[0-9a-f]{6}$/i.test(db.cfg.welcome.color) ? parseInt(db.cfg.welcome.color.slice(1), 16) : null);
 
   /* The profile picture of a member as a decoded image (null when it cannot be loaded: the card then shows an initial). */
   const avatarCache = new Map();
@@ -4925,7 +5023,26 @@ const tools = (() => {
           )
           .addSubcommand((s) => s.setName("autorole").setDescription(t("Rôle donné aux nouveaux", "Role given to new members")).addRoleOption((o) => o.setName("role").setDescription("Rôle (vide = aucun)")))
           .addSubcommand((s) => s.setName("off").setDescription(t("Tout couper", "Turn everything off")))
-          .addSubcommand((s) => s.setName("test").setDescription(t("Tester le message", "Test the message")))
+          .addSubcommand((s) => s.setName("test").setDescription(t("Voir le rendu du message de bienvenue ou d'au revoir", "See the welcome or goodbye message")).addStringOption((o) => o.setName("type").setDescription(t("Lequel", "Which one")).addChoices({ name: t("👋 Bienvenue", "👋 Welcome"), value: "bienvenue" }, { name: t("🚪 Au revoir", "🚪 Goodbye"), value: "aurevoir" })))
+          .addSubcommand((s) =>
+            s
+              .setName("fond")
+              .setDescription(t("Mettre une image en arrière-plan de la carte de bienvenue / d'au revoir", "Put a picture behind the welcome / goodbye card"))
+              .addAttachmentOption((o) => o.setName("image").setDescription(t("L'image (PNG ou JPG)", "The picture (PNG or JPG)")))
+              .addStringOption((o) => o.setName("lien").setDescription(t("Ou le lien d'une image", "Or a picture link")).setMaxLength(500))
+              .addStringOption((o) => o.setName("pour").setDescription(t("Pour quelle carte (bienvenue par défaut)", "For which card (welcome by default)")).addChoices({ name: t("👋 Bienvenue", "👋 Welcome"), value: "bienvenue" }, { name: t("🚪 Au revoir", "🚪 Goodbye"), value: "aurevoir" }, { name: t("Les deux", "Both"), value: "les2" }))
+              .addBooleanOption((o) => o.setName("retirer").setDescription(t("Retirer le fond (le dégradé revient)", "Remove the background (the gradient comes back)")))
+          )
+          .addSubcommand((s) =>
+            s
+              .setName("style")
+              .setDescription(t("Titre, couleur et images des messages de bienvenue / d'au revoir", "Title, colour and pictures of the welcome / goodbye messages"))
+              .addStringOption((o) => o.setName("titre").setDescription(t("Le grand titre de la carte de bienvenue (vide = BIENVENUE)", "The big title of the welcome card (empty = WELCOME)")).setMaxLength(24))
+              .addStringOption((o) => o.setName("titre_aurevoir").setDescription(t("Le titre de la carte d'au revoir (vide = AU REVOIR)", "The title of the goodbye card (empty = GOODBYE)")).setMaxLength(24))
+              .addStringOption((o) => o.setName("couleur").setDescription(t("La couleur, ex : #ff4fd8 (vide = par défaut)", "The colour, e.g. #ff4fd8 (empty = default)")).setMaxLength(7))
+              .addBooleanOption((o) => o.setName("image").setDescription(t("Mettre une image sous le message de bienvenue", "Put a picture under the welcome message")))
+              .addBooleanOption((o) => o.setName("image_aurevoir").setDescription(t("Mettre une image sous le message d'au revoir", "Put a picture under the goodbye message")))
+          )
       ),
       D(
         P.ManageRoles,
@@ -4935,6 +5052,22 @@ const tools = (() => {
           for (let n = 2; n <= 5; n++) b = b.addRoleOption((o) => o.setName(`role${n}`).setDescription(`Rôle ${n}`));
           return b;
         })()
+      ),
+      // the backgrounds of the pictures
+      D(
+        P.ManageGuild,
+        cmd("fonds", t("Mettre tes propres images en fond des cartes (XP, niveau, quiz, giveaway, bienvenue…)", "Put your own pictures behind the cards (XP, level, quiz, giveaway, welcome…)"))
+          .addSubcommand((s) =>
+            s
+              .setName("mettre")
+              .setDescription(t("Mettre une image en fond d'un type de carte", "Put a picture behind a kind of card"))
+              .addStringOption((o) => o.setName("type").setDescription(t("Quelle carte (vide = toutes)", "Which card (empty = all)")).addChoices(...BG_KINDS.map(([value, name]) => ({ name, value }))))
+              .addAttachmentOption((o) => o.setName("image").setDescription(t("L'image (PNG ou JPG)", "The picture (PNG or JPG)")))
+              .addStringOption((o) => o.setName("lien").setDescription(t("Ou le lien d'une image", "Or a picture link")).setMaxLength(500))
+          )
+          .addSubcommand((s) => s.setName("retirer").setDescription(t("Retirer un fond (le dégradé revient)", "Remove a background (the gradient comes back)")).addStringOption((o) => o.setName("type").setDescription(t("Quelle carte", "Which card")).setRequired(true).addChoices(...BG_KINDS.map(([value, name]) => ({ name, value })))))
+          .addSubcommand((s) => s.setName("apercu").setDescription(t("Voir le rendu d'une carte", "See how a card looks")).addStringOption((o) => o.setName("type").setDescription(t("Quelle carte", "Which card")).setRequired(true).addChoices(...BG_KINDS.map(([value, name]) => ({ name, value })))))
+          .addSubcommand((s) => s.setName("voir").setDescription(t("Voir quelles cartes ont un fond", "See which cards have a background")))
       ),
       // moving server: save, delete and put back every channel
       D(
@@ -5303,7 +5436,7 @@ const tools = (() => {
     }
     return out.filter((c) => !MM_ONLY.has(c.name));
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "fonds", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -5892,15 +6025,55 @@ const tools = (() => {
       return reply(i, ok(role ? t(`Les nouveaux recevront ${role}.`, `New members will get ${role}.`) : t("Plus de rôle automatique.", "No more auto role.")));
     }
     if (sub === "off") {
-      db.cfg.welcome = { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "" };
+      db.cfg.welcome = { ...defaults().cfg.welcome };
       save();
       return reply(i, ok(t("Bienvenue coupé.", "Welcome turned off.")));
     }
     if (sub === "test") {
-      if (!w.message) return reply(i, no(t("Aucun message. Utilise `/welcome channel`.", "No message. Use `/welcome channel`.")));
+      const leave = i.options.getString("type") === "aurevoir";
+      const text = leave ? w.leave : w.message;
+      if (!text) return reply(i, no(leave ? t("Aucun message d'au revoir. Utilise `/welcome leave`.", "No goodbye message. Use `/welcome leave`.") : t("Aucun message. Utilise `/welcome channel`.", "No message. Use `/welcome channel`.")));
       await i.deferReply({ flags: ephemeral });
-      const card = await welcomeCard(i.member);
-      return i.editReply({ content: fill(w.message, i.member), embeds: [embed(0xff8a3d).setImage(card.url)], files: [card.file] });
+      if (leave ? w.leaveCard === false : w.card === false) return i.editReply({ content: fill(text, i.member) });
+      const card = await welcomeCard(i.member, false, leave ? "leave" : "join");
+      return i.editReply({ content: fill(text, i.member), embeds: [embed(accentNum() ?? (leave ? 0x95a5a6 : 0xff8a3d)).setImage(card.url)], files: [card.file] });
+    }
+    if (sub === "fond") {
+      const which = i.options.getString("pour") || "bienvenue";
+      const keys = which === "les2" ? ["join", "leave"] : [which === "aurevoir" ? "leave" : "join"];
+      if (i.options.getBoolean("retirer")) {
+        for (const k of keys) w[k === "leave" ? "leaveBg" : "bg"] = "";
+        save();
+        return reply(i, ok(t("Fond retiré : le dégradé coloré revient.", "Background removed: the colour gradient is back.")));
+      }
+      const file = i.options.getAttachment("image");
+      const link = file?.url || String(i.options.getString("lien") || "").trim();
+      if (!link) return reply(i, no(t("Ajoute une image (option `image`) ou un lien (option `lien`).", "Add a picture (`image` option) or a link (`lien` option).")));
+      await i.deferReply({ flags: ephemeral });
+      const png = await fetchPng(link);
+      if (!png) return i.editReply(no(t("Je n'arrive pas à lire cette image. Essaie une image PNG ou JPG classique, de moins de 10 Mo.", "I cannot read this picture. Try a normal PNG or JPG under 10 MB.")));
+      try {
+        for (const k of keys) saveCardBackground(k, png);
+      } catch {
+        return i.editReply(no(t("Cette image n'est pas lisible.", "This picture cannot be read.")));
+      }
+      const card = await welcomeCard(i.member, false, keys[0]);
+      return i.editReply({ content: ok(t("Fond enregistré ! Voilà le rendu :", "Background saved! Here is how it looks:")), embeds: [embed(accentNum() ?? 0xff8a3d).setImage(card.url)], files: [card.file] });
+    }
+    if (sub === "style") {
+      const title = i.options.getString("titre"), leaveTitle = i.options.getString("titre_aurevoir"), color = i.options.getString("couleur");
+      const card = i.options.getBoolean("image"), leaveCard = i.options.getBoolean("image_aurevoir");
+      if (color !== null) {
+        const c = String(color).trim();
+        if (c && !/^#?[0-9a-f]{6}$/i.test(c)) return reply(i, no(t("Couleur invalide : mets un code comme `#ff4fd8` (vide = couleur par défaut).", "Invalid colour: use a code like `#ff4fd8` (empty = default colour).")));
+        w.color = c ? `#${c.replace("#", "").toLowerCase()}` : "";
+      }
+      if (title !== null) w.title = String(title).trim().slice(0, 24);
+      if (leaveTitle !== null) w.leaveTitle = String(leaveTitle).trim().slice(0, 24);
+      if (card !== null) w.card = card;
+      if (leaveCard !== null) w.leaveCard = leaveCard;
+      save();
+      return reply(i, ok(t(`Style enregistré : titre **${w.title || "BIENVENUE"}** · au revoir **${w.leaveTitle || "AU REVOIR"}** · couleur **${w.color || "par défaut"}** · image de bienvenue **${w.card !== false ? "oui" : "non"}** · image d'au revoir **${w.leaveCard !== false ? "oui" : "non"}**.\n-# \`/welcome test\` pour voir le rendu.`, `Style saved. Use \`/welcome test\` to see it.`)));
     }
   };
   const recentJoins = [];
@@ -5926,13 +6099,14 @@ const tools = (() => {
       const channel = await member.guild.channels.fetch(w.channelId).catch(() => null);
       if (channel?.isTextBased?.()) {
         const body = { content: fill(w.message, member), allowedMentions: { users: [member.id] } };
-        try {
-          const card = await welcomeCard(member);
-          body.embeds = [embed(0xff8a3d).setImage(card.url)];
-          body.files = [card.file];
-        } catch (error) {
-          console.error("⚠️ Welcome picture failed:", error?.message || error);
-        }
+        if (w.card !== false)
+          try {
+            const card = await welcomeCard(member);
+            body.embeds = [embed(accentNum() ?? 0xff8a3d).setImage(card.url)];
+            body.files = [card.file];
+          } catch (error) {
+            console.error("⚠️ Welcome picture failed:", error?.message || error);
+          }
         await channel.send(body).catch(() => {});
       }
     }
@@ -5943,7 +6117,18 @@ const tools = (() => {
     const target = w.leaveChannelId || w.channelId;
     if (target && w.leave) {
       const channel = await member.guild.channels.fetch(target).catch(() => null);
-      if (channel?.isTextBased?.()) await channel.send({ content: fill(w.leave, member), allowedMentions: { parse: [] } }).catch(() => {});
+      if (channel?.isTextBased?.()) {
+        const body = { content: fill(w.leave, member), allowedMentions: { parse: [] } };
+        if (w.leaveCard !== false && member.user)
+          try {
+            const card = await welcomeCard(member, false, "leave");
+            body.embeds = [embed(accentNum() ?? 0x95a5a6).setImage(card.url)];
+            body.files = [card.file];
+          } catch (error) {
+            console.error("⚠️ Goodbye picture failed:", error?.message || error);
+          }
+        await channel.send(body).catch(() => {});
+      }
     }
     await log(member.guild, `📤 ${member.user ? `${member.user.username}` : member.id} ${t("a quitté", "left")}`, 0xe67e22);
   }
@@ -6982,6 +7167,7 @@ const tools = (() => {
           ]
         : []),
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
+      [t("🎨 Fonds des images", "🎨 Picture backgrounds"), "`/fonds mettre` `/fonds retirer` `/fonds apercu` `/fonds voir` · `/welcome style` `/welcome fond`", P.ManageGuild],
       [t("💾 Changer de serveur", "💾 Moving server"), "`/salons sauvegarder` `/salons enlever` `/salons enlever-roles` `/salons remettre` `/salons voir`", P.Administrator],
       [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
       [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
@@ -9165,6 +9351,7 @@ const tools = (() => {
       defaults: defaults().cfg,
       indexes: INDEXES.map((x) => ({ id: x.id, emoji: x.emoji, label: x.label })),
       pings: PINGS.map((p) => ({ id: p.id, emoji: p.emoji, name: p.name, about: p.about })),
+      backgrounds: BG_KINDS.map(([id, name]) => ({ id, name, has: hasBackdrop(id) })),
       scams: Object.entries(db.scams || {}).map(([id, s]) => ({ id, name: client?.users?.cache?.get?.(id)?.username || "", ...s })),
       channels,
       roles,
@@ -9296,6 +9483,48 @@ const tools = (() => {
         return send(res, 200, { ok: true });
       }
       return send(res, 400, { error: "action" });
+    }
+    if (url.pathname === "/api/backdrop") {
+      const kind = BG_KINDS.some((x) => x[0] === body.kind) ? body.kind : "";
+      if (!kind) return send(res, 400, { error: t("Type de carte inconnu.", "Unknown kind of card.") });
+      if (body.remove) removeBackdrop(kind);
+      else {
+        const m = /^data:image\/png;base64,(.+)$/.exec(String(body.data || ""));
+        if (!m) return send(res, 400, { error: t("Image illisible.", "Unreadable picture.") });
+        try {
+          saveBackdrop(kind, Buffer.from(m[1], "base64"));
+        } catch {
+          return send(res, 400, { error: t("Image illisible.", "Unreadable picture.") });
+        }
+      }
+      return send(res, 200, { ok: true, has: hasBackdrop(kind) });
+    }
+    if (url.pathname === "/api/backdrop-preview") {
+      const kind = BG_KINDS.some((x) => x[0] === body.kind) ? body.kind : "rank";
+      const png = await backdropPreview(kind === "all" ? "rank" : kind).catch(() => null);
+      return png ? send(res, 200, { ok: true, image: `data:image/png;base64,${Buffer.from(png).toString("base64")}` }) : send(res, 400, { error: "preview" });
+    }
+    if (url.pathname === "/api/welcome-bg") {
+      const which = body.which === "leave" ? "leave" : "join";
+      if (body.remove) {
+        db.cfg.welcome[which === "leave" ? "leaveBg" : "bg"] = "";
+        save(true);
+        return send(res, 200, { ok: true, cfg: db.cfg.welcome });
+      }
+      const m = /^data:image\/png;base64,(.+)$/.exec(String(body.data || ""));
+      if (!m) return send(res, 400, { error: t("Image illisible.", "Unreadable picture.") });
+      try {
+        saveCardBackground(which, Buffer.from(m[1], "base64"));
+      } catch {
+        return send(res, 400, { error: t("Image illisible.", "Unreadable picture.") });
+      }
+      return send(res, 200, { ok: true, cfg: db.cfg.welcome });
+    }
+    if (url.pathname === "/api/welcome-preview") {
+      const guild = client?.guilds?.cache?.first?.();
+      const fake = { displayName: t("Nouveau membre", "New member"), user: { username: "membre", displayAvatarURL: () => "" }, guild: { name: guild?.name || "Azari", memberCount: guild?.memberCount || 100 }, displayAvatarURL: () => "" };
+      const card = await welcomeCard(fake, false, body.which === "leave" ? "leave" : "join");
+      return send(res, 200, { ok: true, image: `data:image/png;base64,${Buffer.from(card.file.attachment).toString("base64")}` });
     }
     if (url.pathname === "/api/send") {
       const channel = await Promise.resolve(client?.channels?.fetch?.(String(body.channelId || ""))).catch(() => null);
@@ -9741,6 +9970,106 @@ const tools = (() => {
     const msg = t(`✅ Remis en place : **${r.made}** salon(s) et catégorie(s), **${r.rolesMade}** rôle(s) créé(s)${r.failed ? `, ${r.failed} impossible(s)` : ""}, rôles redonnés à **${r.given}** membre(s). ${r.changed} réglage(s) du bot mis à jour vers les nouveaux salons et rôles.\n-# Pense à reposter les panels (/panel, /pingroles panel, /valueadmin panel…).`, `✅ Put back: **${r.made}** channel(s) and categor(ies), **${r.rolesMade}** role(s) made${r.failed ? `, ${r.failed} failed` : ""}. ${r.changed} bot setting(s) moved to the new channels and roles.`);
     await i.editReply({ content: msg }).catch(() => i.user.send(msg).catch(() => {}));
   }
+
+  /* ---------- /fonds: the server's own background pictures for every card the bot draws ---------- */
+  const BG_KINDS = [
+    ["all", t("🌐 Toutes les images (par défaut)", "🌐 Every picture (default)")],
+    ["welcome", t("👋 Bienvenue", "👋 Welcome")],
+    ["leave", t("🚪 Au revoir", "🚪 Goodbye")],
+    ["xp", t("⭐ Paliers d'XP", "⭐ XP steps")],
+    ["levelup", t("🎉 Niveau supérieur", "🎉 Level up")],
+    ["rank", t("🏅 Carte de niveau (/rank)", "🏅 Rank card (/rank)")],
+    ["leaderboard", t("🏆 Classement XP", "🏆 XP leaderboard")],
+    ["quiz", t("❓ Quiz", "❓ Quiz")],
+    ["giveaway", t("🎁 Giveaways", "🎁 Giveaways")],
+    ["banner", t("🖼️ Bannières des panels", "🖼️ Panel banners")],
+    ["fun", t("🎲 Jeux (pièce, dé, 8ball)", "🎲 Games (coin, dice, 8ball)")],
+  ];
+  const bgFile = (kind) => path.join(process.env.DATA_DIR || __dirname, `bg-${kind}.png`);
+  /* at start: the saved pictures go back into the drawing engine */
+  function loadBackdrops() {
+    for (const [kind] of BG_KINDS) {
+      if (kind === "welcome" || kind === "leave") continue;
+      const name = db.cfg.backgrounds[kind];
+      if (!name) {
+        gfx.setBackdrop(kind, null);
+        continue;
+      }
+      try {
+        gfx.setBackdrop(kind, gfx.decodePng(fs.readFileSync(bgFile(kind))));
+      } catch {
+        gfx.setBackdrop(kind, null);
+      }
+    }
+  }
+  /* a picture (PNG bytes) becomes the background of a kind of card (kept at most 1280 px wide) */
+  function saveBackdrop(kind, png) {
+    if (kind === "welcome" || kind === "leave") return saveCardBackground(kind === "leave" ? "leave" : "join", png);
+    const img = gfx.decodePng(png);
+    if (!img || !img.w || img.w * img.h > 25_000_000) throw new Error("bad picture");
+    const scale = Math.min(1, 1280 / Math.max(img.w, img.h));
+    fs.writeFileSync(bgFile(kind), gfx.coverPng(img, Math.max(1, Math.round(img.w * scale)), Math.max(1, Math.round(img.h * scale))));
+    db.cfg.backgrounds[kind] = `bg-${kind}.png`;
+    save(true);
+    loadBackdrops();
+    return true;
+  }
+  function removeBackdrop(kind) {
+    if (kind === "welcome") db.cfg.welcome.bg = "";
+    else if (kind === "leave") db.cfg.welcome.leaveBg = "";
+    else db.cfg.backgrounds[kind] = "";
+    save(true);
+    loadBackdrops();
+  }
+  const hasBackdrop = (kind) => (kind === "welcome" ? Boolean(db.cfg.welcome.bg) : kind === "leave" ? Boolean(db.cfg.welcome.leaveBg) : Boolean(db.cfg.backgrounds[kind]));
+  /* how a kind of card looks now, with example values */
+  async function backdropPreview(kind, member = null) {
+    const name = member?.displayName || member?.user?.username || t("Membre", "Member");
+    const label = cardLabel();
+    const avatar = member ? await loadAvatar(member).catch(() => null) : null;
+    if (kind === "welcome" || kind === "leave") {
+      const fake = member || { displayName: name, user: { username: name, displayAvatarURL: () => "" }, guild: { name: "Azari", memberCount: 123 } };
+      return (await welcomeCard(fake, false, kind === "leave" ? "leave" : "join")).file.attachment;
+    }
+    if (kind === "xp") return gfx.xpStep({ name, xp: 1500, total: 1500, gained: 25, level: 7, into: 60, need: 200, rank: 3, next: 1600, avatar, label: { step: t("NOUVEAU PALIER", "NEW STEP"), level: t("NIVEAU", "LEVEL"), rank: t("RANG", "RANK"), next: t("Prochain palier :", "Next step:") } });
+    if (kind === "levelup") return gfx.levelUp({ name, level: 10, from: 9, avatar, label });
+    if (kind === "leaderboard") return gfx.leaderboard([1, 2, 3].map((k) => ({ name: `${name} ${k}`, level: 12 - k * 2, into: 50, need: 200, xp: 4000 - k * 900, avatar: null })), label);
+    if (kind === "quiz") return gfx.quizCard(["7 × 8 = ?"], "QUIZ");
+    if (kind === "giveaway") return gfx.giveawayEnd({ prize: "Nitro", winners: [{ name, avatar }], count: 42, label: gwWord() });
+    if (kind === "banner") return gfx.banner("AZARI", t("PANEL", "PANEL"), "#2a1a5e", "#7c4dff");
+    if (kind === "fun") return gfx.coin("A", t("F", "H"), t("FACE", "HEADS"));
+    return gfx.rank({ name, level: 7, into: 60, need: 200, rank: 3, xp: 1500, label, avatar });
+  }
+  H.fonds = async (i) => {
+    if (need_perm(i, P.ManageGuild)) return;
+    const sub = i.options.getSubcommand();
+    if (sub === "voir") {
+      const lines = BG_KINDS.map(([k, n]) => `${hasBackdrop(k) ? "🖼️" : "▫️"} ${n}${hasBackdrop(k) ? t(" · **image**", " · **picture**") : t(" · dégradé", " · gradient")}`);
+      return i.reply({ flags: ephemeral, embeds: [embed(0x7c4dff).setTitle(t("🎨  Fonds des images", "🎨  Picture backgrounds")).setDescription(`${lines.join("\n")}\n\n-# ${t("« Toutes les images » sert pour chaque image qui n'a pas son propre fond (sauf bienvenue et au revoir).", "\"Every picture\" is used by each picture without its own background (except welcome and goodbye).")}`)] });
+    }
+    const kind = i.options.getString("type") || "all";
+    const label = (BG_KINDS.find((x) => x[0] === kind) || BG_KINDS[0])[1];
+    if (sub === "retirer") {
+      removeBackdrop(kind);
+      return reply(i, ok(t(`Fond retiré pour ${label} : le dégradé coloré revient.`, `Background removed for ${label}: the colour gradient is back.`)));
+    }
+    const file = i.options.getAttachment?.("image");
+    const link = file?.url || String(i.options.getString("lien") || "").trim();
+    await i.deferReply({ flags: ephemeral });
+    if (sub === "mettre") {
+      if (!link) return i.editReply(no(t("Ajoute une image (option `image`) ou un lien (option `lien`).", "Add a picture (`image` option) or a link (`lien` option).")));
+      const png = await fetchPng(link);
+      if (!png) return i.editReply(no(t("Je n'arrive pas à lire cette image. Essaie une image PNG ou JPG classique, de moins de 10 Mo.", "I cannot read this picture. Try a normal PNG or JPG under 10 MB.")));
+      try {
+        saveBackdrop(kind, png);
+      } catch {
+        return i.editReply(no(t("Cette image n'est pas lisible.", "This picture cannot be read.")));
+      }
+    }
+    const preview = await backdropPreview(kind === "all" ? "rank" : kind, i.member).catch(() => null);
+    const content = sub === "mettre" ? ok(t(`Fond enregistré pour ${label} ! Voilà le rendu :`, `Background saved for ${label}! Here is how it looks:`)) : t(`Aperçu : ${label}`, `Preview: ${label}`);
+    return i.editReply(preview ? { content, files: [new AttachmentBuilder(preview, { name: "apercu.png" })] } : { content });
+  };
 
   H.indexadmin = async (i) => {
     if (need_perm(i, P.ManageGuild)) return;
@@ -10419,6 +10748,7 @@ const tools = (() => {
     canRead = Boolean(canReadMessages);
     if (!ON) return;
     load();
+    loadBackdrops();
     startDashboard();
     client.on(Events.MessageCreate, async (message) => {
       try {
@@ -10485,7 +10815,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { wipeRoles, saveBackup, snapshotGuild, restoreGuild, wipeChannels, refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { saveBackdrop, removeBackdrop, backdropPreview, hasBackdrop, BG_KINDS, welcomeCard, saveCardBackground, fetchPng, wipeRoles, saveBackup, snapshotGuild, restoreGuild, wipeChannels, refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================

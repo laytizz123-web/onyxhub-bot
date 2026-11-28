@@ -85,6 +85,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
 .top b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .btn, .top button { flex: none; padding: 7px 11px; font-size: 13px; }
 .rowline.off { opacity: .55; }
+.bgprev { width: 100%; border-radius: 10px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -99,7 +100,8 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   var PAGES = [
     ["home", "🏠 Accueil"],
     ["tickets", "🎫 Tickets", ["apps", "tickets", "translate"]],
-    ["community", "👥 Communauté", ["pings", "welcome", "rules", "supporter", "suggest", "counting", "counters"]],
+    ["community", "👥 Communauté", ["pings", "rules", "supporter", "suggest", "counting", "counters"]],
+    ["look", "🎨 Apparence", ["welcome", "backgrounds"]],
     ["levels", "📈 Niveaux", ["levels", "eco", "autoquiz"]],
     ["moderation", "🛡️ Modération", ["security", "badwords", "commandsOnly", "scam", "logs"]],
     ["send", "✉️ Message"],
@@ -108,6 +110,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   ];
   var SECTIONS = {
     pings: ["🔔 Rôles de ping", "Rôles de notification et leur panel"],
+    backgrounds: ["🖼️ Fonds des images", "Ta propre image derrière chaque carte du bot (XP, niveau, quiz, giveaway…)"],
     welcome: ["👋 Bienvenue", "Messages d'arrivée et de départ, rôle donné à l'arrivée"],
     rules: ["📜 Règlement", "Règlement à accepter pour voir le serveur"],
     levels: ["📈 Niveaux", "XP en écrivant et en vocal, annonces, rôles par niveau"],
@@ -130,7 +133,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     index: ["📖 Index", "Rôle, prix et caution de chaque index"],
     values: ["📊 Valeurs du serveur", "Valeurs que tu fixes toi-même (elles passent avant le site)"]
   };
-  var HIDDEN = ["msgId", "boardMsgId", "panelMsgId", "stickyMsgId", "nextAt", "n", "last", "best", "everyoneSaw", "opened", "thanks", "panels", "auto", "claim", "channelId_old"];
+  var HIDDEN = ["msgId", "boardMsgId", "panelMsgId", "stickyMsgId", "nextAt", "n", "last", "best", "everyoneSaw", "opened", "thanks", "panels", "auto", "claim", "channelId_old", "bg", "leaveBg"];
   var LABELS = {
     on: "Activé", channelId: "Salon", message: "Message", leave: "Message de départ", leaveChannelId: "Salon des départs", autorole: "Rôle donné à l'arrivée",
     roleId: "Rôle", text: "Texte", announce: "Annoncer les montées de niveau", ignored: "Salons sans XP", quizXp: "XP par quiz gagné", stack: "Garder les anciens rôles de niveau",
@@ -144,7 +147,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     messages: "Messages max", seconds: "En (secondes)", mentions: "Mentions max", duplicates: "Messages répétés max", caps: "% de majuscules max", emojis: "Emojis max", clean: "Supprimer les messages du flood",
     staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs", cats: "Catégories de trade", prices: "Prix", cautions: "Cautions", access: "Accès OG", trade: "Trade OG", shop_: "Shop OG", label: "Nom"
   };
-  var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Rôles qu'on ne peut pas vouch", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau", "index.roles": "Rôle de chaque index", "index.prices": "Prix de chaque index", "index.cautions": "Caution de chaque index", "access.shop": "Shop OG", "access.trade": "Trade OG" };
+  var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "welcome.message": "Message de bienvenue ({user}, {server}, {count})", "welcome.leave": "Message d'au revoir ({user}, {server}, {count})", "welcome.card": "Image sous le message de bienvenue", "welcome.leaveCard": "Image sous le message d'au revoir", "welcome.title": "Titre de la carte de bienvenue (vide = BIENVENUE)", "welcome.leaveTitle": "Titre de la carte d'au revoir (vide = AU REVOIR)", "welcome.color": "Couleur de la carte (ex : #ff4fd8, vide = par défaut)", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Rôles qu'on ne peut pas vouch", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau", "index.roles": "Rôle de chaque index", "index.prices": "Prix de chaque index", "index.cautions": "Caution de chaque index", "access.shop": "Shop OG", "access.trade": "Trade OG" };
   var CHOICES = {
     action: [["delete", "Supprimer seulement"], ["warn", "Avertissement"], ["timeout", "Sourdine"], ["kick", "Expulsion"], ["ban", "Bannissement"]],
     antiLink: [["off", "Désactivé"], ["invites", "Invitations Discord seulement"], ["all", "Tous les liens"]]
@@ -272,6 +275,48 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     box.appendChild(el("div", { class: "hint", text: "Décoche « Dans le panel » pour enlever un ping, puis Enregistrer : les panels déjà postés sont mis à jour tout seuls." }));
     return [box, function () { var o = { roles: {}, off: [] }; reads.forEach(function (f) { f(o); }); return o; }];
   }
+  /* a picture from the phone becomes a PNG (at most 1280 px), then goes to the bot */
+  function pngOf(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file); var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1280 / Math.max(img.width, img.height)); var cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); resolve(cv.toDataURL("image/png"));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Image illisible")); };
+      img.src = url;
+    });
+  }
+  /* each kind of card: its background, an upload, a preview */
+  function backgroundsEditor() {
+    var list = el("div", { class: "rowslist" });
+    (S.backgrounds || []).forEach(function (b) {
+      var status = el("span", { class: "hint", text: b.has ? "🖼️ Image" : "Dégradé" });
+      var view = el("img", { class: "bgprev", alt: "" }); view.hidden = true;
+      var show = function () { api("/api/backdrop-preview", { kind: b.id }).then(function (r) { view.src = r.image; view.hidden = false; }).catch(function (e) { toast(e.message, false); }); };
+      var input = el("input", { type: "file", accept: "image/*", hidden: "hidden" });
+      input.addEventListener("change", function () {
+        var f = input.files && input.files[0]; if (!f) return;
+        toast("Envoi…", true);
+        pngOf(f).then(function (data) { return api("/api/backdrop", { kind: b.id, data: data }); }).then(function () { b.has = true; status.textContent = "🖼️ Image"; toast("Fond enregistré ✓", true); show(); }).catch(function (e) { toast(e.message, false); });
+        input.value = "";
+      });
+      var line = el("div", { class: "rowline" }, [
+        el("b", { class: "rowtitle", text: b.name }), status,
+        el("div", { class: "row", style: "flex-basis:100%" }, [
+          el("button", { type: "button", class: "main", text: "📷 Choisir une image", onclick: function () { input.click(); } }),
+          el("button", { type: "button", text: "👁️ Aperçu", onclick: show }),
+          el("button", { type: "button", class: "danger", text: "Retirer", onclick: function () { api("/api/backdrop", { kind: b.id, remove: true }).then(function () { b.has = false; status.textContent = "Dégradé"; toast("Fond retiré ✓", true); show(); }).catch(function (e) { toast(e.message, false); }); } }),
+          input
+        ]),
+        view
+      ]);
+      list.appendChild(line);
+    });
+    var box = el("div", { class: "rowsed" }, [list, el("div", { class: "hint", text: "« Toutes les images » sert pour chaque carte qui n'a pas son propre fond (sauf bienvenue et au revoir). L'image est un peu assombrie pour que le texte reste lisible." })]);
+    return box;
+  }
   /* one input for one setting; returns [element, read()] */
   function field(key, base, value, where) {
     var box = el("div", { class: "field" });
@@ -300,7 +345,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
       var sel = select(opts, value, false); box.appendChild(sel);
       read = function () { return sel.value; };
     } else if (typeof base === "string" || base === null) {
-      var long = (value && String(value).length > 60) || /message|leave|text/i.test(key);
+      var long = (value && String(value).length > 60) || ["message", "leave", "text"].indexOf(key) >= 0;
       var inp = long ? el("textarea", {}) : el("input", { type: "text" });
       inp.value = value == null ? "" : String(value); box.appendChild(inp);
       read = function () { return inp.value; };
@@ -344,6 +389,10 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     if (name === "index") {
       var ix = indexEditor(cur); form.appendChild(ix[0]);
       read = ix[1];
+    } else if (name === "backgrounds") {
+      form.appendChild(backgroundsEditor());
+      card.appendChild(form);
+      return card;
     } else if (name === "pings") {
       var pg = pingsEditor(cur); form.appendChild(pg[0]);
       read = pg[1];
