@@ -7026,7 +7026,14 @@ const tools = (() => {
     ];
     return i.reply({
       flags: ephemeral,
-      embeds: [embed().setTitle(t("🧰 Tes commandes", "🧰 Your commands")).addFields(sections.filter((x) => can(x[2])).map(([name, value]) => ({ name, value })))],
+      // Discord allows 25 fields per embed: the list is split over several embeds when needed
+      embeds: (() => {
+        const fields = sections.filter((x) => can(x[2])).map(([name, value]) => ({ name, value }));
+        const out = [];
+        for (let k = 0; k < fields.length; k += 24) out.push(embed().addFields(fields.slice(k, k + 24)));
+        if (out[0]) out[0].setTitle(t("🧰 Tes commandes", "🧰 Your commands"));
+        return out.slice(0, 10);
+      })(),
     });
   };
 
