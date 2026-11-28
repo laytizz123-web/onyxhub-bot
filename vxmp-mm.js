@@ -3753,11 +3753,25 @@ const gfx = (() => {
     return c;
   }
   const coverPng = (img, W = 720, H = 240) => coverCanvas(img, W, H).png();
-  function welcomeScene({ name, server, count, avatar, label, bg: bgImg = null, accent = "", title = "", sub = "", pill = "" }) {
+  function welcomeScene({ name, server, count, avatar, label, bg: bgImg = null, accent = "", accent2 = "", titleColor = "", textColor = "", confettiOn = true, sparklesOn = true, title = "", sub = "", pill = "" }) {
     const W = 720;
     const H = 240;
+    const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v);
     const pal = [...pickPalette(name)];
-    if (/^#[0-9a-f]{6}$/i.test(accent)) pal[2] = pal[3] = accent;
+    // the server's colours: one colour alone paints everything (no pink left), a second one makes the gradients
+    const c1 = isHex(accent) ? accent : "";
+    const c2 = isHex(accent2) ? accent2 : c1;
+    if (c1) {
+      pal[2] = c1;
+      pal[3] = c1;
+      pal[4] = c2;
+    }
+    const gradA = c1 || "#7c4dff";
+    const gradB = c1 ? c2 : "#ff4fd8";
+    const textCol = isHex(textColor) ? textColor : "#ffffff";
+    const titleBase = isHex(titleColor) ? titleColor : "";
+    const titleStops = titleBase ? [[0, rgbHex(mixc(hex(titleBase), [255, 255, 255], 0.55))], [1, titleBase]] : c1 ? [[0, "#ffffff"], [1, rgbHex(mixc(hex(c1), [255, 255, 255], 0.55))]] : [[0, "#ffffff"], [1, "#ffd9a0"]];
+    const titleGlow = titleBase || c1 || "#ffb02e";
     let bg;
     if (bgImg) {
       // the server's own picture, a bit darker so the text stays readable
@@ -3774,14 +3788,13 @@ const gfx = (() => {
       c.circle(120, 128, 76, "#000000", 0.3);
       if (avatar) c.avatar(avatar, 118, 120, 140);
       else {
-        c.circle(118, 120, 70, lin(48, 50, 188, 190, [[0, "#7c8cff"], [1, "#d96bff"]]));
+        c.circle(118, 120, 70, lin(48, 50, 188, 190, c1 ? [[0, c1], [1, c2]] : [[0, "#7c8cff"], [1, "#d96bff"]]));
         c.text(initial(name), 118, 120, 70, { align: "center", shadow: { dy: 3, blur: 5, alpha: 0.4 } });
       }
-      c.text(cutText(c, name, 460, 38), 222, 112, 38, { shadow: { dy: 3, blur: 6, alpha: 0.5 } });
-      c.text(cutText(c, sub || `${label.to} ${server}`, 460, 24, "regular"), 222, 148, 24, { font: "regular", alpha: 0.85 });
+      c.text(cutText(c, name, 460, 38), 222, 112, 38, { color: textCol, shadow: { dy: 3, blur: 6, alpha: 0.5 } });
+      c.text(cutText(c, sub || `${label.to} ${server}`, 460, 24, "regular"), 222, 148, 24, { font: "regular", color: textCol, alpha: 0.85 });
       const pillText = pill || `${label.member} #${count}`;
-      const pillFrom = /^#[0-9a-f]{6}$/i.test(accent) ? accent : "#7c4dff";
-      c.pill(222, 172, c.measure(pillText, 20, "bold", 2) + 40, 36, lin(222, 0, 460, 0, [[0, pillFrom], [1, "#ff4fd8"]]), pillText, 20, { spacing: 2, glow: pillFrom });
+      c.pill(222, 172, c.measure(pillText, 20, "bold", 2) + 40, 36, lin(222, 0, 460, 0, [[0, gradA], [1, gradB]]), pillText, 20, { spacing: 2, glow: gradA });
     };
     const onBlack = new Canvas(W, H, "#000000");
     const onWhite = new Canvas(W, H, "#ffffff");
@@ -3796,7 +3809,7 @@ const gfx = (() => {
       for (let k = 0; k < 3; k++) overlay.rgb[i * 3 + k] = alpha > 0.003 ? Math.min(255, onBlack.px[i * 3 + k] / alpha) : 0;
     }
     const rnd = rngOf(`confetti${name}`);
-    const confetti = Array.from({ length: 36 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"][Math.floor(rnd() * 6)], sway: rnd() * 6 }));
+    const confetti = Array.from({ length: 36 }, () => ({ x: rnd() * W, y: rnd() * H, w: 8 + rnd() * 9, h: 4 + rnd() * 4, speed: 1 + Math.floor(rnd() * 2), a: rnd() * Math.PI, spin: (rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(rnd() * 2)), color: (c1 ? [c1, c2, "#ffffff", c1, c2, rgbHex(mixc(hex(c1), [255, 255, 255], 0.5))] : ["#ffd34d", "#ff5ccf", "#5cd5ff", "#7cffb0", "#ffffff", "#ff8a3d"])[Math.floor(rnd() * 6)], sway: rnd() * 6 }));
     const twinkle = Array.from({ length: 9 }, () => ({ x: 230 + rnd() * 470, y: 26 + rnd() * 190, r: 3 + rnd() * 5, phase: rnd() }));
 
     /* The picture at time t in [0, 1): everything moves in a loop. */
@@ -3804,7 +3817,7 @@ const gfx = (() => {
       const c = bg.clone();
       const pulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * t);
       c.glow(118, 120, 118 + 16 * pulse, pal[2], 0.45 + 0.25 * pulse);
-      for (const k of confetti) {
+      for (const k of confettiOn ? confetti : []) {
         const y = ((k.y + t * H * k.speed) % (H + 40)) - 20;
         const x = k.x + Math.sin(2 * Math.PI * t * k.speed + k.sway) * 10;
         c.confetti(x, y, k.w, k.h, k.a + 2 * Math.PI * t * k.spin, k.color, 0.9);
@@ -3825,15 +3838,15 @@ const gfx = (() => {
       c.text(head, 222, 64, fitSize(c, head, 460, 60), {
         spacing: 3,
         paint: (top, base) => {
-          const g = lin(0, top, 0, base, [[0, "#ffffff"], [1, "#ffd9a0"]]);
+          const g = lin(0, top, 0, base, titleStops);
           return (x, y) => mixc(g(x, y), [255, 255, 255], Math.max(0, 1 - Math.abs(x - bandX - (y - top) * 0.7) / 60) * 0.9);
         },
-        glow: { blur: 14, color: "#ffb02e", alpha: 0.5 },
+        glow: { blur: 14, color: titleGlow, alpha: 0.5 },
         shadow: { dy: 4, blur: 8, alpha: 0.5 },
       });
       const orbit = 2 * Math.PI * t - Math.PI / 2;
-      c.sparkle(118 + Math.cos(orbit) * 92, 120 + Math.sin(orbit) * 92, 9, "#ffffff", 0.95);
-      for (const k of twinkle) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
+      if (sparklesOn) c.sparkle(118 + Math.cos(orbit) * 92, 120 + Math.sin(orbit) * 92, 9, "#ffffff", 0.95);
+      for (const k of sparklesOn ? twinkle : []) c.sparkle(k.x, k.y, k.r * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (t * 2 + k.phase)))), "#ffffff", 0.85);
       return c;
     };
     return { render, w: W, h: H };
@@ -4459,7 +4472,7 @@ const tools = (() => {
     cfg: {
       levels: { on: true, rewards: [], announce: true, ignored: [], channelId: "", quizXp: 50, stack: false, xpChannelId: "", xpStep: 100, boardChannelId: "", boardMsgId: "", voiceOn: true, voiceXp: 8, voiceMinPeople: 2 },
       // card / leaveCard: the picture under the message; title, leaveTitle, color: its look; bg, leaveBg: its background (a file next to tools.json)
-      welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "", card: true, leaveCard: true, title: "", leaveTitle: "", color: "", bg: "", leaveBg: "" },
+      welcome: { channelId: "", message: "", leave: "", leaveChannelId: "", autorole: "", card: true, leaveCard: true, title: "", leaveTitle: "", color: "", color2: "", titleColor: "", textColor: "", confetti: true, sparkles: true, bg: "", leaveBg: "" },
       logs: { channelId: "" },
       suggest: { channelId: "" },
       translate: { on: true },
@@ -4740,6 +4753,11 @@ const tools = (() => {
       label: cardLabel(),
       bg: cardBackground(leave ? w.leaveBg || w.bg : w.bg),
       accent: w.color || "",
+      accent2: w.color2 || "",
+      titleColor: w.titleColor || "",
+      textColor: w.textColor || "",
+      confettiOn: w.confetti !== false,
+      sparklesOn: w.sparkles !== false,
       title: (leave ? w.leaveTitle || t("AU REVOIR", "GOODBYE") : w.title || "").slice(0, 24),
       sub: leave ? `${t("a quitté", "left")} ${member.guild?.name || ""}` : "",
       pill: leave ? t(`${count} membres`, `${count} members`) : "",
@@ -5039,7 +5057,12 @@ const tools = (() => {
               .setDescription(t("Titre, couleur et images des messages de bienvenue / d'au revoir", "Title, colour and pictures of the welcome / goodbye messages"))
               .addStringOption((o) => o.setName("titre").setDescription(t("Le grand titre de la carte de bienvenue (vide = BIENVENUE)", "The big title of the welcome card (empty = WELCOME)")).setMaxLength(24))
               .addStringOption((o) => o.setName("titre_aurevoir").setDescription(t("Le titre de la carte d'au revoir (vide = AU REVOIR)", "The title of the goodbye card (empty = GOODBYE)")).setMaxLength(24))
-              .addStringOption((o) => o.setName("couleur").setDescription(t("La couleur, ex : #ff4fd8 (vide = par défaut)", "The colour, e.g. #ff4fd8 (empty = default)")).setMaxLength(7))
+              .addStringOption((o) => o.setName("couleur").setDescription(t("Couleur principale, ex : #8f63ff (« défaut » = remettre)", "Main colour, e.g. #8f63ff (\"défaut\" = reset)")).setMaxLength(7))
+              .addStringOption((o) => o.setName("couleur2").setDescription(t("2e couleur du dégradé (vide = la même : pas de rose)", "2nd gradient colour (empty = the same: no pink)")).setMaxLength(7))
+              .addStringOption((o) => o.setName("couleur_titre").setDescription(t("Couleur du grand titre, ex : #ffffff", "Big title colour, e.g. #ffffff")).setMaxLength(7))
+              .addStringOption((o) => o.setName("couleur_texte").setDescription(t("Couleur du pseudo et du texte, ex : #ffffff", "Name and text colour, e.g. #ffffff")).setMaxLength(7))
+              .addBooleanOption((o) => o.setName("confettis").setDescription(t("Afficher les confettis", "Show the confetti")))
+              .addBooleanOption((o) => o.setName("etoiles").setDescription(t("Afficher les petites étoiles", "Show the little sparkles")))
               .addBooleanOption((o) => o.setName("image").setDescription(t("Mettre une image sous le message de bienvenue", "Put a picture under the welcome message")))
               .addBooleanOption((o) => o.setName("image_aurevoir").setDescription(t("Mettre une image sous le message d'au revoir", "Put a picture under the goodbye message")))
           )
@@ -6061,19 +6084,29 @@ const tools = (() => {
       return i.editReply({ content: ok(t("Fond enregistré ! Voilà le rendu :", "Background saved! Here is how it looks:")), embeds: [embed(accentNum() ?? 0xff8a3d).setImage(card.url)], files: [card.file] });
     }
     if (sub === "style") {
-      const title = i.options.getString("titre"), leaveTitle = i.options.getString("titre_aurevoir"), color = i.options.getString("couleur");
-      const card = i.options.getBoolean("image"), leaveCard = i.options.getBoolean("image_aurevoir");
-      if (color !== null) {
-        const c = String(color).trim();
-        if (c && !/^#?[0-9a-f]{6}$/i.test(c)) return reply(i, no(t("Couleur invalide : mets un code comme `#ff4fd8` (vide = couleur par défaut).", "Invalid colour: use a code like `#ff4fd8` (empty = default colour).")));
-        w.color = c ? `#${c.replace("#", "").toLowerCase()}` : "";
+      // a colour: "#abc123", "abc123", or "défaut" / "aucune" to go back to the default one
+      const colours = [["couleur", "color"], ["couleur2", "color2"], ["couleur_titre", "titleColor"], ["couleur_texte", "textColor"]];
+      for (const [opt, key] of colours) {
+        const v = i.options.getString(opt);
+        if (v === null) continue;
+        const c = String(v).trim().toLowerCase();
+        if (["", "défaut", "defaut", "aucune", "aucun", "none", "default", "-"].includes(c)) w[key] = "";
+        else if (/^#?[0-9a-f]{6}$/i.test(c)) w[key] = `#${c.replace("#", "")}`;
+        else return reply(i, no(t(`Couleur invalide pour \`${opt}\` : mets un code comme \`#8f63ff\`, ou \`défaut\`. Tu peux trouver des codes sur Google en cherchant « color picker ».`, `Invalid colour for \`${opt}\`: use a code like \`#8f63ff\`, or \`défaut\`.`)));
       }
+      const title = i.options.getString("titre"), leaveTitle = i.options.getString("titre_aurevoir");
       if (title !== null) w.title = String(title).trim().slice(0, 24);
       if (leaveTitle !== null) w.leaveTitle = String(leaveTitle).trim().slice(0, 24);
-      if (card !== null) w.card = card;
-      if (leaveCard !== null) w.leaveCard = leaveCard;
+      for (const [opt, key] of [["image", "card"], ["image_aurevoir", "leaveCard"], ["confettis", "confetti"], ["etoiles", "sparkles"]]) {
+        const v = i.options.getBoolean(opt);
+        if (v !== null) w[key] = v;
+      }
       save();
-      return reply(i, ok(t(`Style enregistré : titre **${w.title || "BIENVENUE"}** · au revoir **${w.leaveTitle || "AU REVOIR"}** · couleur **${w.color || "par défaut"}** · image de bienvenue **${w.card !== false ? "oui" : "non"}** · image d'au revoir **${w.leaveCard !== false ? "oui" : "non"}**.\n-# \`/welcome test\` pour voir le rendu.`, `Style saved. Use \`/welcome test\` to see it.`)));
+      await i.deferReply({ flags: ephemeral });
+      const yes = (v) => (v !== false ? t("oui", "yes") : t("non", "no"));
+      const summary = t(`Style enregistré : titre **${w.title || "BIENVENUE"}** · au revoir **${w.leaveTitle || "AU REVOIR"}** · couleurs **${w.color || "défaut"}** / **${w.color2 || w.color || "défaut"}** · titre **${w.titleColor || "défaut"}** · texte **${w.textColor || "blanc"}** · confettis **${yes(w.confetti)}** · étoiles **${yes(w.sparkles)}**`, `Style saved: title **${w.title || "WELCOME"}** · colours **${w.color || "default"}** / **${w.color2 || w.color || "default"}** · title **${w.titleColor || "default"}** · text **${w.textColor || "white"}** · confetti **${yes(w.confetti)}** · sparkles **${yes(w.sparkles)}**`);
+      const card = await welcomeCard(i.member, false, "join").catch(() => null);
+      return i.editReply(card ? { content: ok(summary), embeds: [embed(accentNum() ?? 0xff8a3d).setImage(card.url)], files: [card.file] } : { content: ok(summary) });
     }
   };
   const recentJoins = [];
