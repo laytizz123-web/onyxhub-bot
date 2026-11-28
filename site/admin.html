@@ -98,7 +98,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
   /* the pages of the dashboard and the modules on each one */
   var PAGES = [
     ["home", "🏠 Accueil"],
-    ["trades", "💱 Trades", ["cross", "index", "vouch", "values", "tickets", "translate"]],
+    ["trades", "💱 Trades", ["cross", "vouch", "tickets", "translate"]],
     ["community", "👥 Communauté", ["pings", "welcome", "rules", "supporter", "suggest", "counting", "counters"]],
     ["levels", "📈 Niveaux", ["levels", "eco", "autoquiz"]],
     ["moderation", "🛡️ Modération", ["security", "badwords", "commandsOnly", "scam", "logs"]],
@@ -127,7 +127,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     eco: ["💰 Économie", "Pièces par message, daily, boutique de rôles"],
     autoquiz: ["❓ Quiz automatique", "Un quiz régulier dans un salon"],
     apps: ["📝 Candidatures", "Rôles et catégorie des candidatures"],
-    cross: ["🔁 Cross-trade", "Valeurs des trades et middlemen de chacune"],
+    cross: ["🔁 Cross-trade", "Catégories de trade et middlemen de chacune"],
     index: ["📖 Index", "Rôle, prix et caution de chaque index"],
     values: ["📊 Valeurs du serveur", "Valeurs que tu fixes toi-même (elles passent avant le site)"]
   };
@@ -143,7 +143,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     categoryId: "Catégorie", members: "Salon membres", trades: "Salon trades", vouches: "Salon vouches",
     antiSpam: "Anti-spam activé", antiLink: "Anti-liens", antiRaid: "Anti-raid", link: "Anti-liens", spam: "Anti-spam", domains: "Sites autorisés (un par ligne)",
     messages: "Messages max", seconds: "En (secondes)", mentions: "Mentions max", duplicates: "Messages répétés max", caps: "% de majuscules max", emojis: "Emojis max", clean: "Supprimer les messages du flood",
-    staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs", cats: "Valeurs des trades", prices: "Prix", cautions: "Cautions", access: "Accès OG", trade: "Trade OG", shop_: "Shop OG", label: "Nom"
+    staffRoleId: "Rôle staff", mmRoleId: "Rôle middleman", overrides: "Valeurs", cats: "Catégories de trade", prices: "Prix", cautions: "Cautions", access: "Accès OG", trade: "Trade OG", shop_: "Shop OG", label: "Nom"
   };
   var PATH_LABELS = { "link.text": "Message d'avertissement (vide = par défaut)", "link.gifs": "Autoriser les GIF", "spam.words": "Mots max par message (0 = illimité)", "link.action": "Sanction", "spam.action": "Sanction", "link.minutes": "Durée de la sourdine (minutes)", "spam.minutes": "Durée de la sourdine (minutes)", "badwords.minutes": "Durée de la sourdine (minutes)", "rules.text": "Texte du règlement", "rules.on": "Règlement activé", "commandsOnly.channels": "Salons où on ne fait que des commandes", "supporter.channels": "Salons des remerciements", "vouch.roles": "Rôles qu'on peut vouch", "vouch.excluded": "Rôles qu'on ne peut pas vouch", "vouch.channelId": "Salon des vouches", "levels.ignored": "Salons sans XP", "counting.channelId": "Salon de comptage", "scam.channelId": "Salon des alertes scam", "logs.channelId": "Salon des logs tickets", "suggest.channelId": "Salon des suggestions", "welcome.channelId": "Salon de bienvenue", "rules.channelId": "Salon du règlement", "rules.roleId": "Rôle donné en acceptant", "autoquiz.channelId": "Salon du quiz", "levels.channelId": "Salon des annonces de niveau", "index.roles": "Rôle de chaque index", "index.prices": "Prix de chaque index", "index.cautions": "Caution de chaque index", "access.shop": "Shop OG", "access.trade": "Trade OG" };
   var CHOICES = {
@@ -215,9 +215,9 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
     },
     "cross.cats": function (v) {
       return rowsEditor(v, function (it) {
-        var n = el("input", { type: "text", value: it.label || "", placeholder: "Ex : Dragon value" }); var r = select(roleOpts(), it.roles || [], true);
-        return { cells: [cell("Valeur du trade", n), cell("Middlemen de cette valeur", r)], read: function () { var name = n.value.trim(); return name ? { id: it.id || vkey(name).slice(0, 24) || ("v" + Date.now()), label: name.slice(0, 80), roles: picked(r) } : null; } };
-      }, function () { return { label: "", roles: [] }; }, "Ajouter une valeur", "Pour choisir plusieurs rôles : Ctrl + clic, ou appui long sur téléphone.");
+        var n = el("input", { type: "text", value: it.label || "", placeholder: "Ex : Gros trade (50 à 200€)" }); var r = select(roleOpts(), it.roles || [], true);
+        return { cells: [cell("Catégorie", n), cell("Middlemen de cette catégorie", r)], read: function () { var name = n.value.trim(); return name ? { id: it.id || vkey(name).slice(0, 24) || ("v" + Date.now()), label: name.slice(0, 80), roles: picked(r) } : null; } };
+      }, function () { return { label: "", roles: [] }; }, "Ajouter une catégorie", "Pour choisir plusieurs rôles : Ctrl + clic, ou appui long sur téléphone.");
     },
     "supporter.langs": function (v) {
       var items = Object.keys(v || {}).map(function (id) { return { id: id, lang: v[id] }; });
@@ -368,7 +368,7 @@ input[type=color] { width: 64px; height: 38px; padding: 2px; border-radius: 10px
       var fmtUp = function (s) { var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + " j " : "") + h + " h " + m + " min"; };
       v.appendChild(el("h2", { text: S.guild ? S.guild.name : "Serveur" }));
       var g = el("div", { class: "grid" });
-      [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Vouches", S.stats.vouches], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Brainrots (valeurs)", S.stats.values]]
+      [["Membres", S.guild ? S.guild.members : "—"], ["Ping", S.bot.ping == null ? "—" : S.bot.ping + " ms"], ["En ligne depuis", fmtUp(S.bot.uptime)], ["Mémoire", S.bot.memory + " Mo"], ["Vouches", S.stats.vouches], ["Membres avec XP", S.stats.xpMembers], ["Scammers", S.stats.scams], ["Membres avec des pièces", S.stats.coins]]
         .forEach(function (x) { g.appendChild(el("div", { class: "tile" }, [el("small", { text: x[0] }), el("b", { text: String(x[1]) })])); });
       v.appendChild(g);
       var links = el("div", { class: "grid", style: "margin-top:18px" });

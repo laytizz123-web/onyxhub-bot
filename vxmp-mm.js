@@ -4272,9 +4272,9 @@ const gfx = (() => {
     { id: "trade", name: "trade", label: "Trade", style: "pulse" },
     { id: "verified", name: "verified", label: "Vérifié", style: "shine" },
     { id: "scam", name: "scam", label: "Scam", style: "shake" },
-    { id: "og", name: "og", label: "OG", style: "shine" },
+    { id: "og", name: "vip", label: "VIP", style: "shine" },
     { id: "ticket", name: "ticket", label: "Ticket", style: "bounce" },
-    { id: "value", name: "value", label: "Valeur", style: "shine" },
+    { id: "value", name: "premium", label: "Premium", style: "shine" },
     { id: "win", name: "win", label: "W", style: "pulse" },
     { id: "lose", name: "lose", label: "L", style: "shake" },
   ];
@@ -4385,12 +4385,14 @@ const tools = (() => {
   /* ---------- storage ---------- */
   const BADWORDS_DEFAULT = () => ["ntm", "fdp", "tg", "ftg", "pd", "connard", "connasse", "enculé", "salope", "pute", "batard", "bâtard", "nique ta mère", "ta mère la", "fils de pute", "abruti", "débile", "fuck", "bitch", "motherfucker", "nigga", "nigger", "negro", "pédé", "gouine", "suce"];
   const CROSS_VALUES = () => [
-    { id: "less", label: "Moins de Garama", roles: [] },
-    { id: "more", label: "Plus de Garama", roles: [] },
-    { id: "color", label: "Garama color value", roles: [] },
-    { id: "dragon", label: "Dragon value", roles: [] },
-    { id: "og", label: "OG value", roles: [] },
+    { id: "less", label: t("Petit trade (moins de 10€)", "Small trade (under 10€)"), roles: [] },
+    { id: "more", label: t("Trade moyen (10 à 50€)", "Medium trade (10 to 50€)"), roles: [] },
+    { id: "color", label: t("Gros trade (50 à 200€)", "Big trade (50 to 200€)"), roles: [] },
+    { id: "dragon", label: t("Très gros trade (200€ et plus)", "Very big trade (200€ and more)"), roles: [] },
+    { id: "og", label: t("Objet rare ou premium", "Rare or premium item"), roles: [] },
   ];
+  // the labels of the first version (Steal a Brainrot) are renamed; the roles stay
+  const OLD_CROSS = { "Moins de Garama": "less", "Plus de Garama": "more", "Garama color value": "color", "Dragon value": "dragon", "OG value": "og" };
   const defaults = () => ({
     xp: {},
     warns: {},
@@ -4423,7 +4425,7 @@ const tools = (() => {
       eco: { shop: [], perMessage: 2, dailyMin: 100, dailyMax: 200 },
       values: { overrides: {}, panels: [] },
       pings: { roles: {}, made: [], off: [], panels: [] }, // ping id -> role id ; made: the roles the bot created (only those are deleted)
-      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // overrides: brainrot key -> { mutation: value in Garama (null = not tradeable) } // shop: [{ roleId, price }]
+      supporter: { tagRole: "", statusRole: "", statusText: "/kazukisab", channelId: "", channels: [], langs: {}, thanks: {} }, // shop: [{ roleId, price }]
       counting: { channelId: "", n: 0, last: "", best: 0 },
       counters: { categoryId: "", members: "", trades: "", vouches: "" },
       badwords: { on: false, words: BADWORDS_DEFAULT(), action: "delete", minutes: 10, channels: [], roles: [] },
@@ -4437,8 +4439,8 @@ const tools = (() => {
         staffRoleId: "",
         mmRoleId: "",
         categoryId: "",
-        claim: { xp: 5000, reward: "Garama" },
-        access: { trade: { channelId: "1570218139113758740", roleId: "1570262105309847642", label: "Trade OG" }, shop: { channelId: "1570218143903912007", roleId: "1570262023546339429", label: "Shop OG" } },
+        claim: { xp: 5000, reward: t("Récompense", "Reward") },
+        access: { trade: { channelId: "", roleId: "", label: "VIP" }, shop: { channelId: "", roleId: "", label: "Shop VIP" } },
       },
       security: {
         antiSpam: false,
@@ -4484,6 +4486,7 @@ const tools = (() => {
     if (!Array.isArray(next.cfg.vouch.roles)) next.cfg.vouch.roles = [];
     if (!Array.isArray(next.cfg.vouch.excluded)) next.cfg.vouch.excluded = [];
     if (!Array.isArray(next.cfg.cross.cats) || !next.cfg.cross.cats.length || next.cfg.cross.cats.some((x) => !x || !Array.isArray(x.roles) || !x.id || !x.label)) next.cfg.cross.cats = CROSS_VALUES();
+    for (const c of next.cfg.cross.cats) if (OLD_CROSS[c.label]) c.label = (CROSS_VALUES().find((x) => x.id === OLD_CROSS[c.label]) || c).label;
     for (const part of ["link", "spam"]) {
       next.cfg.security[part] = { ...base.cfg.security[part], ...(raw.cfg?.security?.[part] || {}) };
       for (const k of ["domains", "channels", "roles"]) if (k in base.cfg.security[part] && !Array.isArray(next.cfg.security[part][k])) next.cfg.security[part][k] = [];
@@ -4993,7 +4996,7 @@ const tools = (() => {
       cmd("vouch", t("Laisser un vouch (avis) à un middleman après un trade", "Leave a vouch (review) for a middleman after a trade"))
         .addUserOption((o) => o.setName("membre").setDescription(t("Le middleman que tu vouch", "The middleman you vouch for")).setRequired(true))
         .addIntegerOption((o) => o.setName("note").setDescription(t("Ta note de 1 à 5 étoiles", "Your rating, 1 to 5 stars")).setRequired(true).addChoices(...[5, 4, 3, 2, 1].map((n) => ({ name: `${"⭐".repeat(n)} (${n}/5)`, value: n }))))
-        .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Garama, Middleman, Shop…)", "What was traded, or the service (e.g. Garama, Middleman, Shop…)")).setRequired(true).setMinLength(2).setMaxLength(100))
+        .addStringOption((o) => o.setName("objet").setDescription(t("Ce qui a été trade, ou le service (ex : Middleman, Graphisme, Échange…)", "What was traded, or the service (e.g. Middleman, Design, Exchange…)")).setRequired(true).setMinLength(2).setMaxLength(100))
         .addStringOption((o) => o.setName("commentaire").setDescription(t("Ce qui s'est passé (ex : rapide et fiable)", "What happened (e.g. fast and reliable)")).setRequired(true).setMinLength(3).setMaxLength(500)),
 
       D(P.ManageGuild, cmd("suggestions", t("Salon des suggestions (celui-ci)", "Suggestions channel (this one)"))),
@@ -5024,10 +5027,8 @@ const tools = (() => {
       // application tickets
       D(
         P.ManageGuild,
-        cmd("ticketpanel", t("Poster un panneau de tickets (candidature middleman, ou accès aux salons OG)", "Post a ticket panel (middleman application, or OG channel access)")).addStringOption((o) =>
-          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons OG (Trade OG / Shop OG)", "OG channel access (Trade OG / Shop OG)"), value: "access" }, { name: t("Réclamer le brainrot Garama (5000 XP)", "Claim the Garama brainrot (5000 XP)"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" }, { name: t("Index : Gold, Diamond, Rainbow…", "Index: Gold, Diamond, Rainbow…"), value: "index" })
-        ).addStringOption((o) =>
-          o.setName("index").setDescription(t("Pour Index : lequel (vide = les 14 panels d'un coup)", "For Index: which one (empty = the 14 panels at once)")).addChoices(...INDEX_CHOICES())
+        cmd("ticketpanel", t("Poster un panneau de tickets (middleman, accès VIP, récompense, cross-trade)", "Post a ticket panel (middleman, VIP access, reward, cross-trade)")).addStringOption((o) =>
+          o.setName("type").setDescription(t("Quel panneau", "Which panel")).setRequired(true).addChoices({ name: t("Devenir middleman", "Become a middleman"), value: "middleman" }, { name: t("Accès aux salons VIP (VIP / Shop VIP)", "VIP channel access (VIP / VIP Shop)"), value: "access" }, { name: t("Réclamer une récompense avec son XP", "Claim a reward with XP"), value: "claim" }, { name: t("Cross-trade : échange objet contre objet", "Cross-trade: item for item"), value: "crosstrade" })
         )
       ),
       D(
@@ -5040,16 +5041,16 @@ const tools = (() => {
             s
               .setName("access")
               .setDescription(t("Changer le rôle donné (et le salon affiché) pour une demande d'accès", "Change the role given (and the channel shown) for an access request"))
-              .addStringOption((o) => o.setName("type").setDescription(t("Quelle demande", "Which request")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
+              .addStringOption((o) => o.setName("type").setDescription(t("Quelle demande", "Which request")).setRequired(true).addChoices({ name: "VIP", value: "trade" }, { name: "Shop VIP", value: "shop" }))
               .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle donné quand c'est accepté", "The role given when accepted")))
               .addChannelOption((o) => o.setName("salon").setDescription(t("Le salon que ce rôle ouvre (affiché dans le ticket)", "The channel this role opens (shown in the ticket)")))
           )
           .addSubcommand((s) =>
             s
               .setName("revoke")
-              .setDescription(t("Retirer l'accès d'un membre à un salon OG", "Take a member's access to an OG channel away"))
+              .setDescription(t("Retirer l'accès d'un membre à un salon VIP", "Take a member's access to a VIP channel away"))
               .addUserOption((o) => o.setName("membre").setDescription(t("Le membre", "The member")).setRequired(true))
-              .addStringOption((o) => o.setName("type").setDescription(t("Quel salon", "Which channel")).setRequired(true).addChoices({ name: "Trade OG", value: "trade" }, { name: "Shop OG", value: "shop" }))
+              .addStringOption((o) => o.setName("type").setDescription(t("Quel salon", "Which channel")).setRequired(true).addChoices({ name: "VIP", value: "trade" }, { name: "Shop VIP", value: "shop" }))
           )
           .addSubcommand((s) =>
             s
@@ -5084,14 +5085,14 @@ const tools = (() => {
             s
               .setName("create")
               .setDescription(t("Créer les salons (catégories, règles, général, logs...)", "Create the channels (categories, rules, general, logs...)"))
-              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: "Steal a Brainrot (trades, shops, middleman)", value: "brainrot" }, { name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Complet", "Full"), value: "full" }, { name: t("Minimal", "Minimal"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("delete").setDescription(t("Supprimer les salons créés par le bot", "Delete the channels the bot created")))
           .addSubcommand((s) =>
             s
               .setName("voc-create")
               .setDescription(t("Créer plein de salons vocaux d'un coup (catégories, trade, gaming, chill...)", "Create lots of voice channels at once (categories, trade, gaming, chill...)"))
-              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Serveur complet : trade, gaming, support, détente, staff (34 vocaux)", "Full server: trade, gaming, support, chill, staff (34 voice channels)"), value: "brainrot" }, { name: t("Complet (17 vocaux)", "Full (17 voice channels)"), value: "full" }, { name: t("Minimal (4 vocaux)", "Minimal (4 voice channels)"), value: "minimal" }))
+              .addStringOption((o) => o.setName("modele").setDescription(t("Modèle", "Template")).addChoices({ name: t("Serveur complet : trade, gaming, support, détente, staff (34 vocaux)", "Full server: trade, gaming, support, chill, staff (34 voice channels)"), value: "big" }, { name: t("Complet (17 vocaux)", "Full (17 voice channels)"), value: "full" }, { name: t("Minimal (4 vocaux)", "Minimal (4 voice channels)"), value: "minimal" }))
           )
           .addSubcommand((s) => s.setName("voc-delete").setDescription(t("Supprimer les vocaux créés par le bot", "Delete the voice channels the bot created")))
           .addSubcommand((s) => s.setName("status").setDescription(t("Voir les salons créés par le bot", "See the channels the bot created")))
@@ -5121,8 +5122,6 @@ const tools = (() => {
           .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle middleman pour chaque valeur et le brancher", "Create a middleman role for each value and connect it")))
           .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /crosstrade autorole", "Delete the roles made by /crosstrade autorole")))
       ),
-      // brainrot values
-      ...valueCommands(D),
       // the web dashboard (only the owner gets a login link)
       D(P.Administrator, cmd("dashboard", t("Lien de connexion au panneau d'administration (propriétaire seulement)", "Login link to the admin dashboard (owner only)"))),
       // supporter roles: the server tag, a text in the status
@@ -5150,7 +5149,7 @@ const tools = (() => {
           .addSubcommand((s) =>
             s
               .setName("pack")
-              .setDescription(t("Ajouter le pack d'emojis du serveur (middleman, vouch, LTC, OG…)", "Add the server's emoji pack (middleman, vouch, LTC, OG…)"))
+              .setDescription(t("Ajouter le pack d'emojis du serveur (middleman, vouch, LTC, VIP…)", "Add the server's emoji pack (middleman, vouch, LTC, VIP…)"))
               .addStringOption((o) => o.setName("emoji").setDescription(t("Un seul emoji du pack (vide = tout le pack)", "Only one emoji of the pack (empty = the whole pack)")).addChoices(...gfx.EMOJI_PACK.map((p) => ({ name: p.label, value: p.id }))))
           )
           .addSubcommand((s) =>
@@ -5163,35 +5162,6 @@ const tools = (() => {
               .addStringOption((o) => o.setName("fond").setDescription(t("Le fond (rond par défaut)", "The background (round by default)")).addChoices({ name: t("⭕ Rond", "⭕ Round"), value: "rond" }, { name: t("⬛ Carré arrondi", "⬛ Rounded square"), value: "carre" }, { name: t("✖️ Aucun (juste le texte)", "✖️ None (just the text)"), value: "none" }))
               .addStringOption((o) => o.setName("nom").setDescription(t("Le nom de l'emoji (vide = kz_texte)", "The emoji name (empty = kz_text)")).setMaxLength(32))
           )
-      ),
-      // index: a role per index for the people who do it
-      D(
-        P.ManageGuild,
-        cmd("indexadmin", t("Rôles des index : les gens qui font chaque index", "Index roles: the people who do each index"))
-          .addSubcommand((s) => s.setName("autorole").setDescription(t("Créer un rôle pour chaque index (Gold, Diamond…) et le brancher", "Create a role for each index (Gold, Diamond…) and connect it")))
-          .addSubcommand((s) => s.setName("autorole-delete").setDescription(t("Supprimer les rôles créés par /indexadmin autorole", "Delete the roles made by /indexadmin autorole")))
-          .addSubcommand((s) =>
-            s
-              .setName("role")
-              .setDescription(t("Brancher un rôle existant à un index (refaire = débrancher)", "Connect an existing role to an index (again = disconnect)"))
-              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
-              .addRoleOption((o) => o.setName("role").setDescription(t("Le rôle", "The role")).setRequired(true))
-          )
-          .addSubcommand((s) =>
-            s
-              .setName("prix")
-              .setDescription(t("Changer le prix d'un index (les panels déjà postés sont mis à jour)", "Change the price of an index (panels already posted are updated)"))
-              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
-              .addStringOption((o) => o.setName("prix").setDescription(t("Ex : 5€, 10$, 2 Garama… (vide = enlever le prix)", "E.g. 5€, $10, 2 Garama… (empty = remove the price)")).setMaxLength(60))
-          )
-          .addSubcommand((s) =>
-            s
-              .setName("caution")
-              .setDescription(t("Changer la caution d'un index (les panels déjà postés sont mis à jour)", "Change the deposit of an index (panels already posted are updated)"))
-              .addStringOption((o) => o.setName("index").setDescription(t("L'index", "The index")).setRequired(true).addChoices(...INDEX_CHOICES()))
-              .addStringOption((o) => o.setName("caution").setDescription(t("Ex : 10€, 1 Garama… (vide = enlever la caution)", "E.g. 10€, 1 Garama… (empty = remove the deposit)")).setMaxLength(60))
-          )
-          .addSubcommand((s) => s.setName("list").setDescription(t("Voir le rôle et le prix de chaque index", "See the role and the price of each index")))
       ),
       // rules: nobody sees the server before accepting them
       D(
@@ -5350,7 +5320,7 @@ const tools = (() => {
     ];
     return list.map((b) => b.toJSON());
   }
-  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "indexadmin", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "value", "valueadmin", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
+  const NAMES = new Set(["rank", "leaderboard", "levels", "xp", "ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarns", "clear", "welcome", "rolepanel", "poll", "giveaway", "suggest", "suggestions", "8ball", "coinflip", "dice", "avatar", "userinfo", "serverinfo", "ping", "help", "logs", "security", "setup", "quiz", "autoquiz", "lock", "unlock", "ticketpanel", "apps", "vouch", "vouchadmin", "vocadmin", "antilink", "antispam", "crosstrade", "traduction", "reglement", "scam", "scamcheck", "tickets", "commandsonly", "antibadwords", "mmstats", "coins", "ecoadmin", "morpion", "puissance4", "emoji", "supporter", "dashboard", "pingroles", "salons", "comptage", "compteurs", "invites"]);
 
   /* ---------- command handlers ---------- */
   const H = {};
@@ -6234,7 +6204,7 @@ const tools = (() => {
     if (!allowed.some((id) => targetMember?.roles?.cache?.has?.(id))) return reply(i, no(t(`Tu ne peux vouch que les **middlemen**. <@${target.id}> n'en est pas un.`, `You can only vouch **middlemen**. <@${target.id}> is not one.`)));
     if (!(note >= 1 && note <= 5)) return reply(i, no(t("La note va de 1 à 5.", "The rating goes from 1 to 5.")));
     if (text.length < 3) return reply(i, no(t("Écris un vrai commentaire (3 caractères minimum).", "Write a real comment (3 characters minimum).")));
-    if (item.length < 2) return reply(i, no(t("Écris l'objet trade ou le service (ex : Garama, Middleman).", "Write the traded item or the service (e.g. Garama, Middleman).")));
+    if (item.length < 2) return reply(i, no(t("Écris l'objet trade ou le service (ex : Middleman, Graphisme).", "Write the traded item or the service (e.g. Middleman, Design).")));
     const wait = Math.max(0, Number(db.cfg.vouch.cooldownH) || 0) * 3_600_000;
     const last = (db.vouches[target.id] || []).filter((v) => v.from === i.user.id).at(-1);
     if (last && wait && Date.now() - last.at < wait) {
@@ -6701,48 +6671,6 @@ const tools = (() => {
         { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
       ] },
     ],
-    brainrot: [
-      { category: t("📌 INFORMATIONS", "📌 INFORMATION"), channels: [
-        { key: "rules", name: t("📜│règles", "📜│rules"), kind: "readonly", topic: t("Les règles du serveur. Lis-les avant de trader.", "The server rules. Read them before trading.") },
-        { key: "news", name: t("📢│annonces", "📢│announcements"), kind: "readonly", topic: t("Les annonces du serveur.", "Server announcements.") },
-        { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
-        { key: "goodbye", name: t("🚪│au-revoir", "🚪│goodbye"), kind: "readonly" },
-        { key: "scam", name: t("🚨│anti-scam", "🚨│scam-alerts"), kind: "readonly", topic: t("Comment ne pas te faire arnaquer. Utilise toujours un middleman.", "How not to get scammed. Always use a middleman.") },
-      ] },
-      { category: t("💬 COMMUNAUTÉ", "💬 COMMUNITY"), channels: [
-        { key: "general", name: t("💬│général", "💬│general"), kind: "text" },
-        { key: "memes", name: t("🧠│brainrot-memes", "🧠│brainrot-memes"), kind: "text", slow: 5 },
-        { key: "clips", name: t("🎥│clips-steal", "🎥│steal-clips"), kind: "text", topic: t("Tes meilleurs vols et clips de Steal a Brainrot.", "Your best steals and Steal a Brainrot clips.") },
-        { key: "commands", name: t("🤖│commandes", "🤖│commands"), kind: "text" },
-        { key: "levels", name: t("📈│niveaux", "📈│levels"), kind: "text" },
-        { key: "xp", name: t("⭐│xp", "⭐│xp"), kind: "readonly", topic: t("Un message à chaque palier d'XP.", "A message at every XP step.") },
-        { key: "suggestions", name: t("💡│suggestions", "💡│suggestions"), kind: "readonly" },
-      ] },
-      { category: t("🔄 TRADES", "🔄 TRADES"), channels: [
-        { key: "trades", name: t("🤝│trade-brainrot", "🤝│trade-brainrot"), kind: "text", slow: 30, topic: t("Poste ton offre de trade : ce que tu donnes, ce que tu veux. 1 message toutes les 30 s.", "Post your trade offer: what you give, what you want. 1 message every 30 s.") },
-        { key: "lookingfor", name: t("🔎│je-cherche", "🔎│looking-for"), kind: "text", slow: 30, topic: t("Tu cherches un brainrot précis ? Demande-le ici.", "Looking for a specific brainrot? Ask here.") },
-        { key: "rare", name: t("💎│trades-rares", "💎│rare-trades"), kind: "text", slow: 30, topic: t("Brainrots rares, secrets et mutations.", "Rare brainrots, secrets and mutations.") },
-      ] },
-      { category: t("🛒 SHOPS", "🛒 SHOPS"), channels: [
-        { key: "shopbrainrot", name: t("🛒│shop-brainrot", "🛒│shop-brainrot"), kind: "text", slow: 60, topic: t("Vends tes brainrots : prix, photo, pseudo. 1 message par minute.", "Sell your brainrots: price, picture, username. 1 message per minute.") },
-        { key: "shopmutations", name: t("🧬│shop-mutations", "🧬│shop-mutations"), kind: "text", slow: 60, topic: t("Mutations et brainrots spéciaux à vendre.", "Mutations and special brainrots for sale.") },
-        { key: "shopitems", name: t("🎁│shop-autres", "🎁│shop-other"), kind: "text", slow: 60, topic: t("Autres objets à vendre.", "Other items for sale.") },
-        { key: "prices", name: t("💰│prix-et-valeurs", "💰│prices-and-values"), kind: "text", topic: t("Discute de la valeur des brainrots.", "Talk about brainrot values.") },
-      ] },
-      { category: t("🛡️ MIDDLEMAN", "🛡️ MIDDLEMAN"), channels: [
-        { key: "middleman", name: t("💱│middleman", "💱│middleman"), kind: "readonly", topic: t("Trade sécurisé : ouvre un ticket avec le bouton du panneau.", "Safe trade: open a ticket with the panel button.") },
-        { key: "vouches", name: t("⭐│vouches", "⭐│vouches"), kind: "text", slow: 60, topic: t("Laisse un avis après un trade réussi.", "Leave a review after a successful trade.") },
-      ] },
-      { category: t("🎉 ÉVÉNEMENTS", "🎉 EVENTS"), channels: [
-        { key: "giveaways", name: t("🎁│concours", "🎁│giveaways"), kind: "readonly" },
-        { key: "polls", name: t("📊│sondages", "📊│polls"), kind: "readonly" },
-        { key: "quiz", name: t("🎯│quiz", "🎯│quiz"), kind: "text", topic: t("Tape /8ball ici : une image, une question, de l'XP à gagner.", "Type /8ball here: a picture, a question, XP to win.") },
-      ] },
-      { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [
-        { key: "logs", name: t("📋│logs", "📋│logs"), kind: "privatetext" },
-        { key: "staff", name: t("🛡️│staff", "🛡️│staff"), kind: "privatetext" },
-      ] },
-    ],
     minimal: [
       { category: t("💬 SERVEUR", "💬 SERVER"), channels: [
         { key: "welcome", name: t("👋│bienvenue", "👋│welcome"), kind: "readonly" },
@@ -6767,7 +6695,7 @@ const tools = (() => {
   const one = (key, emoji, fr, en, limit = 0) => ({ key, name: `${emoji}│${t(fr, en)}`, limit });
   const hubChannel = () => ({ key: "hub", name: t("➕│Créer ton vocal", "➕│Create your voice"), limit: 0 });
   const VOICE_TEMPLATES = {
-    brainrot: [
+    big: [
       { category: t("🔊 ACCUEIL", "🔊 LOBBY"), channels: [hubChannel(), ...nums("gen", "🎙️", "Général", "General", 3), one("lounge", "🛋️", "Lounge", "Lounge")] },
       { category: t("🔒 STAFF", "🔒 STAFF"), private: true, channels: [...nums("staff", "🛡️", "Staff", "Staff", 2), one("meeting", "📋", "Réunion", "Meeting"), one("interview", "🧑‍💼", "Entretien", "Interview")] },
       { category: t("🤝 TRADE", "🤝 TRADE"), channels: nums("trade", "🤝", "Trade", "Trade", 3) },
@@ -6793,7 +6721,7 @@ const tools = (() => {
   async function setupVocCreate(i) {
     if (db.setup.voiceItems.length) return reply(i, no(t("Les vocaux ont déjà été créés. Utilise `/setup voc-delete` d'abord.", "The voice channels were already created. Use `/setup voc-delete` first.")));
     await i.deferReply({ flags: ephemeral });
-    const key = VOICE_TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "brainrot";
+    const key = VOICE_TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "big";
     const guild = i.guild;
     let channelsMade = 0;
     let hubId = "";
@@ -6851,7 +6779,7 @@ const tools = (() => {
   async function setupCreate(i) {
     if (db.setup.items.length) return reply(i, no(t("Les salons ont déjà été créés. Utilise `/setup delete` d'abord, ou `/setup status`.", "The channels were already created. Use `/setup delete` first, or `/setup status`.")));
     await i.deferReply({ flags: ephemeral });
-    const modelKey = TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "brainrot";
+    const modelKey = TEMPLATES[i.options.getString("modele")] ? i.options.getString("modele") : "full";
     const model = TEMPLATES[modelKey];
     const guild = i.guild;
     const made = {};
@@ -6875,9 +6803,7 @@ const tools = (() => {
       db.cfg.welcome.channelId = made.welcome.id;
       if (!db.cfg.welcome.message || db.setup.autoWelcome) {
         db.setup.autoWelcome = true; // a text written by the bot, replaced next time; a text typed with /welcome message is never touched
-        db.cfg.welcome.message = modelKey === "brainrot"
-          ? t("🧠 Bienvenue {user} sur **{server}** ! Trade, achète et vends tes brainrots ici. Lis les règles, et pour un trade sûr passe toujours par le **middleman**. Nous sommes {count} !", "🧠 Welcome {user} to **{server}**! Trade, buy and sell your brainrots here. Read the rules, and for a safe trade always use the **middleman**. We are {count}!")
-          : t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
+        db.cfg.welcome.message = t("Bienvenue {user} sur **{server}** ! Nous sommes {count}.", "Welcome {user} to **{server}**! We are {count}.");
       }
       if (!db.cfg.welcome.leave) db.cfg.welcome.leave = t("{user} a quitté {server}.", "{user} left {server}.");
     }
@@ -6905,23 +6831,6 @@ const tools = (() => {
         save(true);
         console.error("⚠️ Level roles error:", error?.message || error);
         levelRolesNote = t("\n⚠️ Rôles de niveau non créés (il faut la permission « Gérer les rôles »). Essaie `/levels roles-create` ensuite.", "\n⚠️ Level roles not created (the Manage Roles permission is needed). Try `/levels roles-create` afterwards.");
-      }
-    }
-    if (modelKey === "brainrot") {
-      if (made.rules) {
-        await made.rules.send({ embeds: [embed(0xf1c40f).setTitle(t("📜 Règlement : Steal a Brainrot", "📜 Rules: Steal a Brainrot")).setDescription(t(
-          "1. Respecte tout le monde, pas d'insultes.\n2. **Tout trade de valeur passe par un middleman** (salon 💱│middleman).\n3. Pas de spam, pas de pub, pas de liens suspects.\n4. Ne donne **jamais** ton mot de passe ou ton code Roblox.\n5. Poste ton offre dans le bon salon (trade, shop, je-cherche).\n6. Les arnaques mènent à un bannissement définitif.\n7. Écoute le staff.\n\n*Modifie ce message comme tu veux.*",
-          "1. Respect everyone, no insults.\n2. **Every valuable trade goes through a middleman** (💱│middleman channel).\n3. No spam, no ads, no suspicious links.\n4. **Never** give your Roblox password or code.\n5. Post your offer in the right channel (trade, shop, looking-for).\n6. Scams mean a permanent ban.\n7. Listen to the staff.\n\n*Edit this message as you like.*"))] }).catch(() => {});
-      }
-      if (made.scam) {
-        await made.scam.send({ embeds: [embed(0xed4245).setTitle(t("🚨 Évite les arnaques", "🚨 Avoid scams")).setDescription(t(
-          "• Personne ne te donne de brainrot gratuit : méfie-toi des « deals trop beaux ».\n• Ne trade **jamais** hors du middleman pour un objet de valeur.\n• Vérifie toujours le pseudo : les faux comptes copient les vrais.\n• Ne clique pas sur les liens inconnus et ne scanne aucun code.\n• Un doute ? Ouvre un ticket middleman ou préviens le staff.",
-          "• Nobody gives free brainrots: be careful with « too good to be true » deals.\n• **Never** trade valuable items outside the middleman.\n• Always check the username: fake accounts copy real ones.\n• Do not click unknown links or scan any code.\n• In doubt? Open a middleman ticket or tell the staff."))] }).catch(() => {});
-      }
-      if (made.middleman) {
-        await made.middleman.send({ embeds: [embed(0x5865f2).setTitle(t("💱 Middleman", "💱 Middleman")).setDescription(t(
-          "Trade sécurisé : le middleman garde l'argent ou les LTC jusqu'à ce que tout soit livré.\n\n**Les administrateurs** : tape `/panel` ici pour poster le panneau Litecoin, puis `/panel` avec le type PayPal pour le panneau PayPal.",
-          "Safe trade: the middleman holds the money or LTC until everything is delivered.\n\n**Administrators**: type `/panel` here to post the Litecoin panel, then `/panel` with the PayPal type for the PayPal panel."))] }).catch(() => {});
       }
     }
     save(true);
@@ -7003,13 +6912,11 @@ const tools = (() => {
       [t("🛡️ Trades sûrs", "🛡️ Safe trades"), "`/scamcheck` `/mmstats`"],
       [t("⭐ Vouches", "⭐ Vouches"), t("`/vouch` · le classement est dans le panel Top vouches", "`/vouch` · the ranking is in the Top vouches panel")],
       [t("⭐ Vouches (staff)", "⭐ Vouches (staff)"), "`/vouchadmin panel` `/vouchadmin salon` `/vouchadmin retirer` `/vouchadmin reset`", P.ManageGuild],
-      [t("📊 Valeurs", "📊 Values"), t("`/value` · ou le bouton Rechercher du panel des valeurs", "`/value` · or the Search button of the value panel")],
       [t("🖥️ Panneau d'administration", "🖥️ Admin dashboard"), "`/dashboard`", P.Administrator],
       [t("💾 Changer de serveur", "💾 Moving server"), "`/salons sauvegarder` `/salons enlever` `/salons enlever-roles` `/salons remettre` `/salons voir`", P.Administrator],
       [t("🔔 Rôles de ping (staff)", "🔔 Ping roles (staff)"), "`/pingroles panel` `/pingroles retirer` `/pingroles remettre` `/pingroles voir` `/pingroles roles` `/pingroles supprimer`", P.ManageRoles],
       [t("💜 Rôles supporters (staff)", "💜 Supporter roles (staff)"), "`/supporter tag` `/supporter statut` `/supporter salon` `/supporter voir` `/supporter verifier` `/supporter couper`", P.ManageRoles],
       [t("🎨 Emojis (staff)", "🎨 Emojis (staff)"), "`/emoji pack` `/emoji texte`", P.ManageGuildExpressions],
-      [t("📊 Valeurs (staff)", "📊 Values (staff)"), "`/valueadmin panel` `/valueadmin modifier` `/valueadmin retirer` `/valueadmin liste` `/valueadmin actualiser`", P.ManageGuild],
       [t("💰 Économie", "💰 Economy"), "`/coins solde` `/coins daily` `/coins payer` `/coins top` `/coins boutique` `/coins acheter`"],
       [t("🎮 Jeux", "🎮 Games"), "`/morpion` `/puissance4` `/invites`"],
       [t("🎉 Fun et outils", "🎉 Fun and tools"), "`/poll` `/suggest` `/8ball` `/coinflip` `/dice` `/avatar` `/userinfo` `/serverinfo` `/ping`"],
@@ -8320,7 +8227,7 @@ const tools = (() => {
     return true;
   }
 
-  /* ---------- application tickets: become a middleman, or ask for access to the OG channels ---------- */
+  /* ---------- application tickets: become a middleman, or ask for access to the VIP channels ---------- */
   const appStaff = (member) => Boolean(member?.permissions?.has?.(P.Administrator) || member?.permissions?.has?.(P.ManageGuild) || (db.cfg.apps.staffRoleId && member?.roles?.cache?.has?.(db.cfg.apps.staffRoleId)));
   const APP_KINDS = {
     mm: {
@@ -8337,10 +8244,10 @@ const tools = (() => {
     },
     trade: {
       color: 0xf1c40f,
-      title: () => t("💎  Demande d'accès : Trade OG", "💎  Access request: Trade OG"),
-      modal: () => t("Accès Trade OG", "Trade OG access"),
+      title: () => t("💎  Demande d'accès : VIP", "💎  Access request: VIP"),
+      modal: () => t("Accès VIP", "VIP access"),
       inputs: () => [
-        ["why", t("Pourquoi veux-tu l'accès à Trade OG ?", "Why do you want access to Trade OG?"), TextInputStyle.Paragraph, true, 600],
+        ["why", t("Pourquoi veux-tu l'accès VIP ?", "Why do you want VIP access?"), TextInputStyle.Paragraph, true, 600],
         ["proof", t("Preuves (vouches, liens, captures)", "Proof (vouches, links, screenshots)"), TextInputStyle.Paragraph, true, 600],
       ],
       channelName: (name) => `acces-trade-${name}`,
@@ -8350,14 +8257,14 @@ const tools = (() => {
       title: () => t(`🎁  Réclamer ${db.cfg.apps.claim.reward}`, `🎁  Claim ${db.cfg.apps.claim.reward}`),
       modal: () => t(`Réclamer ${db.cfg.apps.claim.reward}`, `Claim ${db.cfg.apps.claim.reward}`),
       inputs: () => [["roblox", t("Ton pseudo Roblox", "Your Roblox username"), TextInputStyle.Short, true, 60]],
-      channelName: (name) => `reclame-${String(db.cfg.apps.claim.reward).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 20) || "brainrot"}-${name}`,
+      channelName: (name) => `reclame-${String(db.cfg.apps.claim.reward).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 20) || "recompense"}-${name}`,
     },
     shop: {
       color: 0x9b59b6,
-      title: () => t("🛍️  Demande d'accès : Shop OG", "🛍️  Access request: Shop OG"),
-      modal: () => t("Accès Shop OG", "Shop OG access"),
+      title: () => t("🛍️  Demande d'accès : Shop VIP", "🛍️  Access request: VIP Shop"),
+      modal: () => t("Accès Shop VIP", "VIP Shop access"),
       inputs: () => [
-        ["why", t("Pourquoi veux-tu l'accès à Shop OG ?", "Why do you want access to Shop OG?"), TextInputStyle.Paragraph, true, 600],
+        ["why", t("Pourquoi veux-tu l'accès au Shop VIP ?", "Why do you want access to the VIP Shop?"), TextInputStyle.Paragraph, true, 600],
         ["proof", t("Preuves (vouches, liens, captures)", "Proof (vouches, links, screenshots)"), TextInputStyle.Paragraph, true, 600],
       ],
       channelName: (name) => `acces-shop-${name}`,
@@ -8461,7 +8368,7 @@ const tools = (() => {
         const lv = db.cfg.levels;
         return embed(0xe67e22)
           .setTitle(t(`🎁  Réclame ${c.reward}`, `🎁  Claim ${c.reward}`))
-          .setDescription(t(`Tu as **${c.xp} XP** ? Tu peux réclamer le brainrot **${c.reward}** en ouvrant un ticket. Sans assez d'XP, le ticket est refusé.\nUne seule réclamation par personne.`, `Do you have **${c.xp} XP**? You can claim the **${c.reward}** brainrot by opening a ticket. Without enough XP the ticket is refused.\nOne claim per person.`))
+          .setDescription(t(`Tu as **${c.xp} XP** ? Tu peux réclamer la récompense **${c.reward}** en ouvrant un ticket. Sans assez d'XP, le ticket est refusé.\nUne seule réclamation par personne.`, `Do you have **${c.xp} XP**? You can claim the **${c.reward}** reward by opening a ticket. Without enough XP the ticket is refused.\nOne claim per person.`))
           .addFields(
             { name: t("💬  Chat", "💬  Chat"), value: t("Parle dans le chat : de l'XP à chaque message (1 par minute).", "Talk in the chat: XP for every message (one per minute)."), inline: true },
             { name: t("🎙️  Vocal", "🎙️  Voice"), value: lv.voiceOn && lv.voiceXp > 0 ? t(`Reste en vocal avec d'autres membres : **${lv.voiceXp} XP par minute**.`, `Stay in voice with other members: **${lv.voiceXp} XP per minute**.`) : t("Pas d'XP en vocal pour le moment.", "No voice XP for now."), inline: true },
@@ -8471,12 +8378,12 @@ const tools = (() => {
       },
       access: () =>
         embed(0xf1c40f)
-          .setTitle(t("🔑  Accès aux salons OG", "🔑  OG channel access"))
+          .setTitle(t("🔑  Accès aux salons VIP", "🔑  VIP channel access"))
           .setDescription(t("Tu veux accéder à un salon réservé ? Ouvre un ticket pour le salon voulu : le staff vérifie ta demande et t'ouvre l'accès.", "Want access to a restricted channel? Open a ticket for the channel you want: staff checks your request and opens it for you."))
           .addFields({ name: `💎  ${access.trade.label}`, value: t("Trade des objets rares entre membres de confiance.", "Trade rare items between trusted members."), inline: true }, { name: `🛍️  ${access.shop.label}`, value: t("Vends et achète dans le shop réservé.", "Sell and buy in the restricted shop."), inline: true })
           .setImage("attachment://apps-access.png"),
     };
-    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["OG ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"], index: ["INDEX", "#5a3a05", "#f1c40f", "apps-index.png"] }[type];
+    const banners = { middleman: ["MIDDLEMAN APPLICATION", "#0b4d3c", "#19c7a0", "apps-middleman.png"], access: ["VIP ACCESS", "#5a3a08", "#c9871f", "apps-access.png"], claim: [`${String(db.cfg.apps.claim.reward).toUpperCase()} REWARD`, "#5a2a08", "#e08a1e", "apps-claim.png"], crosstrade: ["CROSS-TRADE", "#0b4d3c", "#19c7a0", "apps-crosstrade.png"], index: ["INDEX", "#5a3a05", "#f1c40f", "apps-index.png"] }[type];
     const file = new AttachmentBuilder(gfx.banner("KAZUKI MM", banners[0], banners[1], banners[2], type === "crosstrade" ? "swap" : undefined), { name: banners[3] });
     const row =
       type === "middleman"
@@ -8763,426 +8670,6 @@ const tools = (() => {
   const ixRole = (index) => (index ? db.cfg.index.roles[index.id] || "" : "");
   const ixCanHandle = (member, index) => appStaff(member) || Boolean(ixRole(index) && member?.roles?.cache?.has?.(ixRole(index)));
 
-  /* ---------- brainrot values: live from stealabrainrothelper.com (values) and sabexistcount.com (exist counts) ---------- */
-  const VALUES_FILE = path.join(process.env.DATA_DIR || __dirname, "values.json");
-  const VAL_SRC = {
-    values: "https://stealabrainrothelper.com/api/value-overrides.php",
-    data: "https://stealabrainrothelper.com/js/data.js",
-    exist: "https://sabexistcount.com/data/seo/sab-exist-count-list.json",
-  };
-  const VAL_EVERY = 30 * 60_000; // the values are read again every 30 minutes
-  const MUTS = ["Default", "Gold", "Diamond", "Bloodrot", "Candy", "Lava", "Galaxy", "Yin Yang", "Radioactive", "Cursed", "Rainbow", "Divine", "Cyber", "Phantom", "Crystal"];
-  const MUT_EMOJI = { Default: "⚪", Gold: "🟡", Diamond: "💎", Bloodrot: "🩸", Candy: "🍬", Lava: "🌋", Galaxy: "🌌", "Yin Yang": "☯️", Radioactive: "☢️", Cursed: "😈", Rainbow: "🌈", Divine: "✨", Cyber: "🤖", Phantom: "👻", Crystal: "💜" };
-  const MUT_FR = { Default: "Normal" };
-  const RARITY = {
-    common: ["⚪", 0x9ca3af],
-    rare: ["🔵", 0x3b82f6],
-    epic: ["🟣", 0xa855f7],
-    legendary: ["🟡", 0xeab308],
-    mythic: ["🔴", 0xef4444],
-    "brainrot god": ["🌈", 0xf97316],
-    secret: ["⚫", 0x06b6d4],
-    og: ["👑", 0xf59e0b],
-  };
-  const DEMAND = { high: t("🔥 Haute", "🔥 High"), mid: t("📊 Moyenne", "📊 Medium"), low: t("🧊 Basse", "🧊 Low") };
-  const vkey = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  let vals = { at: 0, tried: 0, rate: 20, items: {} }; // items: key -> { n, r, e, ecs, img, c, i, m: { mutation: { g, s, d, u } } }
-  let valBusy = false;
-  let valFetch = async (url) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { "user-agent": "KazukiBot/1.0 (Discord value panel)" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.text();
-  };
-  try {
-    const saved = JSON.parse(fs.readFileSync(VALUES_FILE, "utf8"));
-    if (saved && saved.items && typeof saved.items === "object") vals = { ...vals, ...saved, tried: 0 };
-  } catch {
-    /* no values yet: they are read at the first tick */
-  }
-
-  /* Builds the list from the 3 sources. The values are needed; the exist counts and the incomes are a bonus. */
-  function buildValues(valuesJson, dataJs, existJson) {
-    const rate = Number(valuesJson?.garama_per_dragon) > 0 ? Number(valuesJson.garama_per_dragon) : 20;
-    const items = {};
-    const get = (name) => {
-      const k = vkey(name);
-      if (!k) return null;
-      if (!items[k]) items[k] = { n: String(name).replace(/[^\p{L}\p{N}\s'&.,!?()-]/gu, "").trim() || String(name), r: "", e: null, ecs: "", img: "", c: "", i: "", m: {} };
-      return items[k];
-    };
-    for (const [name, muts] of Object.entries(valuesJson?.overrides || {})) {
-      const it = get(name);
-      if (!it) continue;
-      it.n = name;
-      for (const [mut, v] of Object.entries(muts || {})) {
-        const status = v?.value_status || v?.status || "";
-        const num = Number(v?.value);
-        const g = status === "value" && Number.isFinite(num) ? (v.unit === "dragons" ? num * rate : num) : null;
-        it.m[mut] = { g: g === null ? null : Math.round(g * 1000) / 1000, s: status, d: v?.demand_level || "", u: String(v?.updated_at || "").slice(0, 10) };
-      }
-    }
-    // rarity, price and income from the brainrot list of the same site
-    const rows = String(dataJs || "").matchAll(/\{n:'((?:[^'\\]|\\.)*)',r:'([^']*)',c:'([^']*)',i:'([^']*)'/g);
-    for (const [, n, r, c, i] of rows) {
-      const it = items[vkey(n.replace(/\\'/g, "'"))];
-      if (!it) continue;
-      Object.assign(it, { r, c, i });
-    }
-    for (const row of existJson?.rows || []) {
-      const it = items[vkey(row.n)];
-      if (!it) continue;
-      if (Number.isFinite(row.e)) it.e = row.e;
-      it.ecs = row.ecs || "";
-      if (row.img) it.img = `https://sabexistcount.com${row.img}`;
-      if (!it.r && row.rl) it.r = row.rl;
-    }
-    for (const [k, it] of Object.entries(items)) if (!Object.keys(it.m).length) delete items[k];
-    return { rate, items };
-  }
-
-  async function refreshValues(force = false) {
-    if (valBusy) return false;
-    const now = Date.now();
-    if (!force && now - vals.at < VAL_EVERY) return false;
-    if (!force && now - vals.tried < 5 * 60_000) return false; // after a failure, wait 5 minutes
-    valBusy = true;
-    vals.tried = now;
-    try {
-      const [v, d, e] = await Promise.allSettled([valFetch(VAL_SRC.values), valFetch(VAL_SRC.data), valFetch(VAL_SRC.exist)]);
-      if (v.status !== "fulfilled") throw v.reason;
-      const built = buildValues(JSON.parse(v.value), d.status === "fulfilled" ? d.value : "", e.status === "fulfilled" ? JSON.parse(e.value) : null);
-      if (Object.keys(built.items).length < 10) throw new Error("almost empty list");
-      // keep the exist counts and incomes of the last read when one of the 2 extra sources is down
-      if (d.status !== "fulfilled" || e.status !== "fulfilled")
-        for (const [k, it] of Object.entries(built.items)) {
-          const old = vals.items[k];
-          if (!old) continue;
-          if (d.status !== "fulfilled") Object.assign(it, { r: it.r || old.r, c: old.c, i: old.i });
-          if (e.status !== "fulfilled") Object.assign(it, { e: old.e, ecs: old.ecs, img: old.img, r: it.r || old.r });
-        }
-      vals = { at: now, tried: now, rate: built.rate, items: built.items };
-      await fs.promises.writeFile(VALUES_FILE, JSON.stringify(vals)).catch((err) => console.error("⚠️ values: could not save values.json:", err?.message || err));
-      await refreshValuePanels();
-      return true;
-    } catch (error) {
-      console.error("⚠️ values: could not read the value sites:", error?.message || error);
-      return false;
-    } finally {
-      valBusy = false;
-    }
-  }
-
-  /* the value of an item for a mutation, in Garama (the server's own value wins over the site) */
-  function valueOf(it, mut = "Default") {
-    const own = db.cfg.values.overrides[vkey(it.n)]?.[mut];
-    if (own !== undefined) return { g: own, s: own === null ? "not_tradeable" : "value", d: it.m[mut]?.d || "", own: true };
-    const v = it.m[mut];
-    if (v) return { ...v, own: false };
-    return null;
-  }
-  const valItems = () => {
-    const list = Object.values(vals.items);
-    // brainrots only known by the server's own values
-    for (const [k, muts] of Object.entries(db.cfg.values.overrides)) if (!vals.items[k] && muts.__name) list.push({ n: muts.__name, r: "", e: null, ecs: "", img: "", c: "", i: "", m: {} });
-    return list;
-  };
-  const num = (n) => Number(n).toLocaleString(FR ? "fr-FR" : "en-US", { maximumFractionDigits: n < 1 ? 3 : 2 });
-  /* 44 Garama -> "🐉 2,2 Dragons" ; 4 Garama -> "🟢 4 Garama" */
-  function fmtValue(v, long = false) {
-    if (!v) return t("❔ inconnue", "❔ unknown");
-    if (v.s === "not_tradeable") return t("🚫 pas échangeable", "🚫 not tradeable");
-    if (v.s === "not_released") return t("⏳ pas encore sorti", "⏳ not released yet");
-    if (v.g === null || v.g === undefined || !Number.isFinite(v.g)) return t("❔ inconnue", "❔ unknown");
-    const rate = vals.rate || 20;
-    if (v.g >= rate) {
-      const d = v.g / rate;
-      return `🐉 **${num(d)}** Dragon${d >= 2 ? "s" : ""}${long ? `  ·  ≈ ${num(v.g)} Garama` : ""}`;
-    }
-    return `🟢 **${num(v.g)}** Garama`;
-  }
-  const rarityOf = (it) => RARITY[String(it.r || "").toLowerCase()] || ["▫️", 0x5865f2];
-
-  /* search: exact name, then start of the name or of a word, then inside the name, then 1-2 typos */
-  function lev(a, b) {
-    const row = Array.from({ length: b.length + 1 }, (_, k) => k);
-    for (let x = 1; x <= a.length; x++) {
-      let prev = row[0];
-      row[0] = x;
-      for (let y = 1; y <= b.length; y++) {
-        const tmp = row[y];
-        row[y] = Math.min(row[y] + 1, row[y - 1] + 1, prev + (a[x - 1] === b[y - 1] ? 0 : 1));
-        prev = tmp;
-      }
-    }
-    return row[b.length];
-  }
-  // what traders call them: "Dragon" is Dragon Cannelloni and "Garama" is Garama and Madundung (the 2 value units)
-  const VAL_ALIAS = { dragon: "dragoncannelloni", dragons: "dragoncannelloni", drag: "dragoncannelloni", garama: "garamaandmadundung", garamas: "garamaandmadundung", strawberry: "strawberryelephant", hh: "headlesshorseman" };
-  function valSearch(query, max = 25) {
-    const q = vkey(query);
-    const base = (it) => valueOf(it)?.g || 0;
-    const list = valItems();
-    if (!q) return list.sort((a, b) => base(b) - base(a)).slice(0, max);
-    const scored = [];
-    for (const it of list) {
-      const k = vkey(it.n);
-      const words = String(it.n).split(/\s+/).map(vkey).filter(Boolean);
-      let s = 0;
-      if (k === q || VAL_ALIAS[q] === k) s = 100;
-      else if (k.startsWith(q)) s = 90;
-      else if (words.some((w) => w.startsWith(q))) s = 80;
-      else if (k.includes(q)) s = 70;
-      else if (q.length >= 3) {
-        const allowed = q.length >= 8 ? 2 : 1;
-        const d = Math.min(lev(q, k.slice(0, q.length)), ...words.map((w) => lev(q, w.slice(0, Math.max(q.length, w.length)))));
-        if (d <= allowed) s = 50 - d;
-      }
-      if (s) scored.push([s, it]);
-    }
-    return scored.sort((a, b) => b[0] - a[0] || base(b[1]) - base(a[1])).slice(0, max).map((x) => x[1]);
-  }
-  const valByKey = (k) => vals.items[k] || valItems().find((it) => vkey(it.n) === k) || null;
-  const noValues = () => no(t("Les valeurs ne sont pas encore chargées. Réessaie dans une minute.", "The values are not loaded yet. Try again in a minute."));
-
-  /* the card of one brainrot */
-  function valueCard(it, focus = "") {
-    const [remoji, color] = rarityOf(it);
-    const base = valueOf(it, "Default");
-    const main = focus && focus !== "Default" ? valueOf(it, focus) : base;
-    const e = embed(color).setTitle(`${remoji}  ${it.n}${focus && focus !== "Default" ? `  ·  ${MUT_EMOJI[focus] || ""} ${focus}` : ""}`);
-    const lines = [`### ${fmtValue(main, true)}`];
-    if (main?.own) lines.push(t("-# ✏️ Valeur fixée par le staff du serveur", "-# ✏️ Value set by the server staff"));
-    if (base?.d && DEMAND[base.d]) lines.push(`${t("Demande", "Demand")} : ${DEMAND[base.d]}`);
-    e.setDescription(lines.join("\n"));
-    if (it.img) e.setThumbnail(it.img);
-    const info = [];
-    if (it.r) info.push({ name: t("💎 Rareté", "💎 Rarity"), value: it.r, inline: true });
-    if (it.ecs || Number.isFinite(it.e)) info.push({ name: t("🌍 Exist count", "🌍 Exist count"), value: it.ecs || num(it.e), inline: true });
-    if (it.i) info.push({ name: t("💸 Revenu", "💸 Income"), value: it.i, inline: true });
-    if (it.c) info.push({ name: t("🏷️ Prix en jeu", "🏷️ Game price"), value: it.c, inline: true });
-    if (info.length) e.addFields(...info);
-    const muts = [...new Set([...MUTS, ...Object.keys(it.m), ...Object.keys(db.cfg.values.overrides[vkey(it.n)] || {}).filter((m) => m !== "__name")])].filter((m) => {
-      const v = m !== "Default" && valueOf(it, m);
-      return v && ((v.g !== null && v.g !== undefined) || v.s === "not_tradeable");
-    });
-    if (muts.length) {
-      const text = muts.map((m) => `${MUT_EMOJI[m] || "▫️"} ${m} : ${fmtValue(valueOf(it, m))}`);
-      const half = Math.ceil(text.length / 2);
-      e.addFields({ name: t("🧬 Mutations", "🧬 Mutations"), value: text.slice(0, half).join("\n").slice(0, 1024), inline: true }, { name: "​", value: (text.slice(half).join("\n") || "​").slice(0, 1024), inline: true });
-    }
-    const updated = Object.values(it.m).map((v) => v.u).filter(Boolean).sort().pop();
-    e.setFooter({ text: [`1 🐉 Dragon = ${num(vals.rate)} Garama`, updated ? `${t("Mis à jour le", "Updated on")} ${updated.split("-").reverse().join("/")}` : ""].filter(Boolean).join("  ·  ") });
-    return e;
-  }
-
-  /* the panel: a search button and the top values */
-  function valuePanelBody() {
-    const count = valItems().length;
-    const top = valSearch("", 5);
-    const e = embed(0x7c4dff)
-      .setTitle(t("📊  Valeurs Steal a Brainrot", "📊  Steal a Brainrot values"))
-      .setDescription(
-        [
-          t("Trouve la valeur de n'importe quel brainrot en **Dragons** 🐉 et en **Garama** 🟢, avec chaque mutation, la demande et l'exist count.", "Find the value of any brainrot in **Dragons** 🐉 and **Garama** 🟢, with every mutation, the demand and the exist count."),
-          "",
-          t("🔎 **Rechercher** : tape le nom, même avec une faute.", "🔎 **Search**: type the name, even with a typo."),
-          t("🏆 **Top valeurs** : les brainrots les plus chers.", "🏆 **Top values**: the most valuable brainrots."),
-          t("-# Aussi avec la commande `/value`.", "-# Also with the `/value` command."),
-        ].join("\n")
-      )
-      .addFields(
-        { name: t("🐉 Taux", "🐉 Rate"), value: `1 Dragon = **${num(vals.rate)}** Garama`, inline: true },
-        { name: t("📚 Brainrots", "📚 Brainrots"), value: `**${count}**`, inline: true },
-        { name: t("🕒 Mis à jour", "🕒 Updated"), value: vals.at ? `<t:${Math.floor(vals.at / 1000)}:R>` : t("bientôt", "soon"), inline: true }
-      );
-    if (top.length) e.addFields({ name: t("🏆 Top 5", "🏆 Top 5"), value: top.map((it, k) => `**${k + 1}.** ${rarityOf(it)[0]} ${it.n} · ${fmtValue(valueOf(it))}`).join("\n") });
-    e.setFooter({ text: t("Valeurs de la communauté, à titre indicatif", "Community values, for reference only") });
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("vl:search").setLabel(t("Rechercher", "Search")).setEmoji("🔎").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("vl:top").setLabel(t("Top valeurs", "Top values")).setEmoji("🏆").setStyle(ButtonStyle.Secondary)
-    );
-    return { embeds: [e], components: [row], allowedMentions: { parse: [] } };
-  }
-  async function refreshValuePanels() {
-    const panels = db.cfg.values.panels;
-    let changed = false;
-    for (const p of [...panels]) {
-      const channel = await Promise.resolve(client?.channels?.fetch?.(p.channelId)).catch(() => null);
-      const message = channel ? await Promise.resolve(channel.messages?.fetch?.(p.msgId)).catch(() => null) : null;
-      if (!message) {
-        // the panel message was deleted: it is forgotten
-        if (channel) {
-          panels.splice(panels.indexOf(p), 1);
-          changed = true;
-        }
-        continue;
-      }
-      await message.edit(valuePanelBody()).catch(() => {});
-    }
-    if (changed) save();
-  }
-
-  const mutOption = (o) => o.setName("mutation").setDescription(t("La mutation (vide = normal)", "The mutation (empty = normal)")).addChoices(...MUTS.map((m) => ({ name: `${MUT_EMOJI[m]} ${MUT_FR[m] && FR ? MUT_FR[m] : m}`, value: m })));
-  function valueCommands(D) {
-    return [
-      cmd("value", t("Voir la valeur d'un brainrot (Dragons / Garama)", "See the value of a brainrot (Dragons / Garama)"))
-        .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom (des propositions s'affichent)", "The name (suggestions show up)")).setRequired(true).setAutocomplete(true).setMaxLength(80))
-        .addStringOption(mutOption),
-      D(
-        P.ManageGuild,
-        cmd("valueadmin", t("Panel des valeurs et valeurs du serveur", "Value panel and server values"))
-          .addSubcommand((s) => s.setName("panel").setDescription(t("Poster le panel des valeurs", "Post the value panel")).addChannelOption((o) => o.setName("salon").setDescription(t("Le salon (vide = celui-ci)", "The channel (empty = this one)")).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)))
-          .addSubcommand((s) =>
-            s
-              .setName("modifier")
-              .setDescription(t("Fixer la valeur d'un brainrot sur ton serveur (gagne sur le site)", "Set a brainrot value on your server (wins over the site)"))
-              .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom", "The name")).setRequired(true).setAutocomplete(true).setMaxLength(80))
-              .addNumberOption((o) => o.setName("valeur").setDescription(t("La valeur (0 = pas échangeable)", "The value (0 = not tradeable)")).setRequired(true).setMinValue(0).setMaxValue(1_000_000))
-              .addStringOption((o) => o.setName("unite").setDescription(t("Dragons ou Garama", "Dragons or Garama")).setRequired(true).addChoices({ name: "🐉 Dragons", value: "dragons" }, { name: "🟢 Garama", value: "garama" }))
-              .addStringOption(mutOption)
-          )
-          .addSubcommand((s) =>
-            s
-              .setName("retirer")
-              .setDescription(t("Enlever la valeur du serveur (la valeur du site revient)", "Remove the server value (the site value comes back)"))
-              .addStringOption((o) => o.setName("brainrot").setDescription(t("Le nom", "The name")).setRequired(true).setAutocomplete(true).setMaxLength(80))
-              .addStringOption((o) => mutOption(o).setDescription(t("La mutation (vide = toutes)", "The mutation (empty = all)")))
-          )
-          .addSubcommand((s) => s.setName("liste").setDescription(t("Voir les valeurs fixées par le serveur", "See the values set by the server")))
-          .addSubcommand((s) => s.setName("actualiser").setDescription(t("Relire les valeurs des sites maintenant", "Read the values from the sites now")))
-      ),
-    ];
-  }
-
-  async function valueAutocomplete(i) {
-    const focused = i.options.getFocused?.() ?? "";
-    const list = valSearch(String(focused), 25);
-    return i.respond(list.map((it) => ({ name: `${it.n}  ·  ${fmtValue(valueOf(it)).replace(/\*/g, "")}`.slice(0, 100), value: vkey(it.n).slice(0, 100) || it.n.slice(0, 100) }))).catch(() => {});
-  }
-  /* finds what the person meant: the chosen suggestion, or the best match of the typed text */
-  const valFind = (text) => valByKey(vkey(text)) || valByKey(VAL_ALIAS[vkey(text)] || "") || valSearch(text, 1)[0] || null;
-
-  H.value = async (i) => {
-    if (!valItems().length) return reply(i, noValues());
-    const asked = i.options.getString("brainrot") || "";
-    const it = valFind(asked);
-    if (!it) return reply(i, no(t(`Aucun brainrot ne ressemble à **${asked.slice(0, 80)}**.`, `No brainrot looks like **${asked.slice(0, 80)}**.`)));
-    await i.deferReply();
-    return i.editReply({ embeds: [valueCard(it, i.options.getString("mutation") || "")], allowedMentions: { parse: [] } });
-  };
-
-  H.valueadmin = async (i) => {
-    if (need_perm(i, P.ManageGuild)) return;
-    const sub = i.options.getSubcommand();
-    const own = db.cfg.values.overrides;
-    if (sub === "panel") {
-      const channel = i.options.getChannel("salon") || i.channel;
-      if (!channel?.send) return reply(i, no(t("Je ne peux pas écrire dans ce salon.", "I cannot write in this channel.")));
-      await i.deferReply({ flags: ephemeral });
-      if (!valItems().length) await refreshValues(true);
-      const message = await channel.send(valuePanelBody()).catch(() => null);
-      if (!message) return i.editReply(no(t("Je n'ai pas pu poster le panel (permissions ?).", "I could not post the panel (permissions?).")));
-      db.cfg.values.panels.push({ channelId: channel.id, msgId: message.id });
-      db.cfg.values.panels = db.cfg.values.panels.slice(-10);
-      save();
-      return i.editReply(ok(t(`Panel des valeurs posté dans ${channel}. Il se met à jour tout seul toutes les 30 minutes.`, `Value panel posted in ${channel}. It updates itself every 30 minutes.`)));
-    }
-    if (sub === "actualiser") {
-      await i.deferReply({ flags: ephemeral });
-      const done = await refreshValues(true);
-      return i.editReply(done ? ok(t(`Valeurs relues : **${valItems().length}** brainrots, 1 Dragon = **${num(vals.rate)}** Garama.`, `Values read again: **${valItems().length}** brainrots, 1 Dragon = **${num(vals.rate)}** Garama.`)) : no(t("Les sites ne répondent pas pour le moment. Les dernières valeurs sont gardées.", "The sites do not answer right now. The last values are kept.")));
-    }
-    if (sub === "liste") {
-      const lines = [];
-      for (const [k, muts] of Object.entries(own)) {
-        const it = valByKey(k);
-        const name = it?.n || muts.__name || k;
-        for (const [m, g] of Object.entries(muts)) if (m !== "__name") lines.push(`• **${name}** ${MUT_EMOJI[m] || ""} ${m} → ${fmtValue({ g, s: g === null ? "not_tradeable" : "value" })}`);
-      }
-      return i.reply({ embeds: [embed(0x7c4dff).setTitle(t("✏️  Valeurs du serveur", "✏️  Server values")).setDescription(lines.length ? lines.join("\n").slice(0, 4000) : t("*Aucune. Toutes les valeurs viennent des sites.*", "*None. Every value comes from the sites.*"))], flags: ephemeral, allowedMentions: { parse: [] } });
-    }
-    const asked = i.options.getString("brainrot") || "";
-    const it = valFind(asked);
-    const k = it ? vkey(it.n) : vkey(asked);
-    if (!k) return reply(i, no(t("Donne un nom de brainrot.", "Give a brainrot name.")));
-    const mut = i.options.getString("mutation") || "";
-    if (sub === "modifier") {
-      const value = i.options.getNumber("valeur");
-      const g = value === 0 ? null : i.options.getString("unite") === "dragons" ? value * (vals.rate || 20) : value;
-      own[k] = { ...(own[k] || {}), [mut || "Default"]: g === null ? null : Math.round(g * 1000) / 1000 };
-      if (!it) own[k].__name = asked.trim().slice(0, 80);
-      save();
-      refreshValuePanels().catch(() => {});
-      const shown = it || { n: own[k].__name, r: "", m: {}, e: null, ecs: "", img: "", c: "", i: "" };
-      return i.reply({ content: ok(t(`Valeur de **${shown.n}**${mut && mut !== "Default" ? ` ${mut}` : ""} fixée sur ton serveur.`, `Value of **${shown.n}**${mut && mut !== "Default" ? ` ${mut}` : ""} set on your server.`)), embeds: [valueCard(shown, mut)], flags: ephemeral, allowedMentions: { parse: [] } });
-    }
-    if (sub === "retirer") {
-      if (!own[k]) return reply(i, no(t("Ce brainrot n'a pas de valeur fixée par le serveur.", "This brainrot has no value set by the server.")));
-      if (mut) delete own[k][mut];
-      if (!mut || !Object.keys(own[k]).filter((m) => m !== "__name").length) delete own[k];
-      save();
-      refreshValuePanels().catch(() => {});
-      return reply(i, ok(t("Valeur du serveur retirée : la valeur du site est de nouveau utilisée.", "Server value removed: the site value is used again.")));
-    }
-  };
-
-  /* panel buttons */
-  async function valueButton(i, kind) {
-    if (!valItems().length) return reply(i, noValues());
-    if (kind === "search") {
-      return i.showModal(
-        new ModalBuilder()
-          .setCustomId("vl:m:search")
-          .setTitle(t("Rechercher un brainrot", "Search a brainrot"))
-          .addComponents(
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("name").setLabel(t("Nom du brainrot", "Brainrot name")).setPlaceholder(t("Ex : Meowl, strawbery, la grande…", "E.g. Meowl, strawbery, la grande…")).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80)),
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("mut").setLabel(t("Mutation (optionnel)", "Mutation (optional)")).setPlaceholder("Gold, Diamond, Rainbow…").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(20))
-          )
-      );
-    }
-    if (kind === "top") {
-      const top = valSearch("", 15);
-      const e = embed(0xf1c40f)
-        .setTitle(t("🏆  Top 15 des valeurs", "🏆  Top 15 values"))
-        .setDescription(top.map((it, k) => `${["🥇", "🥈", "🥉"][k] || `**${k + 1}.**`} ${rarityOf(it)[0]} **${it.n}** · ${fmtValue(valueOf(it))}`).join("\n") || "—")
-        .setFooter({ text: `1 🐉 Dragon = ${num(vals.rate)} Garama` });
-      return i.reply({ embeds: [e], flags: ephemeral });
-    }
-    // a button of an older panel (the calculator was removed): the panel is updated
-    await reply(i, no(t("Ce bouton n'existe plus. Utilise 🔎 Rechercher.", "This button no longer exists. Use 🔎 Search.")));
-    if (i.message?.edit) await i.message.edit(valuePanelBody()).catch(() => {});
-  }
-  /* "rainbow", "Rainbow", "rainb" (when start = true) -> "Rainbow" */
-  const mutIn = (text, start = true) => {
-    const k = vkey(text);
-    if (!k) return "";
-    return MUTS.find((m) => m !== "Default" && vkey(m) === k) || (start && k.length >= 3 ? MUTS.find((m) => m !== "Default" && vkey(m).startsWith(k)) : "") || "";
-  };
-  async function valueSearchSubmit(i) {
-    await i.deferReply({ flags: ephemeral });
-    const name = i.fields.getTextInputValue("name") || "";
-    const mut = mutIn(i.fields.getTextInputValue("mut") || "");
-    const found = valSearch(name, 25);
-    if (!found.length) return i.editReply(no(t(`Aucun brainrot ne ressemble à **${name.slice(0, 80)}**. Vérifie l'orthographe.`, `No brainrot looks like **${name.slice(0, 80)}**. Check the spelling.`)));
-    const exact = vkey(found[0].n) === vkey(name);
-    const embeds = [valueCard(found[0], mut)];
-    const components = [];
-    if (!exact && found.length > 1)
-      components.push(
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`vl:pick:${mut}`)
-            .setPlaceholder(t("Pas le bon ? Choisis dans la liste", "Not the right one? Pick from the list"))
-            .addOptions(found.map((it) => ({ label: it.n.slice(0, 100), value: vkey(it.n).slice(0, 100), description: fmtValue(valueOf(it)).replace(/\*/g, "").slice(0, 100), emoji: rarityOf(it)[0] })))
-        )
-      );
-    return i.editReply({ embeds, components });
-  }
-  async function valuePick(i, mut) {
-    const it = valByKey(i.values?.[0] || "");
-    if (!it) return reply(i, no(t("Ce brainrot n'existe plus dans la liste.", "This brainrot is no longer in the list.")));
-    return i.update({ embeds: [valueCard(it, mut)], components: i.message?.components || [] });
-  }
   /* ---------- /emoji: animated server emojis (the server's pack, or a text in the same style) ---------- */
   const EMOJI_STYLE_LABELS = { rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow"), shine: t("✨ Reflet", "✨ Shine"), pulse: t("💓 Pulsation", "💓 Pulse"), bounce: t("🦘 Rebond", "🦘 Bounce"), spin: t("🪙 Pièce qui tourne", "🪙 Coin spin"), rotate: t("🌀 Rotation", "🌀 Rotate"), shake: t("😡 Tremblement", "😡 Shake"), glitch: t("⚡ Glitch", "⚡ Glitch"), fire: t("🔥 Feu", "🔥 Fire") };
   const EMOJI_COLOR_LABELS = { violet: t("💜 Violet (Kazuki)", "💜 Purple (Kazuki)"), or: t("🟡 Or", "🟡 Gold"), feu: t("🔥 Feu", "🔥 Fire"), glace: t("🧊 Glace", "🧊 Ice"), vert: t("🟢 Vert", "🟢 Green"), rose: t("🌸 Rose", "🌸 Pink"), blanc: t("⚪ Blanc", "⚪ White"), rainbow: t("🌈 Arc-en-ciel", "🌈 Rainbow") };
@@ -9580,22 +9067,6 @@ const tools = (() => {
     "supporter.langs": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).map(([k, l]) => [k.replace(/\D/g, ""), l === "en" ? "en" : "fr"]).filter(([k]) => k)) : undefined),
     "index.roles": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => INDEXES.some((x) => x.id === k)).map(([k, r]) => [k, String(r || "").replace(/\D/g, "")]).filter(([, r]) => r)) : undefined),
     "index.prices": (v) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => INDEXES.some((x) => x.id === k)).map(([k, p]) => [k, String(p || "").trim().slice(0, 60)]).filter(([, p]) => p)) : undefined),
-    "values.overrides": (v) => {
-      if (!isMap(v)) return undefined;
-      const out = {};
-      for (const [k, muts] of Object.entries(v)) {
-        const key = vkey(k);
-        if (!key || !isMap(muts)) continue;
-        const one = {};
-        for (const [mut, g] of Object.entries(muts)) {
-          if (mut === "__name") one.__name = String(g || "").slice(0, 80);
-          else if (MUTS.includes(mut)) one[mut] = g === null || g === "" ? null : Number.isFinite(Number(g)) && Number(g) >= 0 ? Math.round(Number(g) * 1000) / 1000 : undefined;
-        }
-        for (const m of Object.keys(one)) if (one[m] === undefined) delete one[m];
-        if (Object.keys(one).some((m) => m !== "__name")) out[key] = one;
-      }
-      return out;
-    },
   };
   SHAPES["index.cautions"] = SHAPES["index.prices"];
   SHAPES["pings.off"] = (v) => (Array.isArray(v) ? [...new Set(v.map(String).filter((id) => PINGS.some((p) => p.id === id)))] : undefined);
@@ -9620,12 +9091,11 @@ const tools = (() => {
     return {
       bot: { tag: client?.user?.tag || "", avatar: client?.user?.displayAvatarURL?.() || "", ping: client?.ws?.ping ?? null, uptime: Math.round(process.uptime()), memory: Math.round(process.memoryUsage().rss / 1048576) },
       guild: guild ? { id: guild.id, name: guild.name, members: guild.memberCount, icon: guild.iconURL?.() || "" } : null,
-      stats: { vouches: vouchCount, xpMembers: Object.keys(db.xp || {}).length, scams: Object.keys(db.scams || {}).length, coins: Object.keys(db.coins || {}).length, values: valItems().length },
+      stats: { vouches: vouchCount, xpMembers: Object.keys(db.xp || {}).length, scams: Object.keys(db.scams || {}).length, coins: Object.keys(db.coins || {}).length, },
       cfg: db.cfg,
       defaults: defaults().cfg,
       indexes: INDEXES.map((x) => ({ id: x.id, emoji: x.emoji, label: x.label })),
       pings: PINGS.map((p) => ({ id: p.id, emoji: p.emoji, name: p.name, about: p.about })),
-      valueRate: vals.rate || 20,
       scams: Object.entries(db.scams || {}).map(([id, s]) => ({ id, name: client?.users?.cache?.get?.(id)?.username || "", ...s })),
       channels,
       roles,
@@ -9732,7 +9202,6 @@ const tools = (() => {
       console.log(`🖥️ Dashboard: ${body.section} changé (${Object.keys(clean).join(", ")})`);
       if (body.section === "vouch") refreshVouchPanel(true).catch(() => {});
       if (body.section === "index") for (const ix of INDEXES) refreshIndexPanels(ix).catch(() => {});
-      if (body.section === "values") refreshValuePanels().catch(() => {});
       if (body.section === "pings") refreshPingPanels().catch(() => {});
       return send(res, 200, { ok: true, cfg: db.cfg[body.section] });
     }
@@ -9849,9 +9318,9 @@ const tools = (() => {
     { id: "giveaways", emoji: "🎉", name: "Giveaways", about: t("Chaque nouveau giveaway", "Every new giveaway"), color: 0xf1c40f },
     { id: "events", emoji: "🎮", name: "Events", about: t("Events, concours et animations", "Events, contests and activities"), color: 0x3498db },
     { id: "trades", emoji: "🤝", name: "Trades", about: t("Les gros trades et les offres", "Big trades and offers"), color: 0x2ecc71 },
-    { id: "valeurs", emoji: "📊", name: t("Valeurs", "Values"), about: t("Quand les valeurs des brainrots changent", "When brainrot values change"), color: 0x8f63ff },
-    { id: "stock", emoji: "💎", name: t("Stock / Drops", "Stock / Drops"), about: t("Nouveaux brainrots en stock et drops", "New brainrots in stock and drops"), color: 0x5ad1ff },
-    { id: "maj", emoji: "🆕", name: t("Mises à jour", "Updates"), about: t("Les mises à jour de Steal a Brainrot", "Steal a Brainrot updates"), color: 0xe67e22 },
+    { id: "contenu", emoji: "🎬", name: t("Contenu", "Content"), about: t("Nouvelles vidéos, lives et créations", "New videos, streams and creations"), color: 0x8f63ff },
+    { id: "bonsplans", emoji: "💎", name: t("Bons plans", "Deals"), about: t("Bons plans, promos et drops", "Deals, promos and drops"), color: 0x5ad1ff },
+    { id: "nouveautes", emoji: "🆕", name: t("Nouveautés", "What's new"), about: t("Les nouveautés et changements du serveur", "The server's news and changes"), color: 0xe67e22 },
     { id: "sondages", emoji: "🗳️", name: t("Sondages", "Polls"), about: t("Les sondages du serveur", "The server's polls"), color: 0x95a5a6 },
     { id: "partenariats", emoji: "🔗", name: t("Partenariats", "Partnerships"), about: t("Les nouveaux partenaires", "New partners"), color: 0x1abc9c },
   ];
@@ -10351,7 +9820,7 @@ const tools = (() => {
   /* The middlemen: the holders of the middleman role (given by the applications), and the staff. */
   /* The values of a trade (lowest first). The middlemen of a value, and of the higher ones, can take its tickets. */
   /* emoji and colour of the role made for each starting value */
-  const CT_ROLE_LOOK = { less: ["🪙", 0x2ecc71], more: ["💰", 0x3498db], color: ["🌈", 0x9b59b6], dragon: ["🐉", 0xe67e22], og: ["👑", 0xf1c40f] };
+  const CT_ROLE_LOOK = { less: ["🪙", 0x2ecc71], more: ["💵", 0x3498db], color: ["💰", 0x9b59b6], dragon: ["💎", 0xe67e22], og: ["👑", 0xf1c40f] };
   const ctCats = () => {
     if (!Array.isArray(db.cfg.cross.cats) || !db.cfg.cross.cats.length) db.cfg.cross.cats = CROSS_VALUES();
     return db.cfg.cross.cats;
@@ -10775,20 +10244,9 @@ const tools = (() => {
         await H[i.commandName](i);
         return true;
       }
-      if (i.isAutocomplete?.() && ["value", "valueadmin"].includes(i.commandName)) {
-        await valueAutocomplete(i);
-        return true;
-      }
       if (typeof i.customId === "string" && i.customId.startsWith("em:")) {
         const [, kind, id] = i.customId.split(":");
         await emojiButton(i, kind, id);
-        return true;
-      }
-      if (typeof i.customId === "string" && i.customId.startsWith("vl:")) {
-        const [, kind, arg] = i.customId.split(":");
-        if (i.isButton?.()) await valueButton(i, kind);
-        else if (i.isModalSubmit?.() && kind === "m" && arg === "search") await valueSearchSubmit(i);
-        else if (i.isStringSelectMenu?.() && kind === "pick") await valuePick(i, arg || "");
         return true;
       }
       if (typeof i.customId === "string" && i.customId.startsWith("ix:")) {
@@ -10922,7 +10380,6 @@ const tools = (() => {
       tickIdleTickets().catch((e) => console.error("⚠️ idle tickets:", e?.message || e));
       refreshXpBoard().catch((e) => console.error("⚠️ xp board:", e?.message || e));
       tickCounters().catch((e) => console.error("⚠️ counters:", e?.message || e));
-      refreshValues().catch(() => {});
       scanSupporters().catch((e) => console.error("⚠️ supporters:", e?.message || e));
       // the invites of each server are read once the bot is connected (needed to know who invited a newcomer)
       for (const g of client.guilds?.cache?.values?.() || []) if (!inviteUses.has(g.id)) cacheInvites(g).catch(() => {});
@@ -10940,7 +10397,7 @@ const tools = (() => {
     else console.log("🧰 Multitools enabled (levels, moderation, welcome, roles, fun, logs, security).");
   }
 
-  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { wipeRoles, saveBackup, snapshotGuild, restoreGuild, wipeChannels, refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, buildValues, refreshValues, valSearch, valFind, valueCard, valuePanelBody, fmtValue, setValFetch: (f) => (valFetch = f), vals: () => vals, setVals: (v) => (vals = v), addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
+  return { ON, commands, handleInteraction, attach, transcript: saveTranscript, logChannelId: () => (ON ? db.cfg.logs.channelId : ""), _test: { wipeRoles, saveBackup, snapshotGuild, restoreGuild, wipeChannels, refreshPingPanels, PINGS, pingPanelBody, makePingRoles, dashRequest, dashTokens, cleanSection, dashState, thankSupporter, thanked, scanSupporters, syncTag, syncStatus, wearsTag, emojiPending, renderEmoji, addCoins, coinsOf, duels, onCounting, tickCounters, cacheInvites, trackJoin, trackLeave, onCommandsOnly, badWordIn, refreshXpBoard, saveTranscript, transcriptHtml, scamCheckChannel, scamOnJoin, tickIdleTickets, closeTicketChannel, translateReset: () => (translatorDown.clear(), (translatorFirst = 0)), TRANSLATORS: () => TRANSLATORS, translateTicket, vouchStats, vouchRanking, refreshVouchPanel, onVouchChannelMessage, postSticky, roomPanel, onLeave, ctPhase, tickVoiceXp, claimGate, loadAvatar, onVoice, tickVoc, tickLocks, createLevelRoles, giveRewards, tickAutoQuiz, quizzes, expireQuiz, onQuizAnswer, addXp, norm, makeQuiz, gfx, save, load, levelOf, need, onXp, protect, parseDuration, getDb: () => db, H, fill, draw, endGiveaway, tickGiveaways, onJoin, roleButton, pollVote, giveawayJoin } };
 })();
 
 /* =====================================================

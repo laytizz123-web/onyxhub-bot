@@ -176,7 +176,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
   <div class="hero">
     <div class="wrap">
       <div>
-        <div class="eyebrow">Bot Discord · Steal a Brainrot</div>
+        <div class="eyebrow">Bot Discord · Communauté</div>
         <h1>Le middleman qui garde les <span class="ltc">LTC</span> pendant ton trade.</h1>
         <p class="lead">Kazuki MM ouvre un ticket privé, donne une adresse Litecoin unique au payeur, attend les confirmations du réseau et ne libère l'argent que quand les deux côtés ont reçu leur part.</p>
         <div class="cta">
@@ -221,7 +221,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
     <div class="wrap">
       <div class="eyebrow">Fonctions</div>
       <h2>Tout ce qu'un serveur de trade utilise chaque jour</h2>
-      <p class="intro">Un seul bot pour les échanges sûrs, les vouches, les valeurs, la modération et l'activité du serveur.</p>
+      <p class="intro">Un seul bot pour les échanges sûrs, les vouches, la modération et l'activité de toute la communauté.</p>
       <div class="features">
         <article class="feat big">
           <img src="img/kz_ltc.gif" alt="">
@@ -235,13 +235,13 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
         </article>
         <article class="feat">
           <img src="img/kz_trade.gif" alt="">
-          <h3>Cross-trade et index</h3>
-          <p>Objet contre objet, catégories par valeur (Garama, Dragon, OG), panels d'index avec prix et caution.</p>
+          <h3>Cross-trade</h3>
+          <p>Échange objet contre objet avec un middleman, catégories selon la taille du trade et middlemen dédiés.</p>
         </article>
         <article class="feat">
           <img src="img/kz_value.gif" alt="">
-          <h3>Valeurs des brainrots</h3>
-          <p>Recherche avec propositions, valeur en Dragons et Garama, chaque mutation, demande et exist count. <code>/value</code></p>
+          <h3>Dashboard web</h3>
+          <p>Tous les réglages du bot depuis ton téléphone, réservé au propriétaire, avec connexion Discord. <code>/dashboard</code></p>
         </article>
         <article class="feat">
           <img src="img/kz_vouch.gif" alt="">
@@ -287,7 +287,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
       <h2>Les commandes principales</h2>
       <p class="intro">Les membres ne voient que les commandes qu'ils peuvent utiliser. Les commandes staff sont réservées aux bonnes permissions.</p>
       <div class="cmdtools">
-        <div class="search"><input id="cmd-search" type="search" placeholder="Chercher une commande (ex : vouch, value…)" aria-label="Chercher une commande"></div>
+        <div class="search"><input id="cmd-search" type="search" placeholder="Chercher une commande (ex : vouch, ping…)" aria-label="Chercher une commande"></div>
         <div class="chips" id="cmd-chips" role="group" aria-label="Filtrer"></div>
       </div>
       <div class="cmds" id="cmd-list"></div>
@@ -323,8 +323,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
 
 <footer>
   <div class="wrap">
-    <span>Kazuki MM · Middleman et outils pour Steal a Brainrot</span>
-    <span>Les valeurs affichées sont celles de la communauté, à titre indicatif.</span>
+    <span>Kazuki MM · Middleman, tickets et outils pour ta communauté</span>
+    <span>Fait pour la Kazuki Community.</span>
   </div>
 </footer>
 
@@ -334,17 +334,17 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
     ["Trade", "/panel", "Poster le panel des tickets middleman", "staff"],
     ["Trade", "/tiers", "Paliers de montant et middleman de chacun", "staff"],
     ["Trade", "/paypal", "Gérer les comptes PayPal présents ou absents", "staff"],
-    ["Trade", "/crosstrade", "Catégories de valeur et rôles des middlemen", "staff"],
-    ["Trade", "/indexadmin", "Rôles, prix et caution de chaque index", "staff"],
+    ["Trade", "/crosstrade", "Catégories de trade et rôles des middlemen", "staff"],
     ["Trade", "/scamcheck", "Vérifier si quelqu'un est un scammer connu", ""],
-    ["Trade", "/mmstats", "Trades et index terminés par middleman", ""],
-    ["Valeurs", "/value", "Valeur d'un brainrot, avec chaque mutation", ""],
-    ["Valeurs", "/valueadmin", "Panel des valeurs et valeurs du serveur", "staff"],
+    ["Trade", "/mmstats", "Trades terminés par middleman", ""],
     ["Vouches", "/vouch", "Laisser un vouch à un middleman", ""],
     ["Vouches", "/vouchadmin", "Panel du top vouches et salon des vouches", "staff"],
     ["Niveaux", "/rank", "Ta carte de niveau", ""],
     ["Niveaux", "/leaderboard", "Le classement XP", ""],
     ["Niveaux", "/levels", "Réglages des niveaux et classement auto", "staff"],
+    ["Serveur", "/pingroles", "Rôles de notification et leur panel", "staff"],
+    ["Serveur", "/salons", "Sauvegarder, enlever et remettre salons et rôles", "staff"],
+    ["Serveur", "/dashboard", "Lien de connexion au dashboard web", "staff"],
     ["Serveur", "/supporter", "Rôles pour le tag du serveur et le statut", "staff"],
     ["Serveur", "/emoji", "Pack d'emojis animés et emojis texte", "staff"],
     ["Serveur", "/reglement", "Règlement à accepter pour voir le serveur", "staff"],
@@ -393,12 +393,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: 
   search.addEventListener("input", draw);
   draw();
 
-  var PACK = [["kazuki", "kz_kazuki"], ["middleman", "kz_middleman"], ["vouch", "kz_vouch"], ["ltc", "kz_ltc"], ["paypal", "kz_paypal"], ["trade", "kz_trade"], ["verified", "kz_verified"], ["scam", "kz_scam"], ["og", "kz_og"], ["ticket", "kz_ticket"], ["value", "kz_value"], ["win", "kz_win"], ["lose", "kz_lose"]];
+  var PACK = [["kazuki", "kz_kazuki"], ["middleman", "kz_middleman"], ["vouch", "kz_vouch"], ["ltc", "kz_ltc"], ["paypal", "kz_paypal"], ["trade", "kz_trade"], ["verified", "kz_verified"], ["scam", "kz_scam"], ["vip", "kz_og"], ["ticket", "kz_ticket"], ["premium", "kz_value"], ["win", "kz_win"], ["lose", "kz_lose"]];
   var pack = document.getElementById("pack");
   PACK.forEach(function (p) {
     var f = document.createElement("figure");
-    var img = document.createElement("img"); img.src = "img/" + p[1] + ".gif"; img.alt = ":" + p[1] + ":";
-    var cap = document.createElement("figcaption"); cap.textContent = ":" + p[1] + ":";
+    var img = document.createElement("img"); img.src = "img/" + p[1] + ".gif"; img.alt = ":kz_" + p[0] + ":";
+    var cap = document.createElement("figcaption"); cap.textContent = ":kz_" + p[0] + ":";
     f.appendChild(img); f.appendChild(cap); pack.appendChild(f);
   });
 
